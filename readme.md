@@ -1,42 +1,25 @@
 
 #### Simple Record Store
 
-## Plan
+Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
+shows how to creates a simple KV storage file. That code isn't safe to crashes though due to the ordering of writes. 
+This version has a test that throws an exception on every write operation and verifies that the storage isn't corrupt
+the write appears to be atomic when the header is flushed. 
 
-Verify the random access file store; instrument the file access to and write tests which throw exceptions and prove it is crash proof. [completed]
-
-Add a recover and compact method. 
-
-Speed up the binary writes. 
-
-## Write Up
-
-This demo app is ...
 
 ## Build
 
-Build and run the code with: 
+Build and test the code with: 
 
 	mvn package
 
-You can set the following properties with defaults as shown: 
+## Details
 
-	-Dxxx=yyy 
+You can set the following properties with either an environemnt variable or a -D flag. The -D flag takes precedence:
 
-The defaults are configured within blahblah.properties
+| Property                                                | Default | Comment                 |
+|---------------------------------------------------------|---------|-------------------------|
+| com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
 
-Upon first startup the application will...
+The file byte position is 64 bits so 9223 petabytes. The value size is 32 bits so a maximum of 2.14 G. 
 
-Note that the code assumes ...
-
-## Running On Redhat Openshift PaaS Cloud
-
-ToDo
-	
-## Inspiration 
-
-Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-
-ToDo
-
-End.

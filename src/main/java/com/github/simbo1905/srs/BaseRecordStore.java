@@ -5,9 +5,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
-import static java.lang.String.valueOf;
-import static java.lang.System.getenv;
-
 public abstract class BaseRecordStore {
 
 	/*default*/ RandomAccessFileInterface file;

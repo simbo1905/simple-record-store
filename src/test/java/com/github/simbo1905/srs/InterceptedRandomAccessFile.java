@@ -16,6 +16,11 @@ public final class InterceptedRandomAccessFile implements RandomAccessFileInterf
 		this.wc = wc;
 	}
 
+	@Override
+	public void fsync() throws IOException {
+
+	}
+
 	/* (non-Javadoc)
 	 * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#hashCode()
 	 */

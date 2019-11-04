@@ -11,6 +11,8 @@ import java.nio.channels.FileChannel;
  */
 public interface RandomAccessFileInterface extends DataInput, DataOutput {
 
+	void fsync() throws IOException;
+
 	public abstract int hashCode();
 
 	public abstract boolean equals(Object obj);

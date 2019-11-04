@@ -5,8 +5,11 @@ import static java.lang.System.out;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileRecordStore extends BaseRecordStore {
 
@@ -80,19 +83,47 @@ public class FileRecordStore extends BaseRecordStore {
 		return h;
 	}
 
+	Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
+		@Override
+		public int compare(RecordHeader o1, RecordHeader o2) {
+			return (int)(o1.getFreeSpace() - o2.getFreeSpace());
+		}
+	};
+
+	/**
+	 * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
+	 */
+	ConcurrentNavigableMap<RecordHeader,Integer> freeMap = new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
+
+	/**
+	 * Updates a map of record headers to free space values.
+	 *
+	 * @param rh Record that has new free space.
+	 */
+	@Override
+	protected void updateFreeSpaceIndex(RecordHeader rh) {
+		int free = rh.getFreeSpace();
+		if( free > 0 ){
+			freeMap.put(rh,free);
+		} else {
+			freeMap.remove(rh);
+		}
+	}
+
 	/**
 	 * This method searches the file for free space and then returns a
 	 * RecordHeader which uses the space. (O(n) memory accesses)
 	 */
 	@Override
 	protected RecordHeader allocateRecord(String key, int dataLength)
-			throws RecordsFileException, IOException {
+			throws IOException {
 		// search for empty space
 		RecordHeader newRecord = null;
-		for (RecordHeader next : this.memIndex.values()) {
+		for (RecordHeader next : this.freeMap.keySet() ) {
 			int free = next.getFreeSpace();
 			if (dataLength <= free) {
 				newRecord = next.split();
+				updateFreeSpaceIndex(next);
 				writeRecordHeaderToIndex(next);
 				break;
 			}
@@ -117,7 +148,7 @@ public class FileRecordStore extends BaseRecordStore {
 			throws RecordsFileException {
 		for( RecordHeader next : this.memIndex.values() ){
 			if (targetFp >= next.dataPointer
-					&& targetFp < next.dataPointer + (long) next.dataCapacity) {
+					&& targetFp < next.dataPointer + (long) next.getDataCapacity()) {
 				return next;
 			}
 		}
@@ -178,7 +209,7 @@ public class FileRecordStore extends BaseRecordStore {
 		for(int index = 0; index < recordFile.getNumRecords(); index++ ){
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
 			final String key = recordFile.readKeyFromIndex(index);
-			out.println(String.format("Key=%s, HeaderIndex=%s, HeaderCapacity=%s, HeaderActual=%s, HeaderPointer=%s", key, header.indexPosition, header.dataCapacity, header.dataCount, header.dataPointer));
+			out.println(String.format("Key=%s, HeaderIndex=%s, HeaderCapacity=%s, HeaderActual=%s, HeaderPointer=%s", key, header.indexPosition, header.getDataCapacity(), header.dataCount, header.dataPointer));
 			out.println(recordFile.readRecord(key).readObject());
 		}
 	}

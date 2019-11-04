@@ -267,7 +267,7 @@ public abstract class BaseRecordStore {
 			throws RecordsFileException, IOException {
 		String key = rw.getKey();
 		RecordHeader oldHeader = keyToRecordHeader(key);
-		if (rw.getDataLength() > oldHeader.dataCapacity) {
+		if (rw.getDataLength() > oldHeader.getDataCapacity()) {
 			RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
 			newRecord.indexPosition = oldHeader.indexPosition;
 			newRecord.dataCount = oldHeader.dataCount;
@@ -327,7 +327,7 @@ public abstract class BaseRecordStore {
 	 */
 	protected long writeRecordData(RecordHeader header, RecordWriter rw)
 			throws IOException, RecordsFileException {
-		if (rw.getDataLength() > header.dataCapacity) {
+		if (rw.getDataLength() > header.getDataCapacity()) {
 			throw new RecordsFileException("Record data does not fit");
 		}
 		header.dataCount = rw.getDataLength();
@@ -342,12 +342,22 @@ public abstract class BaseRecordStore {
 	 */
 	protected void writeRecordData(RecordHeader header, byte[] data)
 			throws IOException, RecordsFileException {
-		if (data.length > header.dataCapacity) {
+		if (data.length > header.getDataCapacity()) {
 			throw new RecordsFileException("Record data does not fit");
 		}
 		header.dataCount = data.length;
 		file.seek(header.dataPointer);
 		file.write(data, 0, data.length);
+	}
+
+	/**
+	 * When allocating storage we look for a record that has space due to deletions. This method allows
+	 * implementations to record fee space for fast lookup rather than by scanning all the headers. The
+	 * default implementation does nothing.
+	 * @param rh Record that has new free space.
+	 */
+	protected void updateFreeSpaceIndex(RecordHeader rh) {
+		return;
 	}
 
 	/**
@@ -359,19 +369,20 @@ public abstract class BaseRecordStore {
 		RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
 		int currentNumRecords = getNumRecords();
 		deleteEntryFromIndex(key, delRec, currentNumRecords);
-		if (getFileLength() == delRec.dataPointer + delRec.dataCapacity) {
+		if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
 			// shrink file since this is the last record in the file
 			setFileLength(delRec.dataPointer); 
 		} else {
 			if (previous != null) {
 				// append space of deleted record onto previous record
-				previous.dataCapacity += delRec.dataCapacity;
+				previous.incrementDataCapacity(delRec.getDataCapacity());
+				updateFreeSpaceIndex(previous);
 				writeRecordHeaderToIndex(previous);
 			} else {
 				// target record is first in the file and is deleted by adding
 				// its space to the second record.
 				RecordHeader secondRecord = getRecordAt(delRec.dataPointer
-						+ (long) delRec.dataCapacity);
+						+ (long) delRec.getDataCapacity());
 				byte[] data = readRecordData(secondRecord);
 				
 				long fp = getFileLength();
@@ -384,7 +395,8 @@ public abstract class BaseRecordStore {
 					writeRecordHeaderToIndex(tempRecord);
 				}
 				secondRecord.dataPointer = delRec.dataPointer;
-				secondRecord.dataCapacity += delRec.dataCapacity;
+				secondRecord.incrementDataCapacity(delRec.getDataCapacity());
+				updateFreeSpaceIndex(secondRecord);
 				writeRecordData(secondRecord, data);
 				writeRecordHeaderToIndex(secondRecord);
 				if(  secondRecord.dataCount > delRec.dataCount ){
@@ -411,11 +423,11 @@ public abstract class BaseRecordStore {
 			RecordHeader first = getRecordAt(dataStartPtr);
 			byte[] data = readRecordData(first);
 			first.dataPointer = getFileLength();
-			first.dataCapacity = data.length;
+			first.setDataCapacity(data.length);
 			setFileLength(first.dataPointer + data.length);
 			writeRecordData(first, data);
 			writeRecordHeaderToIndex(first);
-			dataStartPtr += first.dataCapacity;
+			dataStartPtr += first.getDataCapacity();
 			writeDataStartPtrHeader(dataStartPtr);
 		}
 	}

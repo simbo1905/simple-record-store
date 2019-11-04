@@ -51,7 +51,15 @@ public class RecordHeader {
 	/**
 	 * Number of bytes of data that this record can hold (4 bytes).
 	 */
-	protected int dataCapacity;
+	private int dataCapacity;
+
+	public int getDataCapacity() {
+		return dataCapacity;
+	}
+
+	public void setDataCapacity(int dataCapacity) {
+		this.dataCapacity = dataCapacity;
+	}
 
 	/**
 	 * Indicates this header's position in the file index.
@@ -146,5 +154,9 @@ public class RecordHeader {
 		RecordHeader moved = new RecordHeader(this);
 		moved.dataPointer = fp;
 		return moved;
+	}
+
+	public void incrementDataCapacity(int dataCapacity) {
+		this.dataCapacity += dataCapacity;
 	}
 }

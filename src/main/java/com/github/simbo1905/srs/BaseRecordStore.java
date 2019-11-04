@@ -5,6 +5,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+import static java.lang.String.valueOf;
+import static java.lang.System.getenv;
+
 public abstract class BaseRecordStore {
 
 	/*default*/ RandomAccessFileInterface file;
@@ -18,8 +21,17 @@ public abstract class BaseRecordStore {
 	// Number of bytes in the record header.
 	protected static final int RECORD_HEADER_LENGTH = 16;
 
-	// The length of a key in the index.
-	protected static final int MAX_KEY_LENGTH = 64;
+	public static int getMaxKeyLengthOrDefault(String value) {
+		final String key = String.format("%s.MAX_KEY_LENGTH", BaseRecordStore.class.getName());
+		String keyLength = System.getenv(key) == null?value:System.getenv(key);
+		keyLength = System.getProperty(key, keyLength);
+		return Integer.valueOf(keyLength);
+	}
+
+	// The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
+	// A base64 sha245 would be about 42 bytes. So you can create a 64 byte surragate key out of anything unique
+	// about your data
+	protected static final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault("64");
 
 	// The total length of one index entry - the key length plus the record
 	// header length.

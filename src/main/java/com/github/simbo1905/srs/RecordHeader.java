@@ -4,45 +4,38 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Objects;
+
+import static com.github.simbo1905.srs.BaseRecordStore.RECORD_HEADER_LENGTH;
 
 public class RecordHeader {
 
 	@Override
-	public int hashCode() {
-		final int prime = 31;
-		int result = 1;
-		result = prime * result + dataCapacity;
-		result = prime * result + dataCount;
-		result = prime * result + (int) (dataPointer ^ (dataPointer >>> 32));
-		result = prime * result + indexPosition;
-		return result;
-	}
-
-	@Override
-	public boolean equals(Object obj) {
-		if (this == obj)
-			return true;
-		if (obj == null)
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		RecordHeader other = (RecordHeader) obj;
-		if (dataCapacity != other.dataCapacity)
-			return false;
-		if (dataCount != other.dataCount)
-			return false;
-		if (dataPointer != other.dataPointer)
-			return false;
-		if (indexPosition != other.indexPosition)
-			return false;
-		return true;
-	}
-
-	@Override
 	public String toString() {
-		return "RecordHeader [dataPointer=" + dataPointer + ", dataCount="
-				+ dataCount + ", dataCapacity=" + dataCapacity
-				+ ", indexPosition=" + indexPosition + "]";
+		return "RecordHeader{" +
+				"dataPointer=" + dataPointer +
+				", dataCount=" + dataCount +
+				", dataCapacity=" + dataCapacity +
+				", indexPosition=" + indexPosition +
+				", crc32=" + crc32 +
+				'}';
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		RecordHeader that = (RecordHeader) o;
+		return dataPointer == that.dataPointer &&
+				dataCount == that.dataCount &&
+				dataCapacity == that.dataCapacity &&
+				indexPosition == that.indexPosition &&
+				crc32.equals(that.crc32);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(dataPointer, dataCount, dataCapacity, indexPosition, crc32);
 	}
 
 	/**
@@ -65,29 +58,30 @@ public class RecordHeader {
 	 */
 	protected int indexPosition;
 
-	protected RecordHeader() {
+	protected Long crc32 = Long.valueOf(-1);
+
+	public void setCrc32(long crc32) {
+		this.crc32 = crc32;
+	}
+
+	protected RecordHeader(){}
+
+	protected RecordHeader(RecordHeader copyMe) {
+		this.dataPointer = copyMe.dataPointer;
+		this.dataCount = copyMe.dataCount;
+		this.dataCapacity = copyMe.dataCapacity;
+		this.indexPosition = copyMe.indexPosition;
+		this.setCrc32(copyMe.crc32.longValue());
 	}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
-		if (dataCapacity < 1) {
-			throw new IllegalArgumentException("Bad record size: "
-					+ dataCapacity);
-		}
 		this.dataPointer = dataPointer;
 		this.dataCapacity = dataCapacity;
-		this.dataCount = 0;
-	}
-
-	protected int getIndexPosition() {
-		return indexPosition;
+		this.dataCount = -1;
 	}
 
 	protected void setIndexPosition(int indexPosition) {
 		this.indexPosition = indexPosition;
-	}
-
-	protected int getDataCapacity() {
-		return dataCapacity;
 	}
 
 	protected int getFreeSpace() {
@@ -98,15 +92,17 @@ public class RecordHeader {
 	 * Read as a single operation to avoid corruption
 	 */
 	protected void read(DataInput in) throws IOException {
-		byte[] header = new byte[16];
+		byte[] header = new byte[RECORD_HEADER_LENGTH];
 		in.readFully(header);
-		ByteBuffer buffer = ByteBuffer.allocate(16);
+		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.put(header);
 		buffer.flip();
 
 		dataPointer = buffer.getLong();
 		dataCapacity = buffer.getInt();
 		dataCount = buffer.getInt();
+		long crc32 = buffer.getLong();
+		this.setCrc32(crc32);
 	}
 
 	/**
@@ -114,11 +110,19 @@ public class RecordHeader {
 	 * a single operation
 	 */
 	protected void write(DataOutput out) throws IOException {
-		ByteBuffer buffer = ByteBuffer.allocate(16);
+		if( dataCount < 0) {
+			throw new IllegalStateException("dataCount has not been initialized "+this.toString());
+		}
+		if (crc32.longValue() < 1) {
+			throw new IllegalArgumentException("Bad crc32: "
+					+ crc32.intValue());
+		}
+		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.putLong(dataPointer);
 		buffer.putInt(dataCapacity);
 		buffer.putInt(dataCount);
-		out.write(buffer.array(), 0, 16);
+		buffer.putLong(crc32.longValue());
+		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 	}
 
 	protected static RecordHeader readHeader(DataInput in) throws IOException {
@@ -131,11 +135,16 @@ public class RecordHeader {
 	 * Returns a new record header which occupies the free space of this record.
 	 * Shrinks this record size by the size of its free space.
 	 */
-	protected RecordHeader split() throws RecordsFileException {
+	protected RecordHeader split() {
 		long newFp = dataPointer + (long) dataCount;
 		RecordHeader newRecord = new RecordHeader(newFp, getFreeSpace());
 		dataCapacity = dataCount;
 		return newRecord;
 	}
 
+	public RecordHeader move(long fp) {
+		RecordHeader moved = new RecordHeader(this);
+		moved.dataPointer = fp;
+		return moved;
+	}
 }

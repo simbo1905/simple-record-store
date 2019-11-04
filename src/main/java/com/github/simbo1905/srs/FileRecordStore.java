@@ -73,7 +73,7 @@ public class FileRecordStore extends BaseRecordStore {
 	@Override
 	protected RecordHeader keyToRecordHeader(String key)
 			throws RecordsFileException {
-		RecordHeader h = (RecordHeader) memIndex.get(key);
+		RecordHeader h = memIndex.get(key);
 		if (h == null) {
 			throw new RecordsFileException("Key not found: " + key);
 		}

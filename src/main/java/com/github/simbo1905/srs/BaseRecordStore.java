@@ -4,6 +4,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.zip.CRC32;
 
 public abstract class BaseRecordStore {
 
@@ -16,7 +17,7 @@ public abstract class BaseRecordStore {
 	protected static final int FILE_HEADERS_REGION_LENGTH = 16;
 
 	// Number of bytes in the record header.
-	protected static final int RECORD_HEADER_LENGTH = 16;
+	protected static final int RECORD_HEADER_LENGTH = 24;
 
 	public static int getMaxKeyLengthOrDefault(String value) {
 		final String key = String.format("%s.MAX_KEY_LENGTH", BaseRecordStore.class.getName());
@@ -252,7 +253,8 @@ public abstract class BaseRecordStore {
 		}
 		insureIndexSpace(getNumRecords() + 1);
 		RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
-		writeRecordData(newRecord, rw);
+		long crc32 = writeRecordData(newRecord, rw);
+		newRecord.setCrc32(crc32);
 		addEntryToIndex(key, newRecord, getNumRecords());
 		return newRecord;
 	}
@@ -269,11 +271,13 @@ public abstract class BaseRecordStore {
 			RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
 			newRecord.indexPosition = oldHeader.indexPosition;
 			newRecord.dataCount = oldHeader.dataCount;
-			writeRecordData(newRecord, rw);
+			long crc32 = writeRecordData(newRecord, rw);
+			newRecord.setCrc32(crc32);
 			writeRecordHeaderToIndex(newRecord);
 			replaceEntryInIndex(key,oldHeader,newRecord);
 		} else {
-			writeRecordData(oldHeader, rw); 
+			long crc32 = writeRecordData(oldHeader, rw);
+			oldHeader.setCrc32(crc32);
 			writeRecordHeaderToIndex(oldHeader);
 		}
 	}
@@ -306,6 +310,11 @@ public abstract class BaseRecordStore {
 		byte[] buf = new byte[header.dataCount];
 		file.seek(header.dataPointer);
 		file.readFully(buf);
+		CRC32 crc32 = new CRC32();
+		crc32.update(buf);
+		if( header.crc32.longValue() != crc32.getValue() ){
+			//throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
+		}
 		return buf;
 	}
 
@@ -313,15 +322,17 @@ public abstract class BaseRecordStore {
 	 * Updates the contents of the given record. A RecordsFileException is
 	 * thrown if the new data does not fit in the space allocated to the record.
 	 * The header's data count is updated, but not written to the file.
+	 *
+	 * @ returns crc32 the CRC32 value of the written data.
 	 */
-	protected void writeRecordData(RecordHeader header, RecordWriter rw)
+	protected long writeRecordData(RecordHeader header, RecordWriter rw)
 			throws IOException, RecordsFileException {
 		if (rw.getDataLength() > header.dataCapacity) {
 			throw new RecordsFileException("Record data does not fit");
 		}
 		header.dataCount = rw.getDataLength();
 		file.seek(header.dataPointer);
-		rw.writeTo(file);
+		return rw.writeTo(file);
 	}
 
 	/**
@@ -368,7 +379,7 @@ public abstract class BaseRecordStore {
 					// wont fit entirely in slot so risk of corrupting itself
 					// make a backup at the end of the file first
 					setFileLength(fp + secondRecord.dataCount);
-					RecordHeader tempRecord = new RecordHeader(fp, secondRecord.dataCount);
+					RecordHeader tempRecord = secondRecord.move(fp);
 					writeRecordData(tempRecord, data);
 					writeRecordHeaderToIndex(tempRecord);
 				}
@@ -430,7 +441,8 @@ public abstract class BaseRecordStore {
 			long fp = getFileLength();
 			setFileLength(fp + rw.getDataLength());
 			RecordHeader newRecord = new RecordHeader(fp, rw.getDataLength());
-			writeRecordData(newRecord, rw);
+			long crc32 = writeRecordData(newRecord, rw);
+			newRecord.setCrc32(crc32);
 			addEntryToIndex(key, newRecord, getNumRecords());
 		}
 	}

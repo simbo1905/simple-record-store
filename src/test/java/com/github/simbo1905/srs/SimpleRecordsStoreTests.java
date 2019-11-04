@@ -114,13 +114,16 @@ public class SimpleRecordsStoreTests {
 
 		LOGGER.info("adding a record...");
 		RecordWriter rw = new RecordWriter("foo.lastAccessTime");
-		rw.writeObject(new Date());
+		final Date date = new Date();
+		rw.writeObject(date);
 		recordsFile.insertRecord(rw);
 
 		LOGGER.info("reading record...");
 		RecordReader rr = recordsFile.readRecord("foo.lastAccessTime");
 		Date d = (Date) rr.readObject();
 		System.out.println("\tlast access was at: " + d.toString());
+
+		Assert.assertEquals(date, d);
 
 		LOGGER.info("updating record...");
 		rw = new RecordWriter("foo.lastAccessTime");

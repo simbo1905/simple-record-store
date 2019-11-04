@@ -1,6 +1,8 @@
 package com.github.simbo1905.srs;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutput;
+import java.io.IOException;
 
 /**
  * Extends ByteArrayOutputStream to provide a way of writing the buffer to

@@ -1,11 +1,13 @@
 package com.github.simbo1905.srs;
 
+
 import java.io.*;
 
 public class RecordReader {
   
   String key;
   byte[] data;
+
   ByteArrayInputStream in;
   ObjectInputStream objIn;
 
@@ -37,7 +39,7 @@ public class RecordReader {
   /**
    * Reads the next object in the record using an ObjectInputStream.
    */
-  public Object readObject() throws IOException, OptionalDataException, ClassNotFoundException {
+  public Object readObject() throws IOException, ClassNotFoundException {
     return getObjectInputStream().readObject();
   }
 

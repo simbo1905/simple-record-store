@@ -34,6 +34,17 @@ expansion of the index region.
 1. Records are written with a CRC32 checksum which is checked upon load. 
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption.
 
+## Using
+
+The latest release on maven central is:
+
+```xml
+<dependency>
+	<groupId>com.github.trex-paxos</groupId>
+	<artifactId>simple-record-store</artifactId>
+	<version>0.4.1</version>
+</dependency>
+```
 
 ## Build
 
@@ -46,8 +57,20 @@ mvn package
 Release: 
 
 ```shell script
-# Snapshot release:
-mvn deploy
+# do a snaphost release
+mvn clean deploy
+
+# do a dry run of the real release
+mvn release:prepare -DdryRun=true
+
+# clean the dry run
+mvn release:clean
+
+# make the actual tag 
+mvn release:prepare 
+
+# checkout and deply the tag
+mvn release:perform
 ```
 
 ## Details

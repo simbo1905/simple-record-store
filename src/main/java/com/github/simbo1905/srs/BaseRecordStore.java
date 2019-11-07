@@ -42,7 +42,7 @@ public abstract class BaseRecordStore {
 	// File pointer to the data start pointer header.
 	protected static final long DATA_START_HEADER_LOCATION = 4;
 
-	/**
+	/*
 	 * Creates a new database file, initializing the appropriate headers. Enough
 	 * space is allocated in the index for the specified initial size.
 	 */
@@ -60,7 +60,7 @@ public abstract class BaseRecordStore {
 		writeDataStartPtrHeader(dataStartPtr);
 	}
 
-	/**
+	/*
 	 * Opens an existing database file and initializes the dataStartPtr. The
 	 * accessFlags parameter can be "r" or "rw" -- as defined in
 	 * RandomAccessFile.
@@ -75,35 +75,35 @@ public abstract class BaseRecordStore {
 		dataStartPtr = readDataStartHeader();
 	}
 	
-	/**
+	/*
 	 * Returns an Iterable of the keys of all records in the database.
 	 */
 	public abstract Iterable<String> keys();
 
-	/**
+	/*
 	 * Returns the number or records in the database.
 	 */
 	public abstract int getNumRecords();
 
-	/**
+	/*
 	 * Checks there is a record with the given key.
 	 */
 	public abstract boolean recordExists(String key);
 
-	/**
+	/*
 	 * Maps a key to a record header.
 	 */
 	protected abstract RecordHeader keyToRecordHeader(String key)
 			throws RecordsFileException;
 
-	/**
+	/*
 	 * Locates space for a new record of dataLength size and initializes a
 	 * RecordHeader.
 	 */
 	protected abstract RecordHeader allocateRecord(String key, int dataLength)
 			throws RecordsFileException, IOException;
 
-	/**
+	/*
 	 * Returns the record to which the target file pointer belongs - meaning the
 	 * specified location in the file is part of the record data of the
 	 * RecordHeader which is returned. Returns null if the location is not part
@@ -120,7 +120,7 @@ public abstract class BaseRecordStore {
 		file.setLength(l);
 	}
 
-	/**
+	/*
 	 * Reads the number of records header from the file.
 	 */
 	protected int readNumRecordsHeader() throws IOException {
@@ -128,7 +128,7 @@ public abstract class BaseRecordStore {
 		return file.readInt();
 	}
 
-	/**
+	/*
 	 * Writes the number of records header to the file.
 	 */
 	protected void writeNumRecordsHeader(int numRecords) throws IOException {
@@ -136,7 +136,7 @@ public abstract class BaseRecordStore {
 		file.writeInt(numRecords);
 	}
 
-	/**
+	/*
 	 * Reads the data start pointer header from the file.
 	 */
 	protected long readDataStartHeader() throws IOException {
@@ -144,7 +144,7 @@ public abstract class BaseRecordStore {
 		return file.readLong();
 	}
 
-	/**
+	/*
 	 * Writes the data start pointer header to the file.
 	 */
 	protected void writeDataStartPtrHeader(long dataStartPtr)
@@ -153,7 +153,7 @@ public abstract class BaseRecordStore {
 		file.writeLong(dataStartPtr);
 	}
 
-	/**
+	/*
 	 * Returns a file pointer in the index pointing to the first byte in the key
 	 * located at the given index position.
 	 */
@@ -161,7 +161,7 @@ public abstract class BaseRecordStore {
 		return FILE_HEADERS_REGION_LENGTH + (INDEX_ENTRY_LENGTH * pos);
 	}
 
-	/**
+	/*
 	 * Returns a file pointer in the index pointing to the first byte in the
 	 * record pointer located at the given index position.
 	 */
@@ -169,7 +169,7 @@ public abstract class BaseRecordStore {
 		return indexPositionToKeyFp(pos) + MAX_KEY_LENGTH;
 	}
 
-	/**
+	/*
 	 * Reads the ith key from the index.
 	 */
 	String readKeyFromIndex(int position) throws IOException {
@@ -177,7 +177,7 @@ public abstract class BaseRecordStore {
 		return file.readUTF();
 	}
 
-	/**
+	/*
 	 * Reads the ith record header from the index.
 	 */
 	RecordHeader readRecordHeaderFromIndex(int position) throws IOException {
@@ -185,7 +185,7 @@ public abstract class BaseRecordStore {
 		return RecordHeader.readHeader(file);
 	}
 
-	/**
+	/*
 	 * Writes the ith record header to the index.
 	 */
 	protected void writeRecordHeaderToIndex(RecordHeader header)
@@ -194,7 +194,7 @@ public abstract class BaseRecordStore {
 		header.write(file);
 	}
 
-	/**
+	/*
 	 * Appends an entry to end of index. Assumes that insureIndexSpace() has
 	 * already been called.
 	 */
@@ -216,7 +216,7 @@ public abstract class BaseRecordStore {
 		writeNumRecordsHeader(currentNumRecords + 1);
 	}
 
-	/**
+	/*
 	 * Removes the record from the index. Replaces the target with the entry at
 	 * the end of the index.
 	 */
@@ -234,7 +234,7 @@ public abstract class BaseRecordStore {
 		writeNumRecordsHeader(currentNumRecords - 1);
 	}
 
-	/**
+	/*
 	 * Adds the given record to the database.
 	 */
 	public synchronized void insertRecord(RecordWriter rw)
@@ -242,7 +242,7 @@ public abstract class BaseRecordStore {
 		insertRecord0(rw);
 	}
 
-	/**
+	/*
 	 * this method exposes more to the caller for junit testing
 	 */
 	synchronized RecordHeader insertRecord0(RecordWriter rw)
@@ -259,7 +259,7 @@ public abstract class BaseRecordStore {
 		return newRecord;
 	}
 	
-	/**
+	/*
 	 * Updates an existing record. If the new contents do not fit in the
 	 * original record, then the update is handled by inserting the data
 	 */
@@ -286,7 +286,7 @@ public abstract class BaseRecordStore {
 		// nothing to do but lets subclasses do additional bookwork
 	}
 
-	/**
+	/*
 	 * Reads a record.
 	 */
 	public synchronized RecordReader readRecord(String key)
@@ -295,7 +295,7 @@ public abstract class BaseRecordStore {
 		return new RecordReader(key, data);
 	}
 
-	/**
+	/*
 	 * Reads the data for the record with the given key.
 	 */
 	protected byte[] readRecordData(String key) throws IOException,
@@ -303,7 +303,7 @@ public abstract class BaseRecordStore {
 		return readRecordData(keyToRecordHeader(key));
 	}
 
-	/**
+	/*
 	 * Reads the record data for the given record header.
 	 */
 	protected byte[] readRecordData(RecordHeader header) throws IOException {
@@ -318,7 +318,7 @@ public abstract class BaseRecordStore {
 		return buf;
 	}
 
-	/**
+	/*
 	 * Updates the contents of the given record. A RecordsFileException is
 	 * thrown if the new data does not fit in the space allocated to the record.
 	 * The header's data count is updated, but not written to the file.
@@ -335,7 +335,7 @@ public abstract class BaseRecordStore {
 		return rw.writeTo(file);
 	}
 
-	/**
+	/*
 	 * Updates the contents of the given record. A RecordsFileException is
 	 * thrown if the new data does not fit in the space allocated to the record.
 	 * The header's data count is updated, but not written to the file.
@@ -350,7 +350,7 @@ public abstract class BaseRecordStore {
 		file.write(data, 0, data.length);
 	}
 
-	/**
+	/*
 	 * When allocating storage we look for a record that has space due to deletions. This method allows
 	 * implementations to record fee space for fast lookup rather than by scanning all the headers. The
 	 * default implementation does nothing.
@@ -360,7 +360,7 @@ public abstract class BaseRecordStore {
 		return;
 	}
 
-	/**
+	/*
 	 * Deletes a record.
 	 */
 	public synchronized void deleteRecord(String key)
@@ -432,7 +432,7 @@ public abstract class BaseRecordStore {
 		}
 	}
 
-	/**
+	/*
 	 * Closes the file.
 	 */
 	public synchronized void close() throws IOException, RecordsFileException {

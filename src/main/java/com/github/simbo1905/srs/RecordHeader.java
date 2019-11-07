@@ -38,17 +38,17 @@ public class RecordHeader {
 		return Objects.hash(dataPointer, dataCount, dataCapacity, indexPosition, crc32);
 	}
 
-	/**
+	/*
 	 * File pointer to the first byte of record data (8 bytes).
 	 */
 	protected long dataPointer;
 
-	/**
+	/*
 	 * Actual number of bytes of data held in this record (4 bytes).
 	 */
 	protected int dataCount;
 
-	/**
+	/*
 	 * Number of bytes of data that this record can hold (4 bytes).
 	 */
 	private int dataCapacity;
@@ -61,7 +61,7 @@ public class RecordHeader {
 		this.dataCapacity = dataCapacity;
 	}
 
-	/**
+	/*
 	 * Indicates this header's position in the file index.
 	 */
 	protected int indexPosition;
@@ -96,7 +96,7 @@ public class RecordHeader {
 		return dataCapacity - dataCount;
 	}
 
-	/**
+	/*
 	 * Read as a single operation to avoid corruption
 	 */
 	protected void read(DataInput in) throws IOException {
@@ -113,7 +113,7 @@ public class RecordHeader {
 		this.setCrc32(crc32);
 	}
 
-	/**
+	/*
 	 * in order to improve the likelihood of not corrupting the header write as
 	 * a single operation
 	 */
@@ -139,7 +139,7 @@ public class RecordHeader {
 		return r;
 	}
 
-	/**
+	/*
 	 * Returns a new record header which occupies the free space of this record.
 	 * Shrinks this record size by the size of its free space.
 	 */

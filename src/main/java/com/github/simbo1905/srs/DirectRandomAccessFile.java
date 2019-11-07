@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
 
-/**
+/*
  * easier to mock final native class by wrapping it in an interface
  */
 final public class DirectRandomAccessFile implements RandomAccessFileInterface {

@@ -13,14 +13,14 @@ import java.util.concurrent.ConcurrentSkipListMap;
 
 public class FileRecordStore extends BaseRecordStore {
 
-	/**
+	/*
 	 * Hashtable which holds the in-memory index. For efficiency, the entire
 	 * index is cached in memory. The hashtable maps a key of type String to a
 	 * RecordHeader.
 	 */
 	protected Map<String, RecordHeader> memIndex;
 
-	/**
+	/*
 	 * Creates a new database file. The initialSize parameter determines the
 	 * amount of space which is allocated for the index. The index can grow
 	 * dynamically, but the parameter is provide to increase efficiency.
@@ -32,7 +32,7 @@ public class FileRecordStore extends BaseRecordStore {
 				.synchronizedMap(new HashMap<String, RecordHeader>(initialSize));
 	}
 
-	/**
+	/*
 	 * Opens an existing database and initializes the in-memory index.
 	 */
 	public FileRecordStore(String dbPath, String accessFlags) throws IOException,
@@ -54,7 +54,7 @@ public class FileRecordStore extends BaseRecordStore {
 		return memIndex.keySet();
 	}
 	
-	/**
+	/*
 	 * Returns the current number of records in the database.
 	 */
 	@Override
@@ -62,7 +62,7 @@ public class FileRecordStore extends BaseRecordStore {
 		return memIndex.size();
 	}
 
-	/**
+	/*
 	 * Checks if there is a record belonging to the given key.
 	 */
 	@Override
@@ -70,7 +70,7 @@ public class FileRecordStore extends BaseRecordStore {
 		return memIndex.containsKey(key);
 	}
 
-	/**
+	/*
 	 * Maps a key to a record header by looking it up in the in-memory index.
 	 */
 	@Override
@@ -90,12 +90,12 @@ public class FileRecordStore extends BaseRecordStore {
 		}
 	};
 
-	/**
+	/*
 	 * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
 	 */
 	ConcurrentNavigableMap<RecordHeader,Integer> freeMap = new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
 
-	/**
+	/*
 	 * Updates a map of record headers to free space values.
 	 *
 	 * @param rh Record that has new free space.
@@ -110,7 +110,7 @@ public class FileRecordStore extends BaseRecordStore {
 		}
 	}
 
-	/**
+	/*
 	 * This method searches the file for free space and then returns a
 	 * RecordHeader which uses the space. (O(n) memory accesses)
 	 */
@@ -137,7 +137,7 @@ public class FileRecordStore extends BaseRecordStore {
 		return newRecord;
 	}
 
-	/**
+	/*
 	 * Returns the record to which the target file pointer belongs - meaning the
 	 * specified location in the file is part of the record data of the
 	 * RecordHeader which is returned. Returns null if the location is not part
@@ -155,7 +155,7 @@ public class FileRecordStore extends BaseRecordStore {
 		return null;
 	}
 
-	/**
+	/*
 	 * Closes the database.
 	 */
 	@Override
@@ -168,7 +168,7 @@ public class FileRecordStore extends BaseRecordStore {
 		}
 	}
 
-	/**
+	/*
 	 * Adds the new record to the in-memory index and calls the super class add
 	 * the index entry to the file.
 	 */
@@ -186,7 +186,7 @@ public class FileRecordStore extends BaseRecordStore {
 		memIndex.put(key,newRecord);
 	}
 
-	/**
+	/*
 	 * Removes the record from the index. Replaces the target with the entry at
 	 * the end of the index.
 	 */

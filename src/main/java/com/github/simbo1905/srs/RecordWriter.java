@@ -3,7 +3,6 @@ package com.github.simbo1905.srs;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
-import java.io.OutputStream;
 
 public class RecordWriter {
 
@@ -32,14 +31,14 @@ public class RecordWriter {
         getObjectOutputStream().flush();
     }
 
-    /**
+    /*
      * Returns the number of bytes in the data.
      */
     public int getDataLength() {
         return out.size();
     }
 
-    /**
+    /*
      * Writes the data out to the stream without re-allocating the buffer.
      */
     public long writeTo(DataOutput str) throws IOException {

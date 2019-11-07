@@ -6,7 +6,7 @@ import java.io.FileDescriptor;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 
-/**
+/*
  * easier to mock final native class by wrapping it in an interface
  */
 public interface RandomAccessFileInterface extends DataInput, DataOutput {

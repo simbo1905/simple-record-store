@@ -7,7 +7,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.zip.CRC32;
 
-/**
+/*
  * Extends ByteArrayOutputStream to provide a way of writing the buffer to
  * a DataOutput without re-allocating it.
  */
@@ -21,7 +21,7 @@ public class DbByteArrayOutputStream extends ByteArrayOutputStream {
     super(size);
   }
 
-  /**
+  /*
    * Writes the full contents of the buffer a DataOutput stream.
    */
   public synchronized long writeTo (DataOutput dstr) throws IOException {

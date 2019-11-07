@@ -1,5 +1,7 @@
 package com.github.simbo1905.srs;
 
+import lombok.Synchronized;
+
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -9,6 +11,10 @@ import java.util.zip.CRC32;
 public abstract class BaseRecordStore {
 
 	/*default*/ RandomAccessFileInterface file;
+
+	public void fsync() throws IOException {
+		file.fsync();
+	}
 
 	// Current file pointer to the start of the record data.
 	protected long dataStartPtr;
@@ -237,7 +243,8 @@ public abstract class BaseRecordStore {
 	/*
 	 * Adds the given record to the database.
 	 */
-	public synchronized void insertRecord(RecordWriter rw)
+	@Synchronized
+	public void insertRecord(RecordWriter rw)
 			throws RecordsFileException, IOException {
 		insertRecord0(rw);
 	}
@@ -245,7 +252,7 @@ public abstract class BaseRecordStore {
 	/*
 	 * this method exposes more to the caller for junit testing
 	 */
-	synchronized RecordHeader insertRecord0(RecordWriter rw)
+	@Synchronized RecordHeader insertRecord0(RecordWriter rw)
 			throws RecordsFileException, IOException {
 		String key = rw.getKey();
 		if (recordExists(key)) {
@@ -263,7 +270,8 @@ public abstract class BaseRecordStore {
 	 * Updates an existing record. If the new contents do not fit in the
 	 * original record, then the update is handled by inserting the data
 	 */
-	public synchronized void updateRecord(RecordWriter rw)
+	@Synchronized
+	public void updateRecord(RecordWriter rw)
 			throws RecordsFileException, IOException {
 		String key = rw.getKey();
 		RecordHeader oldHeader = keyToRecordHeader(key);
@@ -289,7 +297,8 @@ public abstract class BaseRecordStore {
 	/*
 	 * Reads a record.
 	 */
-	public synchronized RecordReader readRecord(String key)
+	@Synchronized
+	public RecordReader readRecord(String key)
 			throws RecordsFileException, IOException {
 		byte[] data = readRecordData(key);
 		return new RecordReader(key, data);
@@ -363,7 +372,8 @@ public abstract class BaseRecordStore {
 	/*
 	 * Deletes a record.
 	 */
-	public synchronized void deleteRecord(String key)
+	@Synchronized
+	public void deleteRecord(String key)
 			throws RecordsFileException, IOException {
 		RecordHeader delRec = keyToRecordHeader(key);
 		RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
@@ -435,7 +445,8 @@ public abstract class BaseRecordStore {
 	/*
 	 * Closes the file.
 	 */
-	public synchronized void close() throws IOException, RecordsFileException {
+	@Synchronized
+	public void close() throws IOException, RecordsFileException {
 		try {
 			file.close();
 		} finally {
@@ -443,6 +454,7 @@ public abstract class BaseRecordStore {
 		}
 	}
 
+	@Synchronized
 	public void insertRecords(RecordWriter... writers) throws Exception {
 		insureIndexSpace(getNumRecords() + writers.length);
 		for( RecordWriter rw : writers ){

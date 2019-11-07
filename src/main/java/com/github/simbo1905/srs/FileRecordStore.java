@@ -1,5 +1,7 @@
 package com.github.simbo1905.srs;
 
+import lombok.Synchronized;
+
 import static java.lang.System.err;
 import static java.lang.System.out;
 
@@ -50,7 +52,8 @@ public class FileRecordStore extends BaseRecordStore {
 	}
 
 	@Override
-	public synchronized Iterable<String> keys() {
+	@Synchronized
+	public Iterable<String> keys() {
 		return memIndex.keySet();
 	}
 	
@@ -58,7 +61,8 @@ public class FileRecordStore extends BaseRecordStore {
 	 * Returns the current number of records in the database.
 	 */
 	@Override
-	public synchronized int getNumRecords() {
+	@Synchronized
+	public int getNumRecords() {
 		return memIndex.size();
 	}
 
@@ -66,7 +70,8 @@ public class FileRecordStore extends BaseRecordStore {
 	 * Checks if there is a record belonging to the given key.
 	 */
 	@Override
-	public synchronized boolean recordExists(String key) {
+	@Synchronized
+	public boolean recordExists(String key) {
 		return memIndex.containsKey(key);
 	}
 
@@ -159,7 +164,8 @@ public class FileRecordStore extends BaseRecordStore {
 	 * Closes the database.
 	 */
 	@Override
-	public synchronized void close() throws IOException, RecordsFileException {
+	@Synchronized
+	public void close() throws IOException, RecordsFileException {
 		try {
 			super.close();
 		} finally {
@@ -213,5 +219,4 @@ public class FileRecordStore extends BaseRecordStore {
 			out.println(recordFile.readRecord(key).readObject());
 		}
 	}
-
 }

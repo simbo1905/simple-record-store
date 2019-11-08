@@ -3,7 +3,7 @@ package com.github.simbo1905.srs;
 import java.io.*;
 import java.util.function.Function;
 
-public class RecordReader<T> {
+class RecordReader<T> {
 
   private final Function<byte[], T> deserializer;
   String key;

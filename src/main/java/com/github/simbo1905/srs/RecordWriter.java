@@ -4,7 +4,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.function.Function;
 
-public class RecordWriter<T> {
+class RecordWriter<T> {
 
     private final Function<T, byte[]> serializer;
     String key;

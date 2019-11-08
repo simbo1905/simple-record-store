@@ -6,6 +6,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.util.function.Function;
 import java.util.zip.CRC32;
 
 public abstract class BaseRecordStore {
@@ -17,7 +18,7 @@ public abstract class BaseRecordStore {
 	}
 
 	// Current file pointer to the start of the record data.
-	protected long dataStartPtr;
+	long dataStartPtr;
 
 	// Total length in bytes of the global database headers.
 	protected static final int FILE_HEADERS_REGION_LENGTH = 16;
@@ -153,7 +154,7 @@ public abstract class BaseRecordStore {
 	/*
 	 * Writes the data start pointer header to the file.
 	 */
-	protected void writeDataStartPtrHeader(long dataStartPtr)
+	private void writeDataStartPtrHeader(long dataStartPtr)
 			throws IOException {
 		file.seek(DATA_START_HEADER_LOCATION);
 		file.writeLong(dataStartPtr);
@@ -163,7 +164,7 @@ public abstract class BaseRecordStore {
 	 * Returns a file pointer in the index pointing to the first byte in the key
 	 * located at the given index position.
 	 */
-	protected long indexPositionToKeyFp(int pos) {
+	private long indexPositionToKeyFp(int pos) {
 		return FILE_HEADERS_REGION_LENGTH + (INDEX_ENTRY_LENGTH * pos);
 	}
 
@@ -171,7 +172,7 @@ public abstract class BaseRecordStore {
 	 * Returns a file pointer in the index pointing to the first byte in the
 	 * record pointer located at the given index position.
 	 */
-	long indexPositionToRecordHeaderFp(int pos) {
+	private long indexPositionToRecordHeaderFp(int pos) {
 		return indexPositionToKeyFp(pos) + MAX_KEY_LENGTH;
 	}
 
@@ -298,16 +299,16 @@ public abstract class BaseRecordStore {
 	 * Reads a record.
 	 */
 	@Synchronized
-	public RecordReader readRecord(String key)
+	public <T> RecordReader readRecord(String key, Function<byte[], T> deserializer)
 			throws RecordsFileException, IOException {
 		byte[] data = readRecordData(key);
-		return new RecordReader(key, data);
+		return new RecordReader(key, data, deserializer);
 	}
 
 	/*
 	 * Reads the data for the record with the given key.
 	 */
-	protected byte[] readRecordData(String key) throws IOException,
+	private byte[] readRecordData(String key) throws IOException,
 			RecordsFileException {
 		return readRecordData(keyToRecordHeader(key));
 	}
@@ -315,7 +316,7 @@ public abstract class BaseRecordStore {
 	/*
 	 * Reads the record data for the given record header.
 	 */
-	protected byte[] readRecordData(RecordHeader header) throws IOException {
+	private byte[] readRecordData(RecordHeader header) throws IOException {
 		byte[] buf = new byte[header.dataCount];
 		file.seek(header.dataPointer);
 		file.readFully(buf);
@@ -334,7 +335,7 @@ public abstract class BaseRecordStore {
 	 *
 	 * @ returns crc32 the CRC32 value of the written data.
 	 */
-	protected long writeRecordData(RecordHeader header, RecordWriter rw)
+	private long writeRecordData(RecordHeader header, RecordWriter rw)
 			throws IOException, RecordsFileException {
 		if (rw.getDataLength() > header.getDataCapacity()) {
 			throw new RecordsFileException("Record data does not fit");
@@ -349,7 +350,7 @@ public abstract class BaseRecordStore {
 	 * thrown if the new data does not fit in the space allocated to the record.
 	 * The header's data count is updated, but not written to the file.
 	 */
-	protected void writeRecordData(RecordHeader header, byte[] data)
+	private void writeRecordData(RecordHeader header, byte[] data)
 			throws IOException, RecordsFileException {
 		if (data.length > header.getDataCapacity()) {
 			throw new RecordsFileException("Record data does not fit");
@@ -419,7 +420,7 @@ public abstract class BaseRecordStore {
 
 	// Checks to see if there is space for and additional index entry. If
 	// not, space is created by moving records to the end of the file.
-	protected void insureIndexSpace(int requiredNumRecords)
+	private void insureIndexSpace(int requiredNumRecords)
 			throws RecordsFileException, IOException {
 		int currentNumRecords = getNumRecords();
 		long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);

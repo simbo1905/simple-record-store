@@ -7,13 +7,16 @@ import static org.junit.Assert.assertThat;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import lombok.SneakyThrows;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -22,7 +25,7 @@ import org.junit.Test;
  * Tests that the simple random access storage 'db' works and does not get 
  * corrupted under write errors. 
  */
-public class SimpleRecordsStoreTests {
+public class SimpleRecordStoreTests {
 	
 	/**
 	 * A utility to recored how many times file write operations are called 
@@ -73,12 +76,12 @@ public class SimpleRecordsStoreTests {
 
 	static final String TMP = System.getProperty("java.io.tmpdir");
 
-	private final static Logger LOGGER = Logger.getLogger(SimpleRecordsStoreTests.class.getName()); 
+	private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTests.class.getName());
 	
 	String fileName;
 	int initialSize;
 	
-	public SimpleRecordsStoreTests() {
+	public SimpleRecordStoreTests() {
 		LOGGER.setLevel(Level.ALL);
 		init(TMP+"junit.records",0);
 	}
@@ -103,6 +106,49 @@ public class SimpleRecordsStoreTests {
 		} 
 	}
 
+	public static class ByteUtils {
+		private static ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+
+		public static byte[] longToBytes(long x) {
+			buffer = ByteBuffer.allocate(Long.BYTES);
+			buffer.putLong(0, x);
+			return buffer.array();
+		}
+
+		public static long bytesToLong(byte[] bytes) {
+			buffer.put(bytes, 0, bytes.length);
+			buffer.flip();//need flip
+			return buffer.getLong();
+		}
+
+		@SneakyThrows
+		public static byte[] stringToBytes(String s){
+			return s.getBytes("UTF8");
+		}
+
+		@SneakyThrows
+		public static String bytesToString(byte[] bytes){
+			return new String(bytes, "UTF8");
+		}
+	}
+
+	Function<Date, byte[]> serializerDate = (date) -> {
+		return ByteUtils.longToBytes(date.getTime());
+	};
+
+	Function<byte[], Date> deserializerDate = (bytes) -> {
+		return new Date(ByteUtils.bytesToLong(bytes));
+	};
+
+	public static Function<String, byte[]> serializerString= (string) -> {
+		return ByteUtils.stringToBytes(string);
+	};
+
+	public static Function<byte[], String> deserializerString = (bytes) -> {
+		return ByteUtils.bytesToString(bytes);
+	};
+
+
 	/**
 	 * Taken from http://www.javaworld.com/jw-01-1999/jw-01-step.html
 	 */
@@ -113,25 +159,25 @@ public class SimpleRecordsStoreTests {
 		LOGGER.info("creating records file...");
 
 		LOGGER.info("adding a record...");
-		RecordWriter rw = new RecordWriter("foo.lastAccessTime");
+		RecordWriter rw = new RecordWriter("foo.lastAccessTime", serializerDate);
 		final Date date = new Date();
 		rw.writeObject(date);
 		recordsFile.insertRecord(rw);
 
 		LOGGER.info("reading record...");
-		RecordReader rr = recordsFile.readRecord("foo.lastAccessTime");
+		RecordReader rr = recordsFile.readRecord("foo.lastAccessTime", deserializerDate);
 		Date d = (Date) rr.readObject();
 		System.out.println("\tlast access was at: " + d.toString());
 
 		Assert.assertEquals(date, d);
 
 		LOGGER.info("updating record...");
-		rw = new RecordWriter("foo.lastAccessTime");
+		rw = new RecordWriter("foo.lastAccessTime", serializerDate);
 		rw.writeObject(new Date());
 		recordsFile.updateRecord(rw);
 
 		LOGGER.info("reading record...");
-		rr = recordsFile.readRecord("foo.lastAccessTime");
+		rr = recordsFile.readRecord("foo.lastAccessTime", deserializerDate);
 		d = (Date) rr.readObject();
 		System.out.println("\tlast access was at: " + d.toString());
 
@@ -145,24 +191,7 @@ public class SimpleRecordsStoreTests {
 
 		LOGGER.info("test completed.");
 	}
-	
-	@Test
-	public void testInsertOneRecord() throws Exception {
-		// given
-		recordsFile = new FileRecordStore(fileName, initialSize);
-		List<UUID> uuids = createUuid(1);
-		Object uuid = uuids.get(0);
-		RecordWriter rw = new RecordWriter(uuid.toString());
-		rw.writeObject(uuids.get(0));
-		
-		// when
-		this.recordsFile.insertRecord(rw);
-		RecordReader record = this.recordsFile.readRecord(uuid.toString());
-		
-		// then
-		Assert.assertThat((UUID)record.readObject(), is(uuids.get(0)));
-	}
-	
+
 	@Test
 	public void testInsertOneRecordWithIOExceptions() throws Exception {
 		List<UUID> uuids = createUuid(1);
@@ -177,8 +206,8 @@ public class SimpleRecordsStoreTests {
 					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 					
 					Object uuid = uuids.get(0);
-					RecordWriter rw = new RecordWriter(uuid.toString());
-					rw.writeObject(uuid);
+					RecordWriter rw = new RecordWriter(uuid.toString(),serializerString);
+					rw.writeObject(uuid.toString());
 					
 					// when
 					recordsFile.insertRecord(rw);
@@ -192,21 +221,21 @@ public class SimpleRecordsStoreTests {
 		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(2);
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(),serializerString);
+		rw0.writeObject(uuid0.toString());
 		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString(),serializerString);
+		rw1.writeObject(uuid1.toString());
 
 		// when
 		this.recordsFile.insertRecord(rw0);
 		this.recordsFile.insertRecord(rw1);
-		RecordReader rr = this.recordsFile.readRecord(uuid0.toString());
-		RecordReader rr1 = this.recordsFile.readRecord(uuid1.toString());
+		RecordReader rr = this.recordsFile.readRecord(uuid0.toString(),deserializerString);
+		RecordReader rr1 = this.recordsFile.readRecord(uuid1.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr.readObject(), is(uuid0));
-		Assert.assertThat((UUID)rr1.readObject(), is(uuid1));
+		Assert.assertThat((String)rr.readObject(), is(uuid0.toString()));
+		Assert.assertThat((String)rr1.readObject(), is(uuid1.toString()));
 	}
 	
 	@Test
@@ -219,11 +248,11 @@ public class SimpleRecordsStoreTests {
 					// given
 					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 					Object uuid0 = uuids.get(0);
-					RecordWriter rw0 = new RecordWriter(uuid0.toString());
-					rw0.writeObject(uuid0);
+					RecordWriter rw0 = new RecordWriter(uuid0.toString(),serializerString);
+					rw0.writeObject(uuid0.toString());
 					Object uuid1 = uuids.get(1);
-					RecordWriter rw1 = new RecordWriter(uuid1.toString());
-					rw1.writeObject(uuid1);
+					RecordWriter rw1 = new RecordWriter(uuid1.toString(),serializerString);
+					rw1.writeObject(uuid1.toString());
 
 					// when
 					recordsFile.insertRecord(rw0);
@@ -238,14 +267,14 @@ public class SimpleRecordsStoreTests {
 		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(1);
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(),serializerString);
+		rw0.writeObject(uuid0.toString());
 
 		// when
 		this.recordsFile.insertRecord(rw0);
 		this.recordsFile.deleteRecord(uuid0.toString());
 		try { 
-			this.recordsFile.readRecord(uuid0.toString());
+			this.recordsFile.readRecord(uuid0.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -263,8 +292,8 @@ public class SimpleRecordsStoreTests {
 					// given
 					recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 					Object uuid = uuids.get(0);
-					RecordWriter rw = new RecordWriter(uuid.toString());
-					rw.writeObject(uuid);
+					RecordWriter rw = new RecordWriter(uuid.toString(),serializerString);
+					rw.writeObject(uuid.toString());
 					
 					// when
 					recordsFile.insertRecord(rw);
@@ -279,11 +308,11 @@ public class SimpleRecordsStoreTests {
 		recordsFile = new FileRecordStore(fileName, initialSize);
 		List<UUID> uuids = createUuid(2);
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(),serializerString);
+		rw0.writeObject(uuid0.toString());
 		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString(),serializerString);
+		rw1.writeObject(uuid1.toString());
 
 		// when
 		this.recordsFile.insertRecord(rw0);
@@ -291,13 +320,13 @@ public class SimpleRecordsStoreTests {
 		this.recordsFile.deleteRecord(uuid0.toString());
 		this.recordsFile.deleteRecord(uuid1.toString());
 		try { 
-			this.recordsFile.readRecord(uuid0.toString());
+			this.recordsFile.readRecord(uuid0.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
 		}
 		try { 
-			this.recordsFile.readRecord(uuid1.toString());
+			this.recordsFile.readRecord(uuid1.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -315,11 +344,11 @@ public class SimpleRecordsStoreTests {
 				// given
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				Object uuid0 = uuids.get(0);
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(),serializerString);
+				rw0.writeObject(uuid0.toString());
 				Object uuid1 = uuids.get(1);
-				RecordWriter rw1 = new RecordWriter(uuid1.toString());
-				rw1.writeObject(uuid1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString(),serializerString);
+				rw1.writeObject(uuid1.toString());
 
 				// when
 				recordsFile.insertRecord(rw0);
@@ -337,30 +366,30 @@ public class SimpleRecordsStoreTests {
 		List<UUID> uuids = createUuid(3);
 		
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+		rw0.writeObject(uuid0.toString());
 		
 		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+		rw1.writeObject(uuid1.toString());
 
 		Object uuid2 = uuids.get(2);
-		RecordWriter rw2 = new RecordWriter(uuid2.toString());
-		rw2.writeObject(uuid2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+		rw2.writeObject(uuid2.toString());
 
 		// when
 		recordsFile.insertRecord(rw0);
 		recordsFile.insertRecord(rw1);
 		recordsFile.deleteRecord(uuid0.toString()); // actually some re-ording on second insert so this is end of file
 		recordsFile.insertRecord(rw2);
-		RecordReader rr1 = recordsFile.readRecord(uuid1.toString());
-		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+		RecordReader rr1 = recordsFile.readRecord(uuid1.toString(),deserializerString);
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr1.readObject(), is(uuid1));
-		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
+		Assert.assertThat((String)rr1.readObject(), is(uuid1.toString()));
+		Assert.assertThat((String)rr2.readObject(), is(uuid2.toString()));
 		try { 
-			recordsFile.readRecord(uuid0.toString());
+			recordsFile.readRecord(uuid0.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -378,25 +407,25 @@ public class SimpleRecordsStoreTests {
 				// given
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				Object uuid0 = uuids.get(0);
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+				rw0.writeObject(uuid0.toString());
 				
 				Object uuid1 = uuids.get(1);
-				RecordWriter rw1 = new RecordWriter(uuid1.toString());
-				rw1.writeObject(uuid1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+				rw1.writeObject(uuid1.toString());
 
 				Object uuid2 = uuids.get(2);
-				RecordWriter rw2 = new RecordWriter(uuid2.toString());
-				rw2.writeObject(uuid2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+				rw2.writeObject(uuid2.toString());
 
 				// when
 				recordsFile.insertRecord(rw0);
 				recordsFile.insertRecord(rw1);
 				recordsFile.deleteRecord(uuid1.toString()); // actually some re-ordering on second insert so this is end of file
 				recordsFile.insertRecord(rw2);
-				RecordReader rr = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr = recordsFile.readRecord(uuid0.toString(),deserializerString);
 				rr.readObject();
-				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
 				rr2.readObject();
 			}			
 		}, uuids);	
@@ -409,30 +438,30 @@ public class SimpleRecordsStoreTests {
 		List<UUID> uuids = createUuid(3);
 		
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+		rw0.writeObject(uuid0.toString());
 		
 		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+		rw1.writeObject(uuid1.toString());
 
 		Object uuid2 = uuids.get(2);
-		RecordWriter rw2 = new RecordWriter(uuid2.toString());
-		rw2.writeObject(uuid2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+		rw2.writeObject(uuid2.toString());
 
 		// when
 		recordsFile.insertRecord(rw0);
 		recordsFile.insertRecord(rw1);
 		recordsFile.deleteRecord(uuid1.toString()); // actually some re-ordering on second insert so this earlier in file 
 		recordsFile.insertRecord(rw2);
-		RecordReader rr = recordsFile.readRecord(uuid0.toString());
-		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+		RecordReader rr = recordsFile.readRecord(uuid0.toString(),deserializerString);
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr.readObject(), is(uuid0));
-		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
+		Assert.assertThat((String)rr.readObject(), is(uuid0.toString()));
+		Assert.assertThat((String)rr2.readObject(), is(uuid2.toString()));
 		try { 
-			recordsFile.readRecord(uuid1.toString());
+			recordsFile.readRecord(uuid1.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -451,25 +480,25 @@ public class SimpleRecordsStoreTests {
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				
 				Object uuid0 = uuids.get(0);
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+				rw0.writeObject(uuid0.toString());
 				
 				Object uuid1 = uuids.get(1);
-				RecordWriter rw1 = new RecordWriter(uuid1.toString());
-				rw1.writeObject(uuid1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+				rw1.writeObject(uuid1.toString());
 
 				Object uuid2 = uuids.get(2);
-				RecordWriter rw2 = new RecordWriter(uuid2.toString());
-				rw2.writeObject(uuid2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+				rw2.writeObject(uuid2.toString());
 
 				// when
 				recordsFile.insertRecord(rw0);
 				recordsFile.insertRecord(rw1);
 				recordsFile.deleteRecord(uuid1.toString());// actually some re-ordering on second insert so this earlier in file 
 				recordsFile.insertRecord(rw2);
-				RecordReader rr = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr = recordsFile.readRecord(uuid0.toString(),deserializerString);
 				rr.readObject();
-				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
 				rr2.readObject();
 			}			
 		}, uuids);
@@ -482,20 +511,20 @@ public class SimpleRecordsStoreTests {
 		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+		rw0.writeObject(uuid0.toString());
 		
 		Object uuid1 = uuids.get(1);
-		RecordWriter rw1 = new RecordWriter(uuid1.toString());
-		rw1.writeObject(uuid1);
+		RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+		rw1.writeObject(uuid1.toString());
 
 		Object uuid2 = uuids.get(2);
-		RecordWriter rw2 = new RecordWriter(uuid2.toString());
-		rw2.writeObject(uuid2);
+		RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+		rw2.writeObject(uuid2.toString());
 
 		Object uuid3 = uuids.get(3);
-		RecordWriter rw3 = new RecordWriter(uuid3.toString());
-		rw3.writeObject(uuid3);
+		RecordWriter rw3 = new RecordWriter(uuid3.toString(), serializerString);
+		rw3.writeObject(uuid3.toString());
 		
 		// when
 		@SuppressWarnings("unused")
@@ -507,16 +536,16 @@ public class SimpleRecordsStoreTests {
 		recordsFile.deleteRecord(uuid0.toString()); // first is shifted to end to expand index and end up as middle in data section
 		recordsFile.insertRecord(rw3);
 
-		RecordReader rr0 = recordsFile.readRecord(uuid1.toString());
-		RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
-		RecordReader rr3 = recordsFile.readRecord(uuid3.toString());
+		RecordReader rr0 = recordsFile.readRecord(uuid1.toString(),deserializerString);
+		RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
+		RecordReader rr3 = recordsFile.readRecord(uuid3.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr0.readObject(), is(uuid1));
-		Assert.assertThat((UUID)rr2.readObject(), is(uuid2));
-		Assert.assertThat((UUID)rr3.readObject(), is(uuid3));
+		Assert.assertThat((String)rr0.readObject(), is(uuid1.toString()));
+		Assert.assertThat((String)rr2.readObject(), is(uuid2.toString()));
+		Assert.assertThat((String)rr3.readObject(), is(uuid3.toString()));
 		try { 
-			recordsFile.readRecord(uuid0.toString());
+			recordsFile.readRecord(uuid0.toString(),deserializerString);
 			Assert.fail();
 		} catch( RecordsFileException e){
 			// expected
@@ -534,20 +563,20 @@ public class SimpleRecordsStoreTests {
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				
 				Object uuid0 = uuids.get(0);
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+				rw0.writeObject(uuid0.toString());
 				
 				Object uuid1 = uuids.get(1);
-				RecordWriter rw1 = new RecordWriter(uuid1.toString());
-				rw1.writeObject(uuid1);
+				RecordWriter rw1 = new RecordWriter(uuid1.toString(), serializerString);
+				rw1.writeObject(uuid1.toString());
 
 				Object uuid2 = uuids.get(2);
-				RecordWriter rw2 = new RecordWriter(uuid2.toString());
-				rw2.writeObject(uuid2);
+				RecordWriter rw2 = new RecordWriter(uuid2.toString(), serializerString);
+				rw2.writeObject(uuid2.toString());
 
 				Object uuid3 = uuids.get(3);
-				RecordWriter rw3 = new RecordWriter(uuid3.toString());
-				rw3.writeObject(uuid3);
+				RecordWriter rw3 = new RecordWriter(uuid3.toString(), serializerString);
+				rw3.writeObject(uuid3.toString());
 				
 				// when
 				recordsFile.insertRecord(rw0);
@@ -556,11 +585,11 @@ public class SimpleRecordsStoreTests {
 				recordsFile.deleteRecord(uuid0.toString()); // first is shifted to end to expand index and end up as middle in data section
 				recordsFile.insertRecord(rw3);
 
-				RecordReader rr0 = recordsFile.readRecord(uuid1.toString());
+				RecordReader rr0 = recordsFile.readRecord(uuid1.toString(),deserializerString);
 				rr0.readObject();
-				RecordReader rr2 = recordsFile.readRecord(uuid2.toString());
+				RecordReader rr2 = recordsFile.readRecord(uuid2.toString(),deserializerString);
 				rr2.readObject();
-				RecordReader rr3 = recordsFile.readRecord(uuid3.toString());
+				RecordReader rr3 = recordsFile.readRecord(uuid3.toString(),deserializerString);
 				rr3.readObject();
 			}			
 		}, uuids);
@@ -574,20 +603,20 @@ public class SimpleRecordsStoreTests {
 		recordsFile = new FileRecordStore(fileName, initialSize);
 		
 		Object uuid0 = uuids.get(0);
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+		rw0.writeObject(uuid0.toString());
 		Object uuidUpdated = uuids.get(1);
 		
 		// when
 		recordsFile.insertRecord(rw0);
 		rw0.clear();
-		rw0.writeObject(uuidUpdated);
+		rw0.writeObject(uuidUpdated.toString());
 		recordsFile.updateRecord(rw0);
 		
-		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr0.readObject(), is(uuidUpdated));
+		Assert.assertThat((String)rr0.readObject(), is(uuidUpdated.toString()));
 	}
 	
 	@Test
@@ -601,17 +630,17 @@ public class SimpleRecordsStoreTests {
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				
 				Object uuid0 = uuids.get(0);
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+				rw0.writeObject(uuid0.toString());
 				Object uuidUpdated = uuids.get(1);
 				
 				// when
 				recordsFile.insertRecord(rw0);
 				rw0.clear();
-				rw0.writeObject(uuidUpdated);
+				rw0.writeObject(uuidUpdated.toString());
 				recordsFile.updateRecord(rw0);
 				
-				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 				rr0.readObject();
 			}			
 		}, uuids);
@@ -628,7 +657,7 @@ public class SimpleRecordsStoreTests {
 		String oldPayload = uuid1.toString();
 		String newPayload = uuid1.toString()+uuid2.toString();
 		
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
 		rw0.writeObject(oldPayload);
 		
 		// when
@@ -637,7 +666,7 @@ public class SimpleRecordsStoreTests {
 		rw0.writeObject(newPayload);
 		recordsFile.updateRecord(rw0);
 		
-		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 		
 		// then
 		Assert.assertThat((String)rr0.readObject(), is(newPayload));
@@ -658,7 +687,7 @@ public class SimpleRecordsStoreTests {
 				String oldPayload = uuid1.toString();
 				String newPayload = uuid1.toString()+uuid2.toString();
 				
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
 				rw0.writeObject(oldPayload);
 				
 				// when
@@ -667,7 +696,7 @@ public class SimpleRecordsStoreTests {
 				rw0.writeObject(newPayload);
 				recordsFile.updateRecord(rw0);
 				
-				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 				
 				rr0.readObject();
 			}			
@@ -683,20 +712,20 @@ public class SimpleRecordsStoreTests {
 		UUID uuid1 = UUID.randomUUID();
 		UUID uuid2 = UUID.randomUUID();
 		
-		RecordWriter rw0 = new RecordWriter(uuid0.toString());
-		rw0.writeObject(uuid0);
-		rw0.writeObject(uuid1);
+		RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+		rw0.writeObject(uuid0.toString());
+		rw0.writeObject(uuid1.toString());
 		
 		// when
 		recordsFile.insertRecord(rw0);
 		rw0.clear();
-		rw0.writeObject(uuid2);
+		rw0.writeObject(uuid2.toString());
 		recordsFile.updateRecord(rw0);
 		
-		RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+		RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 		
 		// then
-		Assert.assertThat((UUID)rr0.readObject(), is(uuid2));
+		Assert.assertThat((String)rr0.readObject(), is(uuid2.toString()));
 	}
 	
 	@Test
@@ -711,17 +740,17 @@ public class SimpleRecordsStoreTests {
 				UUID uuid1 = uuids.get(1);
 				UUID uuid2 = uuids.get(2);
 				
-				RecordWriter rw0 = new RecordWriter(uuid0.toString());
-				rw0.writeObject(uuid0);
-				rw0.writeObject(uuid1);
+				RecordWriter rw0 = new RecordWriter(uuid0.toString(), serializerString);
+				rw0.writeObject(uuid0.toString());
+				rw0.writeObject(uuid1.toString());
 				
 				// when
 				recordsFile.insertRecord(rw0);
 				rw0.clear();
-				rw0.writeObject(uuid2);
+				rw0.writeObject(uuid2.toString());
 				recordsFile.updateRecord(rw0);
 				
-				RecordReader rr0 = recordsFile.readRecord(uuid0.toString());
+				RecordReader rr0 = recordsFile.readRecord(uuid0.toString(),deserializerString);
 				rr0.readObject();
 			}			
 		}, uuids);
@@ -735,11 +764,11 @@ public class SimpleRecordsStoreTests {
 		String smallEntry = UUID.randomUUID().toString();
 		String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
 		
-		RecordWriter smallWriter1 = new RecordWriter("small");
+		RecordWriter smallWriter1 = new RecordWriter("small",serializerString);
 		smallWriter1.writeObject(smallEntry);
-		RecordWriter smallWriter2 = new RecordWriter("small2");
+		RecordWriter smallWriter2 = new RecordWriter("small2",serializerString);
 		smallWriter2.writeObject(smallEntry);
-		RecordWriter largeWriter = new RecordWriter("large");
+		RecordWriter largeWriter = new RecordWriter("large",serializerString);
 		largeWriter.writeObject(largeEntry);
 		
 		// when
@@ -748,7 +777,7 @@ public class SimpleRecordsStoreTests {
 		recordsFile.insertRecord(largeWriter);
 		recordsFile.deleteRecord("small");
 		recordsFile.deleteRecord("small2");
-		String large = (String) recordsFile.readRecord("large").readObject();
+		String large = (String) recordsFile.readRecord("large",deserializerString).readObject();
 		
 		Assert.assertThat(large, is(largeEntry));
 	}
@@ -763,11 +792,11 @@ public class SimpleRecordsStoreTests {
 				recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
 				String smallEntry = uuids.get(0).toString();
 				String largeEntry = uuids.get(1).toString()+uuids.get(1).toString()+uuids.get(3).toString();
-				RecordWriter smallWriter1 = new RecordWriter("small");
+				RecordWriter smallWriter1 = new RecordWriter("small",serializerString);
 				smallWriter1.writeObject(smallEntry);
-				RecordWriter smallWriter2 = new RecordWriter("small2");
+				RecordWriter smallWriter2 = new RecordWriter("small2",serializerString);
 				smallWriter2.writeObject(smallEntry);
-				RecordWriter largeWriter = new RecordWriter("large");
+				RecordWriter largeWriter = new RecordWriter("large",serializerString);
 				largeWriter.writeObject(largeEntry);
 				
 				// when
@@ -776,7 +805,7 @@ public class SimpleRecordsStoreTests {
 				recordsFile.insertRecord(largeWriter);
 				recordsFile.deleteRecord("small");
 				recordsFile.deleteRecord("small2");
-				String large = (String) recordsFile.readRecord("large").readObject();
+				String large = (String) recordsFile.readRecord("large",deserializerString).readObject();
 				Assert.assertThat(large, is(largeEntry));
 			}
 		}, uuids);
@@ -790,20 +819,20 @@ public class SimpleRecordsStoreTests {
 		String smallEntry = UUID.randomUUID().toString();
 		String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
 		
-		RecordWriter smallWriter1 = new RecordWriter("small");
+		RecordWriter smallWriter1 = new RecordWriter("small",serializerString);
 		smallWriter1.writeObject(smallEntry);
-		RecordWriter smallWriter2 = new RecordWriter("small2");
+		RecordWriter smallWriter2 = new RecordWriter("small2",serializerString);
 		smallWriter2.writeObject(smallEntry);
-		RecordWriter largeWriter = new RecordWriter("large");
+		RecordWriter largeWriter = new RecordWriter("large",serializerString);
 		largeWriter.writeObject(largeEntry);
 		
 		//recordsFile.insertRecord(smallWriter1);
 		
 		// when
 		recordsFile.insertRecords(smallWriter1,smallWriter2,largeWriter);
-		String small = (String) recordsFile.readRecord("small").readObject();
-		String small2 = (String) recordsFile.readRecord("small2").readObject();
-		String large = (String) recordsFile.readRecord("large").readObject();
+		String small = (String) recordsFile.readRecord("small",deserializerString).readObject();
+		String small2 = (String) recordsFile.readRecord("small2",deserializerString).readObject();
+		String large = (String) recordsFile.readRecord("large",deserializerString).readObject();
 		
 		// then
 		
@@ -829,20 +858,20 @@ public class SimpleRecordsStoreTests {
 				String smallEntry = UUID.randomUUID().toString();
 				String largeEntry = UUID.randomUUID().toString()+UUID.randomUUID().toString()+UUID.randomUUID().toString();
 				
-				RecordWriter smallWriter1 = new RecordWriter("small");
+				RecordWriter smallWriter1 = new RecordWriter("small",serializerString);
 				smallWriter1.writeObject(smallEntry);
-				RecordWriter smallWriter2 = new RecordWriter("small2");
+				RecordWriter smallWriter2 = new RecordWriter("small2",serializerString);
 				smallWriter2.writeObject(smallEntry);
-				RecordWriter largeWriter = new RecordWriter("large");
+				RecordWriter largeWriter = new RecordWriter("large",serializerString);
 				largeWriter.writeObject(largeEntry);
 				
 				//recordsFile.insertRecord(smallWriter1);
 				
 				// when
 				recordsFile.insertRecords(smallWriter1,smallWriter2,largeWriter);
-				recordsFile.readRecord("small").readObject();
-				recordsFile.readRecord("small2").readObject();
-				recordsFile.readRecord("large").readObject();
+				recordsFile.readRecord("small",deserializerString).readObject();
+				recordsFile.readRecord("small2",deserializerString).readObject();
+				recordsFile.readRecord("large",deserializerString).readObject();
 			}
 		}, null);
 	}
@@ -875,7 +904,7 @@ public class SimpleRecordsStoreTests {
 	}
 	
 	
-	private List<UUID> createUuid(int count) {
+	public static List<UUID> createUuid(int count) {
 		List<UUID> uuids = new ArrayList<UUID>(count);
 		for( int index = 0; index < count; index++ ) {
 			uuids.add(UUID.randomUUID());
@@ -905,7 +934,7 @@ public class SimpleRecordsStoreTests {
 					BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r");
 					int count = possiblyCorruptedFile.getNumRecords();
 					for( String k : possiblyCorruptedFile.keys() ){
-						RecordReader r = possiblyCorruptedFile.readRecord(k);
+						RecordReader r = possiblyCorruptedFile.readRecord(k,deserializerString);
 						Object o = r.readObject();
 						assertNotNull(o);
 						count--;

@@ -2,33 +2,27 @@ package com.github.simbo1905.srs;
 
 import java.io.DataOutput;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.util.function.Function;
 
-public class RecordWriter {
+public class RecordWriter<T> {
 
+    private final Function<T, byte[]> serializer;
     String key;
-    DbByteArrayOutputStream out;
-    ObjectOutputStream objOut;
+    DbByteArrayOutputStream out = new DbByteArrayOutputStream();
 
-    public RecordWriter(String key) {
+    public RecordWriter(String key, Function<T, byte[]> serializer) {
         this.key = key;
-        out = new DbByteArrayOutputStream();
+        this.serializer = serializer;
     }
 
     public String getKey() {
         return key;
     }
 
-    public ObjectOutputStream getObjectOutputStream() throws IOException {
-        if (objOut == null) {
-            objOut = new ObjectOutputStream(out);
-        }
-        return objOut;
-    }
-
-    public void writeObject(Object o) throws IOException {
-        getObjectOutputStream().writeObject(o);
-        getObjectOutputStream().flush();
+    public void writeObject(T o) throws IOException {
+        byte[] b = serializer.apply(o);
+        out.write(b);
+        out.flush();
     }
 
     /*
@@ -47,7 +41,6 @@ public class RecordWriter {
 
     public void clear() throws IOException {
         out.reset();
-        objOut = new ObjectOutputStream(out);
     }
 
 }

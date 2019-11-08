@@ -1,19 +1,18 @@
 package com.github.simbo1905.srs;
 
 import java.io.*;
+import java.util.function.Function;
 
-public class RecordReader {
-  
+public class RecordReader<T> {
+
+  private final Function<byte[], T> deserializer;
   String key;
   byte[] data;
 
-  ByteArrayInputStream in;
-  ObjectInputStream objIn;
-
-  public RecordReader(String key, byte[] data) {
+  public RecordReader(String key, byte[] data, Function<byte[], T> deserializer) {
     this.key = key;
     this.data = data;
-    in = new ByteArrayInputStream(data);
+    this.deserializer = deserializer;
   }
 
   public String getKey() {
@@ -24,22 +23,11 @@ public class RecordReader {
     return data;
   }
 
-  public InputStream getInputStream() throws IOException {
-    return in;
-  }
-
-  public ObjectInputStream getObjectInputStream() throws IOException {
-    if (objIn == null) {
-      objIn = new ObjectInputStream(in);
-    }
-    return objIn;
-  }
-
   /*
    * Reads the next object in the record using an ObjectInputStream.
    */
-  public Object readObject() throws IOException, ClassNotFoundException {
-    return getObjectInputStream().readObject();
+  public T readObject() throws IOException, ClassNotFoundException {
+    return deserializer.apply(data);
   }
 
 }

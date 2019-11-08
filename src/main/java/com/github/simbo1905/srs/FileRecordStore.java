@@ -216,7 +216,6 @@ public class FileRecordStore extends BaseRecordStore {
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
 			final String key = recordFile.readKeyFromIndex(index);
 			out.println(String.format("Key=%s, HeaderIndex=%s, HeaderCapacity=%s, HeaderActual=%s, HeaderPointer=%s", key, header.indexPosition, header.getDataCapacity(), header.dataCount, header.dataPointer));
-			out.println(recordFile.readRecord(key).readObject());
 		}
 	}
 }

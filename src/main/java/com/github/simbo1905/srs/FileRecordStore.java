@@ -66,6 +66,12 @@ public class FileRecordStore extends BaseRecordStore {
 		return memIndex.size();
 	}
 
+	@Override
+	@Synchronized
+	public boolean isEmpty() {
+		return memIndex.isEmpty();
+	}
+
 	/*
 	 * Checks if there is a record belonging to the given key.
 	 */

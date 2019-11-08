@@ -5,6 +5,7 @@ import lombok.Synchronized;
 import lombok.val;
 
 import java.io.*;
+import java.util.Collection;
 import java.util.function.Function;
 import java.util.zip.CRC32;
 
@@ -90,6 +91,10 @@ public abstract class BaseRecordStore {
      * Returns the number or records in the database.
      */
     public abstract int getNumRecords();
+
+    public boolean isEmpty() throws IOException {
+        return readNumRecordsHeader() == 0;
+    }
 
     /*
      * Checks there is a record with the given key.
@@ -424,9 +429,8 @@ public abstract class BaseRecordStore {
     // not, space is created by moving records to the end of the file.
     private void insureIndexSpace(int requiredNumRecords)
             throws RecordsFileException, IOException {
-        int currentNumRecords = getNumRecords();
         long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
-        if (endIndexPtr > getFileLength() && currentNumRecords == 0) {
+        if ( isEmpty() && endIndexPtr > getFileLength()) {
             setFileLength(endIndexPtr);
             dataStartPtr = endIndexPtr;
             writeDataStartPtrHeader(dataStartPtr);
@@ -454,23 +458,6 @@ public abstract class BaseRecordStore {
             file.close();
         } finally {
             file = null;
-        }
-    }
-
-    @Synchronized
-    public void insertRecords(RecordWriter... writers) throws Exception {
-        insureIndexSpace(getNumRecords() + writers.length);
-        for (RecordWriter rw : writers) {
-            String key = rw.getKey();
-            if (recordExists(key)) {
-                throw new RecordsFileException("Key exists: " + key);
-            }
-            long fp = getFileLength();
-            setFileLength(fp + rw.getDataLength());
-            RecordHeader newRecord = new RecordHeader(fp, rw.getDataLength());
-            long crc32 = writeRecordData(newRecord, rw);
-            newRecord.setCrc32(crc32);
-            addEntryToIndex(key, newRecord, getNumRecords());
         }
     }
 

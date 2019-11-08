@@ -1,6 +1,7 @@
 package com.github.simbo1905.srs.test;
 
 import com.github.simbo1905.srs.*;
+import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import static com.github.simbo1905.srs.BaseRecordStore.deserializerString;
 import static com.github.simbo1905.srs.BaseRecordStore.serializerString;
@@ -56,7 +58,6 @@ public class SimpleRecordStoreApiTests {
         String key = uuid.toString();
         String value = uuid.toString();
         Entry entry = Entry.of(key, value);
-
 
         // when
         this.recordsFile.insertRecord(entry, serializerString);

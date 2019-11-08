@@ -4,8 +4,10 @@ import lombok.SneakyThrows;
 import lombok.Synchronized;
 import lombok.val;
 
-import java.io.*;
-import java.util.Collection;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.io.UnsupportedEncodingException;
 import java.util.function.Function;
 import java.util.zip.CRC32;
 
@@ -35,7 +37,8 @@ public abstract class BaseRecordStore {
 
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
     // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surragate key out of anything unique
-    // about your data
+    // about your data. Note we store binary keys with a header byte to indicate the real lenght of
+    // the key so you need to +1 your max length
     protected static final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault("64");
 
     // The total length of one index entry - the key length plus the record
@@ -99,19 +102,19 @@ public abstract class BaseRecordStore {
     /*
      * Checks there is a record with the given key.
      */
-    public abstract boolean recordExists(String key);
+    public abstract boolean recordExists(byte[] key);
 
     /*
      * Maps a key to a record header.
      */
-    protected abstract RecordHeader keyToRecordHeader(String key)
+    protected abstract RecordHeader keyToRecordHeader(byte[] key)
             throws RecordsFileException;
 
     /*
      * Locates space for a new record of dataLength size and initializes a
      * RecordHeader.
      */
-    protected abstract RecordHeader allocateRecord(String key, int dataLength)
+    protected abstract RecordHeader allocateRecord(byte[] key, int dataLength)
             throws RecordsFileException, IOException;
 
     /*
@@ -183,9 +186,12 @@ public abstract class BaseRecordStore {
     /*
      * Reads the ith key from the index.
      */
-    String readKeyFromIndex(int position) throws IOException {
+    byte[] readKeyFromIndex(int position) throws IOException {
         file.seek(indexPositionToKeyFp(position));
-        return file.readUTF();
+        byte len = file.readByte();
+        byte[] key = new byte[len];
+        file.read(key);
+        return key;
     }
 
     /*
@@ -209,18 +215,16 @@ public abstract class BaseRecordStore {
      * Appends an entry to end of index. Assumes that insureIndexSpace() has
      * already been called.
      */
-    protected void addEntryToIndex(String key, RecordHeader newRecord,
+    protected void addEntryToIndex(byte[] key, RecordHeader newRecord,
                                    int currentNumRecords) throws IOException, RecordsFileException {
-        DbByteArrayOutputStream keybuffer = new DbByteArrayOutputStream(
-                MAX_KEY_LENGTH);
-        (new DataOutputStream(keybuffer)).writeUTF(key);
-        if (keybuffer.size() > MAX_KEY_LENGTH) {
+        if (key.length > MAX_KEY_LENGTH) {
             throw new RecordsFileException(
                     "Key is larger than permitted size of " + MAX_KEY_LENGTH
                             + " bytes");
         }
         file.seek(indexPositionToKeyFp(currentNumRecords));
-        keybuffer.writeTo(file);
+        file.write((byte)key.length);
+        file.write(key);
         file.seek(indexPositionToRecordHeaderFp(currentNumRecords));
         newRecord.write(file);
         newRecord.setIndexPosition(currentNumRecords);
@@ -231,42 +235,43 @@ public abstract class BaseRecordStore {
      * Removes the record from the index. Replaces the target with the entry at
      * the end of the index.
      */
-    protected void deleteEntryFromIndex(String key, RecordHeader header,
+    protected void deleteEntryFromIndex(byte[] key, RecordHeader header,
                                         int currentNumRecords) throws IOException, RecordsFileException {
         if (header.indexPosition != currentNumRecords - 1) {
-            String lastKey = readKeyFromIndex(currentNumRecords - 1);
+            byte[] lastKey = readKeyFromIndex(currentNumRecords - 1);
             RecordHeader last = keyToRecordHeader(lastKey);
             last.setIndexPosition(header.indexPosition);
             file.seek(indexPositionToKeyFp(last.indexPosition));
-            file.writeUTF(lastKey);
+            file.write(lastKey.length);
+            file.write(lastKey);
             file.seek(indexPositionToRecordHeaderFp(last.indexPosition));
             last.write(file);
         }
         writeNumRecordsHeader(currentNumRecords - 1);
     }
 
-    /*
-     * Adds the given record to the database.
-     */
-    @Synchronized
-    public void insertRecord(RecordWriter rw)
-            throws RecordsFileException, IOException {
-        insertRecord0(rw);
+    @SneakyThrows
+    public static String keyOf(byte[] key){
+        return new String(key, "UTF8");
+    }
+
+    @SneakyThrows
+    public static byte[] keyOf(String key){
+        return key.getBytes("UTF8");
     }
 
     /*
-     * this method exposes more to the caller for junit testing
+     *
      */
     @Synchronized
-    RecordHeader insertRecord0(RecordWriter rw)
+    public RecordHeader insertRecord(byte[] key, byte[] value)
             throws RecordsFileException, IOException {
-        String key = rw.getKey();
         if (recordExists(key)) {
             throw new RecordsFileException("Key exists: " + key);
         }
         insureIndexSpace(getNumRecords() + 1);
-        RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
-        long crc32 = writeRecordData(newRecord, rw);
+        RecordHeader newRecord = allocateRecord(key, value.length);
+        long crc32 = writeRecordData(newRecord, value);
         newRecord.setCrc32(crc32);
         addEntryToIndex(key, newRecord, getNumRecords());
         return newRecord;
@@ -277,47 +282,36 @@ public abstract class BaseRecordStore {
      * original record, then the update is handled by inserting the data
      */
     @Synchronized
-    public void updateRecord(RecordWriter rw)
+    public void updateRecord(byte[] key, byte[] value)
             throws RecordsFileException, IOException {
-        String key = rw.getKey();
         RecordHeader oldHeader = keyToRecordHeader(key);
-        if (rw.getDataLength() > oldHeader.getDataCapacity()) {
-            RecordHeader newRecord = allocateRecord(key, rw.getDataLength());
+        if (value.length > oldHeader.getDataCapacity()) {
+            RecordHeader newRecord = allocateRecord(key, value.length);
             newRecord.indexPosition = oldHeader.indexPosition;
             newRecord.dataCount = oldHeader.dataCount;
-            long crc32 = writeRecordData(newRecord, rw);
+            long crc32 = writeRecordData(newRecord, value);
             newRecord.setCrc32(crc32);
             writeRecordHeaderToIndex(newRecord);
             replaceEntryInIndex(key, oldHeader, newRecord);
         } else {
-            long crc32 = writeRecordData(oldHeader, rw);
+            long crc32 = writeRecordData(oldHeader, value);
             oldHeader.setCrc32(crc32);
             writeRecordHeaderToIndex(oldHeader);
         }
     }
 
-    protected void replaceEntryInIndex(String key, RecordHeader header, RecordHeader newRecord) {
-        // nothing to do but lets subclasses do additional bookwork
-    }
 
-    /*
-     * Reads a record.
-     */
-    @Synchronized
-	@SneakyThrows(ClassNotFoundException.class)
-    public <T> T readRecord(String key, Function<byte[], T> deserializer)
-            throws RecordsFileException, IOException {
-        byte[] data = readRecordData(key);
-		val recordReader = new RecordReader(key, data, deserializer);
-        return (T)recordReader.readObject();
+    protected void replaceEntryInIndex(byte[] key, RecordHeader header, RecordHeader newRecord) {
+        // nothing to do but lets subclasses do additional bookwork
     }
 
     /*
      * Reads the data for the record with the given key.
      */
-    private byte[] readRecordData(String key) throws IOException,
+    public byte[] readRecordData(byte[] key) throws IOException,
             RecordsFileException {
-        return readRecordData(keyToRecordHeader(key));
+        val header = keyToRecordHeader(key);
+        return readRecordData(header);
     }
 
     /*
@@ -328,9 +322,9 @@ public abstract class BaseRecordStore {
         file.seek(header.dataPointer);
         file.readFully(buf);
         CRC32 crc32 = new CRC32();
-        crc32.update(buf);
+        crc32.update(buf, 0, buf.length);
         if (header.crc32.longValue() != crc32.getValue()) {
-            //throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
+            throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
         }
         return buf;
     }
@@ -342,22 +336,7 @@ public abstract class BaseRecordStore {
      *
      * @ returns crc32 the CRC32 value of the written data.
      */
-    private long writeRecordData(RecordHeader header, RecordWriter rw)
-            throws IOException, RecordsFileException {
-        if (rw.getDataLength() > header.getDataCapacity()) {
-            throw new RecordsFileException("Record data does not fit");
-        }
-        header.dataCount = rw.getDataLength();
-        file.seek(header.dataPointer);
-        return rw.writeTo(file);
-    }
-
-    /*
-     * Updates the contents of the given record. A RecordsFileException is
-     * thrown if the new data does not fit in the space allocated to the record.
-     * The header's data count is updated, but not written to the file.
-     */
-    private void writeRecordData(RecordHeader header, byte[] data)
+    private long writeRecordData(RecordHeader header, byte[] data)
             throws IOException, RecordsFileException {
         if (data.length > header.getDataCapacity()) {
             throw new RecordsFileException("Record data does not fit");
@@ -365,6 +344,9 @@ public abstract class BaseRecordStore {
         header.dataCount = data.length;
         file.seek(header.dataPointer);
         file.write(data, 0, data.length);
+        CRC32 crc32 = new CRC32();
+        crc32.update(data, 0, data.length);
+        return crc32.getValue();
     }
 
     /*
@@ -381,7 +363,7 @@ public abstract class BaseRecordStore {
      * Deletes a record.
      */
     @Synchronized
-    public void deleteRecord(String key)
+    public void deleteRecord(byte[] key)
             throws RecordsFileException, IOException {
         RecordHeader delRec = keyToRecordHeader(key);
         RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
@@ -459,25 +441,6 @@ public abstract class BaseRecordStore {
         } finally {
             file = null;
         }
-    }
-
-    @Synchronized // ToDo
-    private <K, V> void insertRecord(Entry<K, V> entry
-            , Function<K, byte[]> serializerKey
-            , Function<V, byte[]> serializerValue)
-            throws RecordsFileException, IOException {
-        RecordWriter<V> rw = new RecordWriter<V>(entry.key.toString(), serializerValue);
-        rw.writeObject(entry.value);
-        insertRecord0(rw);
-    }
-
-    @Synchronized
-    public <V> void insertRecord(Entry<String, V> entry
-            , Function<V, byte[]> serializerValue)
-            throws RecordsFileException, IOException {
-        RecordWriter<V> rw = new RecordWriter<V>(entry.key.toString(), serializerValue);
-        rw.writeObject(entry.value);
-        insertRecord0(rw);
     }
 
     @SneakyThrows(UnsupportedEncodingException.class)

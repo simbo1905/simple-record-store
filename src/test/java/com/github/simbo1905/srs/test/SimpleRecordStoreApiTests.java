@@ -1,17 +1,17 @@
 package com.github.simbo1905.srs.test;
 
-import com.github.simbo1905.srs.*;
+import com.github.simbo1905.srs.BaseRecordStore;
+import com.github.simbo1905.srs.FileRecordStore;
+import com.github.simbo1905.srs.SimpleRecordStoreTests;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
-import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import static com.github.simbo1905.srs.BaseRecordStore.deserializerString;
 import static com.github.simbo1905.srs.BaseRecordStore.serializerString;
@@ -52,20 +52,18 @@ public class SimpleRecordStoreApiTests {
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
-        List<UUID> uuids = SimpleRecordStoreTests.createUuid(1);
-        Object uuid = uuids.get(0);
-
-        String key = uuid.toString();
-        String value = uuid.toString();
-        Entry entry = Entry.of(key, value);
+        UUID uuids = UUID.randomUUID();
+        String uuid = uuids.toString();
 
         // when
-        this.recordsFile.insertRecord(entry, serializerString);
-
+        this.recordsFile.insertRecord(serializerString.apply(uuid), serializerString.apply(uuid));
         this.recordsFile.fsync();
+        this.recordsFile.close();
 
         // then
-        Assert.assertThat(this.recordsFile.readRecord(uuid.toString(), deserializerString), is(uuids.get(0).toString()));
+        recordsFile = new FileRecordStore(fileName, "r");
+        val data = this.recordsFile.readRecordData(BaseRecordStore.keyOf(uuid.toString()));
+        Assert.assertThat(deserializerString.apply(data), is(uuid.toString()));
     }
 
 }

@@ -1,6 +1,8 @@
 package com.github.simbo1905.srs;
 
+import lombok.SneakyThrows;
 import lombok.Synchronized;
+import lombok.val;
 
 import static java.lang.System.err;
 import static java.lang.System.out;
@@ -17,8 +19,8 @@ public class FileRecordStore extends BaseRecordStore {
 
 	/*
 	 * Hashtable which holds the in-memory index. For efficiency, the entire
-	 * index is cached in memory. The hashtable maps a key of type String to a
-	 * RecordHeader.
+	 * index is cached in memory. The hashtable wraps the byte[] key as a String
+	 * as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
 	 */
 	protected Map<String, RecordHeader> memIndex;
 
@@ -42,12 +44,13 @@ public class FileRecordStore extends BaseRecordStore {
 		super(dbPath, accessFlags);
 		int numRecords = readNumRecordsHeader();
 		memIndex = Collections
-				.synchronizedMap(new HashMap<String, RecordHeader>());
+				.synchronizedMap(new HashMap<String, RecordHeader>(numRecords));
 		for (int i = 0; i < numRecords; i++) {
-			String key = readKeyFromIndex(i);
+			byte[] key = readKeyFromIndex(i);
+			val k = keyOf(key);
 			RecordHeader header = readRecordHeaderFromIndex(i);
 			header.setIndexPosition(i);
-			memIndex.put(key, header);
+			memIndex.put(k, header);
 		}
 	}
 
@@ -77,17 +80,18 @@ public class FileRecordStore extends BaseRecordStore {
 	 */
 	@Override
 	@Synchronized
-	public boolean recordExists(String key) {
-		return memIndex.containsKey(key);
+	public boolean recordExists(byte[] key) {
+		return memIndex.containsKey(keyOf(key));
 	}
 
 	/*
 	 * Maps a key to a record header by looking it up in the in-memory index.
 	 */
 	@Override
-	protected RecordHeader keyToRecordHeader(String key)
+	protected RecordHeader keyToRecordHeader(byte[] key)
 			throws RecordsFileException {
-		RecordHeader h = memIndex.get(key);
+		val k = keyOf(key);
+		RecordHeader h = memIndex.get(k);
 		if (h == null) {
 			throw new RecordsFileException("Key not found: " + key);
 		}
@@ -126,7 +130,7 @@ public class FileRecordStore extends BaseRecordStore {
 	 * RecordHeader which uses the space. (O(n) memory accesses)
 	 */
 	@Override
-	protected RecordHeader allocateRecord(String key, int dataLength)
+	protected RecordHeader allocateRecord(byte[] key, int dataLength)
 			throws IOException {
 		// search for empty space
 		RecordHeader newRecord = null;
@@ -153,6 +157,8 @@ public class FileRecordStore extends BaseRecordStore {
 	 * specified location in the file is part of the record data of the
 	 * RecordHeader which is returned. Returns null if the location is not part
 	 * of a record. (O(n) mem accesses)
+	 *
+	 * ToDo speed this search up with an index into the map
 	 */
 	@Override
 	protected RecordHeader getRecordAt(long targetFp)
@@ -185,17 +191,17 @@ public class FileRecordStore extends BaseRecordStore {
 	 * the index entry to the file.
 	 */
 	@Override
-	protected void addEntryToIndex(String key, RecordHeader newRecord,
+	protected void addEntryToIndex(byte[] key, RecordHeader newRecord,
 			int currentNumRecords) throws IOException, RecordsFileException {
 		super.addEntryToIndex(key, newRecord, currentNumRecords);
-		memIndex.put(key, newRecord);
+		memIndex.put(keyOf(key), newRecord);
 	}
 	
 	@Override
-	protected void replaceEntryInIndex(String key, RecordHeader header,
+	protected void replaceEntryInIndex(byte[] key, RecordHeader header,
 			RecordHeader newRecord) {
 		super.replaceEntryInIndex(key, header, newRecord);
-		memIndex.put(key,newRecord);
+		memIndex.put(keyOf(key),newRecord);
 	}
 
 	/*
@@ -203,10 +209,10 @@ public class FileRecordStore extends BaseRecordStore {
 	 * the end of the index.
 	 */
 	@Override
-	protected void deleteEntryFromIndex(String key, RecordHeader header,
+	protected void deleteEntryFromIndex(byte[] key, RecordHeader header,
 			int currentNumRecords) throws IOException, RecordsFileException {
 		super.deleteEntryFromIndex(key, header, currentNumRecords);
-		RecordHeader deleted = (RecordHeader) memIndex.remove(key);
+		RecordHeader deleted = memIndex.remove(keyOf(key));
 		assert header == deleted;
 	}
 	
@@ -220,7 +226,7 @@ public class FileRecordStore extends BaseRecordStore {
 		out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
 		for(int index = 0; index < recordFile.getNumRecords(); index++ ){
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
-			final String key = recordFile.readKeyFromIndex(index);
+			final String key = keyOf(recordFile.readKeyFromIndex(index));
 			out.println(String.format("Key=%s, HeaderIndex=%s, HeaderCapacity=%s, HeaderActual=%s, HeaderPointer=%s", key, header.indexPosition, header.getDataCapacity(), header.dataCount, header.dataPointer));
 		}
 	}

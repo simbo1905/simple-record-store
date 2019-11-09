@@ -3,8 +3,7 @@ package com.github.simbo1905.srs;
 import static com.github.simbo1905.srs.BaseRecordStore.*;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThan;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
@@ -189,16 +188,28 @@ public class SimpleRecordStoreTests {
         }, uuids);
     }
 
-    private void writeUuid(UUID uuid) throws RecordsFileException, IOException {
-        byte[] key = serializerString.apply(uuid.toString());
-        byte[] value = serializerString.apply(uuid.toString());
+    private void writeUuid(UUID k) throws RecordsFileException, IOException {
+        writeUuid(k,k);
+    }
+    private void writeUuid(UUID k, UUID v) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k.toString());
+        byte[] value = serializerString.apply(v.toString());
         recordsFile.insertRecord(key, value);
     }
-
-    private void updateUuid(UUID k, UUID... v) throws RecordsFileException, IOException {
+    private void writeUuid(UUID k, UUID v, UUID v2) throws RecordsFileException, IOException {
         byte[] key = serializerString.apply(k.toString());
-        String vs = Arrays.asList(v).stream().map(u->u.toString()).collect(Collectors.joining());
-        byte[] value = serializerString.apply(vs);
+        byte[] value = serializerString.apply(v.toString()+v2.toString());
+        recordsFile.insertRecord(key, value);
+    }
+    private void updateUuid(UUID k, UUID v) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k.toString());
+        byte[] value = serializerString.apply(v.toString());
+        recordsFile.updateRecord(key, value);
+    }
+
+    private void updateUuid(UUID k, UUID v1, UUID v2) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k.toString());
+        byte[] value = serializerString.apply(v1.toString()+v2.toString());
         recordsFile.updateRecord(key, value);
     }
 
@@ -436,7 +447,136 @@ public class SimpleRecordStoreTests {
 
 
     @Test
-    public void testUpdateExpandOneRecordWithIOExceptions() throws Exception {
+    public void testUpdateExpandLastRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(2);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+
+                // given
+                UUID first = uuids.get(0);
+                UUID last = uuids.get(1);
+
+                // when
+                writeUuid(first);
+                writeUuid(last);
+                updateUuid(last, last, last);
+
+                String pfirst = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                Assert.assertThat(pfirst, is(first.toString()));
+                String pLast = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+                Assert.assertThat(pLast, is(last.toString()+last.toString()));
+            }
+        }, uuids);
+    }
+
+    @Test
+    public void testUpdateExpandFirstRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(2);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+
+                // given
+                UUID first = uuids.get(0);
+                UUID last = uuids.get(1);
+
+                // when
+                writeUuid(first);
+                writeUuid(last);
+                updateUuid(first, last, last);
+
+                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                Assert.assertThat(put, is(last.toString()+last.toString()));
+                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+                Assert.assertThat(put2, is(last.toString()));
+            }
+        }, uuids);
+    }
+
+    @Test
+    public void testUpdateExpandOnlyRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(1);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+
+                // given
+                UUID first = uuids.get(0);
+
+                // when
+                writeUuid(first);
+                updateUuid(first, first, first);
+
+                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                Assert.assertThat(put, is(first.toString()+first.toString()));
+            }
+        }, uuids);
+    }
+
+    @Test
+    public void indexOfFatRecordCausesHole() throws Exception {
+
+        AtomicReference<Map<String, RecordHeader>> hook = new AtomicReference<>();
+
+        recordsFile = new FileRecordStore(fileName, initialSize){
+            {
+                hook.set(this.memIndex);
+            }
+        };
+        // given
+        List<UUID> uuids = createUuid(4);
+        UUID uuid0 = uuids.get(0);
+        UUID uuid1 = uuids.get(1);
+        UUID uuid2 = uuids.get(2);
+        UUID uuid3 = uuids.get(3);
+
+        // when
+        writeUuid(uuid0);
+
+//        System.out.println(recordsFile.getFileLength());
+//        printHeaders(hook);
+
+        writeUuid(uuid1);
+
+//        System.out.println(recordsFile.getFileLength());
+//        printHeaders(hook);
+
+        updateUuid(uuid1, uuid1, uuid1);
+
+//        System.out.println(recordsFile.getFileLength());
+//        printHeaders(hook);
+
+        // then
+        writeUuid(uuid2);
+
+//        System.out.println(recordsFile.getFileLength());
+//        printHeaders(hook);
+
+        updateUuid(uuid1, uuid3);
+
+    }
+
+    private void printHeaders(AtomicReference<Map<String, RecordHeader>> hook) {
+        val state = hook.get().values().stream().map(h->h.toString()).collect(Collectors.joining("\n"));
+        System.out.println(state);
+        System.out.println();
+    }
+
+    @Test
+    public void testUpdateShrinkLastRecordWithIOExceptions() throws Exception {
         List<UUID> uuids = createUuid(2);
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
             @Override
@@ -448,24 +588,54 @@ public class SimpleRecordStoreTests {
 
                 // given
                 UUID uuid0 = uuids.get(0);
-                UUID uuidUpdated = uuids.get(1);
+                UUID uuid1 = uuids.get(1);
 
                 // when
                 writeUuid(uuid0);
-                writeUuid(uuidUpdated);
-                updateUuid(uuid0, uuidUpdated, uuidUpdated);
+                writeUuid(uuid1, uuid1, uuid1);
+                updateUuid(uuid1, uuid1);
 
-                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                Assert.assertThat(put, is(uuidUpdated.toString()+uuidUpdated.toString()));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuidUpdated.toString())));
-                Assert.assertThat(put2, is(uuidUpdated.toString()));
+                //
+                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                Assert.assertThat(put0, is(uuid0.toString()));
+                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                Assert.assertThat(put1, is(uuid1.toString()));
             }
         }, uuids);
     }
 
     @Test
-    public void testUpdateShrinkOneRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(4);
+    public void testUpdateShrinkFirstRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(2);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+
+                // given
+                UUID uuid0 = uuids.get(0);
+                UUID uuid1 = uuids.get(1);
+
+                // when
+                writeUuid(uuid0, uuid0, uuid0);
+                writeUuid(uuid1, uuid1);
+                updateUuid(uuid0, uuid0);
+
+                //
+                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                Assert.assertThat(put0, is(uuid0.toString()));
+                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                Assert.assertThat(put1, is(uuid1.toString()));
+            }
+        }, uuids);
+    }
+
+    @Test
+    public void testUpdateShrinkMiddleRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(3);
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
             @Override
             public void performTestOperations(WriteCallback wc, String fileName,
@@ -478,22 +648,45 @@ public class SimpleRecordStoreTests {
                 UUID uuid0 = uuids.get(0);
                 UUID uuid1 = uuids.get(1);
                 UUID uuid2 = uuids.get(2);
-                UUID uuid3 = uuids.get(3);
 
                 // when
-                writeUuid(uuid0);
-                writeUuid(uuid1);
-                updateUuid(uuid1, uuid1, uuid1);
-                writeUuid(uuid2);
-                updateUuid(uuid1, uuid3);
+                writeUuid(uuid0, uuid0);
+                writeUuid(uuid1, uuid1, uuid1);
+                writeUuid(uuid2, uuid2);
+                updateUuid(uuid1, uuid1);
 
                 //
                 String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid3.toString()));
+                Assert.assertThat(put1, is(uuid1.toString()));
                 String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
                 Assert.assertThat(put2, is(uuid2.toString()));
+            }
+        }, uuids);
+    }
+
+    @Test
+    public void testUpdateShrinkOnlyRecordWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(1);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+
+                // given
+                UUID uuid0 = uuids.get(0);
+
+                // when
+                writeUuid(uuid0, uuid0, uuid0);
+                updateUuid(uuid0, uuid0);
+
+                //
+                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                Assert.assertThat(put0, is(uuid0.toString()));
             }
         }, uuids);
     }
@@ -529,6 +722,21 @@ public class SimpleRecordStoreTests {
                 Assert.assertThat(large, is(largeEntry));
             }
         }, uuids);
+    }
+
+    @Test
+    public void testDeleteLastEntriesWithIOExceptions() throws Exception {
+        assert false;
+    }
+
+    @Test
+    public void testDeleteMiddleEntriesWithIOExceptions() throws Exception {
+        assert false;
+    }
+
+    @Test
+    public void testDeleteOnlyEntriesWithIOExceptions() throws Exception {
+        assert false;
     }
 
     private void removeFiles(List<String> localFileNames) {

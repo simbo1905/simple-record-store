@@ -286,13 +286,36 @@ public abstract class BaseRecordStore {
             throws RecordsFileException, IOException {
         RecordHeader oldHeader = keyToRecordHeader(key);
         if (value.length > oldHeader.getDataCapacity()) {
-            RecordHeader newRecord = allocateRecord(key, value.length);
-            newRecord.indexPosition = oldHeader.indexPosition;
-            newRecord.dataCount = oldHeader.dataCount;
-            long crc32 = writeRecordData(newRecord, value);
-            newRecord.setCrc32(crc32);
-            writeRecordHeaderToIndex(newRecord);
-            replaceEntryInIndex(key, oldHeader, newRecord);
+            val endOfRecord = oldHeader.dataPointer + oldHeader.dataCount;
+            val fileLength = getFileLength();
+            if( endOfRecord == fileLength ){
+                // this is the last record so expand the file
+                setFileLength(fileLength + (value.length - oldHeader.getDataCapacity()) );
+                oldHeader.setDataCapacity(value.length);
+                updateFreeSpaceIndex(oldHeader);
+                writeRecordHeaderToIndex(oldHeader);
+            } else {
+                // when we move we add capacity to the previous record
+                RecordHeader previous = getRecordAt(oldHeader.dataPointer - 1);
+                // allocate to next free space or expand the file
+                RecordHeader newRecord = allocateRecord(key, value.length);
+                // new record is expanded old record
+                newRecord.indexPosition = oldHeader.indexPosition;
+                newRecord.dataCount = value.length;
+                long crc32 = writeRecordData(newRecord, value);
+                newRecord.setCrc32(crc32);
+                writeRecordHeaderToIndex(newRecord);
+                replaceEntryInIndex(key, oldHeader, newRecord);
+                if( previous != null ){
+                    // append space of deleted record onto previous record
+                    previous.incrementDataCapacity(oldHeader.getDataCapacity());
+                    updateFreeSpaceIndex(previous);
+                    writeRecordHeaderToIndex(previous);
+                } else {
+                    // FIXME write a test that moves the first entry
+                    throw new AssertionError("not implimented");
+                }
+            }
         } else {
             long crc32 = writeRecordData(oldHeader, value);
             oldHeader.setCrc32(crc32);
@@ -379,6 +402,7 @@ public abstract class BaseRecordStore {
                 updateFreeSpaceIndex(previous);
                 writeRecordHeaderToIndex(previous);
             } else {
+                // ToDo why don't we just expand the index area?
                 // target record is first in the file and is deleted by adding
                 // its space to the second record.
                 RecordHeader secondRecord = getRecordAt(delRec.dataPointer

@@ -121,10 +121,6 @@ public class RecordHeader {
 		if( dataCount < 0) {
 			throw new IllegalStateException("dataCount has not been initialized "+this.toString());
 		}
-		if (crc32.longValue() < 1) {
-			throw new IllegalArgumentException("Bad crc32: "
-					+ crc32.intValue());
-		}
 		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.putLong(dataPointer);
 		buffer.putInt(dataCapacity);

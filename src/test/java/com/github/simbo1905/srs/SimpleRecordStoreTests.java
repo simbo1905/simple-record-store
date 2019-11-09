@@ -444,6 +444,26 @@ public class SimpleRecordStoreTests {
             }
         }, uuids);
     }
+    @Test
+    public void testUpdateExpandLastRecord() throws Exception{
+        List<UUID> uuids = createUuid(2);
+        deleteFileIfExists(fileName);
+        recordsFile = new FileRecordStore(fileName, initialSize);
+
+        // given
+        UUID first = uuids.get(0);
+        UUID last = uuids.get(1);
+
+        // when
+        writeUuid(first);
+        writeUuid(last);
+        updateUuid(last, last, last);
+
+        String pfirst = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        Assert.assertThat(pfirst, is(first.toString()));
+        String pLast = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+        Assert.assertThat(pLast, is(last.toString()+last.toString()));
+    }
 
 
     @Test
@@ -726,17 +746,80 @@ public class SimpleRecordStoreTests {
 
     @Test
     public void testDeleteLastEntriesWithIOExceptions() throws Exception {
-        assert false;
+        List<UUID> uuids = createUuid(4);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                String smallEntry = uuids.get(0).toString();
+                String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+
+                // when
+                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
+                recordsFile.insertRecord(keyOf("small2"), serializerString.apply(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
+                recordsFile.deleteRecord(keyOf("small2"));
+                recordsFile.deleteRecord(keyOf("large"));
+                String small = deserializerString.apply(recordsFile.readRecordData(keyOf("small")));
+                Assert.assertThat(small, is(smallEntry));
+            }
+        }, uuids);
     }
 
     @Test
     public void testDeleteMiddleEntriesWithIOExceptions() throws Exception {
-        assert false;
+        List<UUID> uuids = createUuid(4);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                String smallEntry = uuids.get(0).toString();
+                String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+
+                // when
+                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
+                recordsFile.insertRecord(keyOf("small2"), serializerString.apply(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
+                recordsFile.deleteRecord(keyOf("small2"));
+
+                // then
+                String small = deserializerString.apply(recordsFile.readRecordData(keyOf("small")));
+                Assert.assertThat(small, is(smallEntry));
+                String large = deserializerString.apply(recordsFile.readRecordData(keyOf("large")));
+                Assert.assertThat(large, is(largeEntry));
+            }
+        }, uuids);
     }
 
     @Test
-    public void testDeleteOnlyEntriesWithIOExceptions() throws Exception {
-        assert false;
+    public void testDeleteOnlyEntryWithIOExceptions() throws Exception {
+        List<UUID> uuids = createUuid(1);
+        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName,
+                                              List<UUID> uuids,
+                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                String smallEntry = uuids.get(0).toString();
+
+                // when
+                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
+                recordsFile.deleteRecord(keyOf("small"));
+
+                // then
+                Assert.assertTrue(recordsFile.isEmpty());
+            }
+        }, uuids);
     }
 
     private void removeFiles(List<String> localFileNames) {

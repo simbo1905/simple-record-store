@@ -76,11 +76,21 @@ mvn release:perform
 
 ## Details
 
-You can set the following properties with either an environemnt variable or a -D flag. The -D flag takes precedence:
+The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
+
+You can set the following properties with either an environment variable or a -D flag. The -D flag takes precedence:
 
 | Property                                                | Default | Comment                 |
 |---------------------------------------------------------|---------|-------------------------|
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
+| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
 
-The file byte position is 64 bits so 9223 petabytes. The value size is 32 bits so a maximum of 2.14 G. 
+Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH which defaults to 32+64=96 bytes. 
+
+If you preallocate the store to be a size equal to or greater than the number of records you will store
+you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
+can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
+RECORD_HEADER_LENGTH worth of records to the back fo the file. 
+
+
 

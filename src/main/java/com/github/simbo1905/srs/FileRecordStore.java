@@ -27,6 +27,9 @@ public class FileRecordStore extends BaseRecordStore {
 	 * Creates a new database file. The initialSize parameter determines the
 	 * amount of space which is allocated for the index. The index can grow
 	 * dynamically, but the parameter is provide to increase efficiency.
+	 * @param dbPath the location on disk to create the storage file.
+	 * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
+	 * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here. =
 	 */
 	public FileRecordStore(String dbPath, int initialSize, boolean disableCrc32) throws IOException,
 			RecordsFileException {
@@ -37,6 +40,9 @@ public class FileRecordStore extends BaseRecordStore {
 
 	/*
 	 * Opens an existing database and initializes the in-memory index.
+	 * @param dbPath the location of the database file on disk to open.
+	 * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+	 * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here.
 	 */
 	public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException,
 			RecordsFileException {

@@ -57,6 +57,9 @@ public abstract class BaseRecordStore {
     /*
      * Creates a new database file, initializing the appropriate headers. Enough
      * space is allocated in the index for the specified initial size.
+     * @param dbPath the location on disk to create the storage file.
+     * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
+     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here. =
      */
     protected BaseRecordStore(String dbPath, int initialSize, boolean disableCrc32)
             throws IOException, RecordsFileException {
@@ -77,6 +80,9 @@ public abstract class BaseRecordStore {
      * Opens an existing database file and initializes the dataStartPtr. The
      * accessFlags parameter can be "r" or "rw" -- as defined in
      * RandomAccessFile.
+     * @param dbPath the location of the database file on disk to open.
+     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here.
      */
     protected BaseRecordStore(String dbPath, String accessFlags, boolean disableCrc32)
             throws IOException, RecordsFileException {

@@ -1,6 +1,7 @@
 package com.github.simbo1905.srs;
 
 import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -10,6 +11,7 @@ import java.util.Objects;
 
 import static com.github.simbo1905.srs.BaseRecordStore.RECORD_HEADER_LENGTH;
 
+@ToString
 @EqualsAndHashCode
 public class RecordHeader {
 

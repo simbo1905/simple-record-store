@@ -269,7 +269,7 @@ public abstract class BaseRecordStore {
         if (recordExists(key)) {
             throw new RecordsFileException("Key exists: " + key);
         }
-        insureIndexSpace(getNumRecords() + 1);
+        ensureIndexSpace(getNumRecords() + 1);
         RecordHeader newRecord = allocateRecord(key, value.length);
         long crc32 = writeRecordData(newRecord, value);
         newRecord.setCrc32(crc32);
@@ -402,7 +402,7 @@ public abstract class BaseRecordStore {
      */
     private long writeRecordData(RecordHeader header, byte[] data)
             throws IOException, RecordsFileException {
-        if (data.length > header.getDataCapacity()) {
+        if (data.length > header.getDataCapacity()) { // FIXME this is a private method so make an assertion for unit tests
             throw new RecordsFileException("Record data does not fit");
         }
         header.dataCount = data.length;
@@ -450,7 +450,7 @@ public abstract class BaseRecordStore {
                         + (long) delRec.getDataCapacity());
                 byte[] data = readRecordData(secondRecord);
 
-                long fp = getFileLength();
+                final long fp = getFileLength();
                 if (secondRecord.dataCount > delRec.dataCount) {
                     // wont fit entirely in slot so risk of corrupting itself
                     // make a backup at the end of the file first
@@ -466,7 +466,7 @@ public abstract class BaseRecordStore {
                 writeRecordHeaderToIndex(secondRecord);
                 if (secondRecord.dataCount > delRec.dataCount) {
                     // delete backup at the end of the file
-                    setFileLength(fp - secondRecord.dataCount);
+                    setFileLength(fp);
                 }
             }
         }
@@ -474,7 +474,7 @@ public abstract class BaseRecordStore {
 
     // Checks to see if there is space for and additional index entry. If
     // not, space is created by moving records to the end of the file.
-    private void insureIndexSpace(int requiredNumRecords)
+    private void ensureIndexSpace(int requiredNumRecords)
             throws RecordsFileException, IOException {
         long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
         if ( isEmpty() && endIndexPtr > getFileLength()) {

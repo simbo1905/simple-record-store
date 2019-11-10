@@ -1,11 +1,7 @@
 package com.github.simbo1905.srs;
 
-import lombok.SneakyThrows;
 import lombok.Synchronized;
 import lombok.val;
-
-import static java.lang.System.err;
-import static java.lang.System.out;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -14,6 +10,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+
+import static java.lang.System.err;
+import static java.lang.System.out;
 
 public class FileRecordStore extends BaseRecordStore {
 

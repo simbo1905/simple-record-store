@@ -11,6 +11,10 @@ import java.nio.channels.FileChannel;
  */
 public interface RandomAccessFileInterface extends DataInput, DataOutput {
 
+	/**
+	 * Forces the file data to be flushed. This won't use flags to flush file meta-data.
+	 * @throws IOException
+	 */
 	void fsync() throws IOException;
 
 	public abstract int hashCode();

@@ -52,12 +52,15 @@ public abstract class BaseRecordStore {
     // File pointer to the data start pointer header.
     protected static final long DATA_START_HEADER_LOCATION = 4;
 
+    public final boolean disableCrc32;
+
     /*
      * Creates a new database file, initializing the appropriate headers. Enough
      * space is allocated in the index for the specified initial size.
      */
-    protected BaseRecordStore(String dbPath, int initialSize)
+    protected BaseRecordStore(String dbPath, int initialSize, boolean disableCrc32)
             throws IOException, RecordsFileException {
+        this.disableCrc32 = disableCrc32;
         File f = new File(dbPath);
         if (f.exists()) {
             throw new RecordsFileException("Database already exits: " + dbPath);
@@ -75,8 +78,9 @@ public abstract class BaseRecordStore {
      * accessFlags parameter can be "r" or "rw" -- as defined in
      * RandomAccessFile.
      */
-    protected BaseRecordStore(String dbPath, String accessFlags)
+    protected BaseRecordStore(String dbPath, String accessFlags, boolean disableCrc32)
             throws IOException, RecordsFileException {
+        this.disableCrc32 = disableCrc32;
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new RecordsFileException("Database not found: " + dbPath);
@@ -385,11 +389,14 @@ public abstract class BaseRecordStore {
         byte[] buf = new byte[header.dataCount];
         file.seek(header.dataPointer);
         file.readFully(buf);
-        CRC32 crc32 = new CRC32();
-        crc32.update(buf, 0, buf.length);
-        if (header.crc32.longValue() != crc32.getValue()) {
-            throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
+        if( !disableCrc32 ) {
+            CRC32 crc32 = new CRC32();
+            crc32.update(buf, 0, buf.length);
+            if (header.crc32.longValue() != crc32.getValue()) {
+                throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
+            }
         }
+
         return buf;
     }
 
@@ -408,9 +415,13 @@ public abstract class BaseRecordStore {
         header.dataCount = data.length;
         file.seek(header.dataPointer);
         file.write(data, 0, data.length);
-        CRC32 crc32 = new CRC32();
-        crc32.update(data, 0, data.length);
-        return crc32.getValue();
+        long crc = 0;
+        if( !disableCrc32 ) {
+            CRC32 crc32 = new CRC32();
+            crc32.update(data, 0, data.length);
+            crc = crc32.getValue();
+        }
+        return crc;
     }
 
     /*

@@ -4,14 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
-import com.github.simbo1905.srs.FileRecordStore;
-import com.github.simbo1905.srs.RecordsFileException;
-
 public class RecordsFileSimulatesDiskFailures extends FileRecordStore {
 
-	public RecordsFileSimulatesDiskFailures(String dbPath, int initialSize, WriteCallback wc)
+	public RecordsFileSimulatesDiskFailures(String dbPath, int initialSize, WriteCallback wc, boolean disableCrc32)
 			throws IOException, RecordsFileException {
-		super(dbPath, initialSize);
+		super(dbPath, initialSize, disableCrc32);
 		File f = new File(dbPath);
 		this.file = new InterceptedRandomAccessFile(new RandomAccessFile(f, "rw"),wc);
 	}

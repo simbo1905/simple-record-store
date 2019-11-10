@@ -51,7 +51,7 @@ public class SimpleRecordStoreApiTests {
     @Test
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
         UUID uuids = UUID.randomUUID();
         String uuid = uuids.toString();
 
@@ -76,7 +76,7 @@ public class SimpleRecordStoreApiTests {
         this.recordsFile.close();
 
         // then
-        recordsFile = new FileRecordStore(fileName, "r");
+        recordsFile = new FileRecordStore(fileName, "r", false);
         val updated = this.recordsFile.readRecordData(BaseRecordStore.keyOf(uuid.toString()));
         Assert.assertThat(deserializerString.apply(updated), is("updated"));
     }

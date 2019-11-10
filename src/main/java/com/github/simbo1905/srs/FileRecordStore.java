@@ -28,9 +28,9 @@ public class FileRecordStore extends BaseRecordStore {
 	 * amount of space which is allocated for the index. The index can grow
 	 * dynamically, but the parameter is provide to increase efficiency.
 	 */
-	public FileRecordStore(String dbPath, int initialSize) throws IOException,
+	public FileRecordStore(String dbPath, int initialSize, boolean disableCrc32) throws IOException,
 			RecordsFileException {
-		super(dbPath, initialSize);
+		super(dbPath, initialSize, disableCrc32);
 		memIndex = Collections
 				.synchronizedMap(new HashMap<String, RecordHeader>(initialSize));
 	}
@@ -38,9 +38,9 @@ public class FileRecordStore extends BaseRecordStore {
 	/*
 	 * Opens an existing database and initializes the in-memory index.
 	 */
-	public FileRecordStore(String dbPath, String accessFlags) throws IOException,
+	public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException,
 			RecordsFileException {
-		super(dbPath, accessFlags);
+		super(dbPath, accessFlags, disableCrc32);
 		int numRecords = readNumRecordsHeader();
 		memIndex = Collections
 				.synchronizedMap(new HashMap<String, RecordHeader>(numRecords));
@@ -221,7 +221,7 @@ public class FileRecordStore extends BaseRecordStore {
 		}
 		final String filename = args[0];
 		out.println("Reading from "+filename);
-		final BaseRecordStore recordFile = new FileRecordStore(filename, "r");
+		final BaseRecordStore recordFile = new FileRecordStore(filename, "r", false);
 		out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
 		for(int index = 0; index < recordFile.getNumRecords(); index++ ){
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);

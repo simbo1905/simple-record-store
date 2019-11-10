@@ -2,24 +2,22 @@ package com.github.simbo1905.srs;
 
 import static com.github.simbo1905.srs.BaseRecordStore.*;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import lombok.SneakyThrows;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 /**
@@ -137,7 +135,7 @@ public class SimpleRecordStoreTests {
      */
     @Test
     public void originalTest() throws Exception {
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
 
         LOGGER.info("creating records file...");
 
@@ -180,7 +178,7 @@ public class SimpleRecordStoreTests {
 
                 LOGGER.info(String.format("writing to: " + fileName));
 
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 UUID uuid = uuids.get(0);
 
@@ -220,7 +218,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testInsertTwoRecords() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
         List<UUID> uuids = createUuid(2);
 
         // when
@@ -246,7 +244,7 @@ public class SimpleRecordStoreTests {
             public void performTestOperations(WriteCallback wc, String fileName,
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                recordsFile = new FileRecordStore(fileName, initialSize);
+                recordsFile = new FileRecordStore(fileName, initialSize, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -272,7 +270,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
                 UUID uuid0 = uuids.get(0);
@@ -299,7 +297,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 UUID uuid0 = uuids.get(0);
                 writeUuid(uuid0);
                 UUID uuid1 = uuids.get(1);
@@ -331,7 +329,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 UUID uuid0 = uuids.get(0);
                 UUID uuid1 = uuids.get(1);
                 UUID uuid2 = uuids.get(2);
@@ -364,7 +362,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 UUID uuid0 = uuids.get(0);
                 UUID uuid1 = uuids.get(1);
                 UUID uuid2 = uuids.get(2);
@@ -397,7 +395,7 @@ public class SimpleRecordStoreTests {
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
                 // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 UUID uuid0 = uuids.get(0);
                 UUID uuid1 = uuids.get(1);
                 UUID uuid2 = uuids.get(2);
@@ -426,7 +424,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testUpdateOneRecord() throws Exception {
         List<UUID> uuids = createUuid(2);
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
 
         // given
         UUID uuid0 = uuids.get(0);
@@ -440,9 +438,11 @@ public class SimpleRecordStoreTests {
         Assert.assertThat(put, is(uuidUpdated.toString()));
     }
 
+    final AtomicBoolean disableCrc32 = new AtomicBoolean(false);
+
     @Test
-    @Ignore // FIXME issue #15 update in place fails CRC32 check on crash between data write and header write00000d00000asd
     public void testUpdateOneRecordWithIOExceptions() throws Exception {
+        disableCrc32.set(true);
         List<UUID> uuids = createUuid(2);
 
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
@@ -451,7 +451,8 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                // FIXME: get this to work with CRC checks enabled
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, disableCrc32.get());
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -465,13 +466,15 @@ public class SimpleRecordStoreTests {
                 Assert.assertThat(put, is(uuidUpdated.toString()));
             }
         }, uuids);
+
+        disableCrc32.set(false);
     }
 
     @Test
     public void testUpdateExpandLastRecord() throws Exception {
         List<UUID> uuids = createUuid(2);
         deleteFileIfExists(fileName);
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
 
         // given
         UUID first = uuids.get(0);
@@ -498,7 +501,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID first = uuids.get(0);
@@ -526,7 +529,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID first = uuids.get(0);
@@ -554,7 +557,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID first = uuids.get(0);
@@ -574,7 +577,7 @@ public class SimpleRecordStoreTests {
 
         AtomicReference<Map<String, RecordHeader>> hook = new AtomicReference<>();
 
-        recordsFile = new FileRecordStore(fileName, initialSize) {
+        recordsFile = new FileRecordStore(fileName, initialSize, false) {
             {
                 hook.set(this.memIndex);
             }
@@ -627,7 +630,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -656,7 +659,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -685,7 +688,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -718,7 +721,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -744,7 +747,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testDeleteFirstEntries() throws Exception {
         List<UUID> uuids = createUuid(4);
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
         String smallEntry = uuids.get(0).toString();
         String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
@@ -766,7 +769,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 String smallEntry = uuids.get(0).toString();
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
@@ -790,7 +793,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 String smallEntry = uuids.get(0).toString();
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
@@ -816,7 +819,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 String smallEntry = uuids.get(0).toString();
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
@@ -845,7 +848,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
                 String smallEntry = uuids.get(0).toString();
 
                 // when
@@ -919,7 +922,7 @@ public class SimpleRecordStoreTests {
                     interceptedOperations.performTestOperations(crashAt, localFileName, uuids, written);
                 } catch (Exception ioe) {
                     try {
-                        BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r");
+                        BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", disableCrc32.get());
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {
                             String v = deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));

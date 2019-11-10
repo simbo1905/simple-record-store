@@ -26,7 +26,7 @@ public abstract class BaseRecordStore {
     protected static final int FILE_HEADERS_REGION_LENGTH = 16;
 
     // Number of bytes in the record header.
-    protected static final int RECORD_HEADER_LENGTH = 24;
+    protected static final int RECORD_HEADER_LENGTH = 32;
 
     public static int getMaxKeyLengthOrDefault(String value) {
         final String key = String.format("%s.MAX_KEY_LENGTH", BaseRecordStore.class.getName());
@@ -301,8 +301,21 @@ public abstract class BaseRecordStore {
         if (value.length <= updateMeHeader.getDataCapacity()) {
             updateMeHeader.dataCount = value.length;
             updateFreeSpaceIndex(updateMeHeader);
-            long crc32 = writeRecordData(updateMeHeader, value);
-            updateMeHeader.setCrc32(crc32);
+            long crc = 0;
+            if( !disableCrc32 ) {
+                CRC32 crc32 = new CRC32();
+                crc32.update(value, 0, value.length);
+                crc = crc32.getValue();
+                updateMeHeader.setTempCrc32(crc);
+                // write with the backup crc so one of the two CRCs will be valid after a crash
+                writeRecordHeaderToIndex(updateMeHeader);
+                // write with the main data
+            }
+            // write the main data
+            writeRecordDataNoCrc32(updateMeHeader, value);
+            // update it main CRC
+            updateMeHeader.setCrc32(crc);
+            // write the header with the main CRC0
             writeRecordHeaderToIndex(updateMeHeader);
             return;
         }
@@ -398,7 +411,11 @@ public abstract class BaseRecordStore {
         if( !disableCrc32 ) {
             CRC32 crc32 = new CRC32();
             crc32.update(buf, 0, buf.length);
-            if (header.crc32.longValue() != crc32.getValue()) {
+            val crc = crc32.getValue();
+            val expectedRrc = header.crc32.longValue();
+            val expectedCrcTemp = header.crc32tmp.longValue();
+            // note that when we do an update in place we have to write the new CRC as a tmp and if we crash before we copy tmp over we will need to check on tmp
+            if (expectedRrc != crc && expectedCrcTemp != crc ) {
                 throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
             }
         }
@@ -428,6 +445,16 @@ public abstract class BaseRecordStore {
             crc = crc32.getValue();
         }
         return crc;
+    }
+
+    private void writeRecordDataNoCrc32(RecordHeader header, byte[] data)
+            throws IOException, RecordsFileException {
+        if (data.length > header.getDataCapacity()) { // FIXME this is a private method so make an assertion for unit tests
+            throw new RecordsFileException("Record data does not fit");
+        }
+        header.dataCount = data.length;
+        file.seek(header.dataPointer);
+        file.write(data, 0, data.length);
     }
 
     /*

@@ -1,5 +1,7 @@
 package com.github.simbo1905.srs;
 
+import lombok.EqualsAndHashCode;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -8,35 +10,8 @@ import java.util.Objects;
 
 import static com.github.simbo1905.srs.BaseRecordStore.RECORD_HEADER_LENGTH;
 
+@EqualsAndHashCode
 public class RecordHeader {
-
-	@Override
-	public String toString() {
-		return "RecordHeader{" +
-				"dataPointer=" + dataPointer +
-				", dataCount=" + dataCount +
-				", dataCapacity=" + dataCapacity +
-				", indexPosition=" + indexPosition +
-				", crc32=" + crc32 +
-				'}';
-	}
-
-	@Override
-	public boolean equals(Object o) {
-		if (this == o) return true;
-		if (o == null || getClass() != o.getClass()) return false;
-		RecordHeader that = (RecordHeader) o;
-		return dataPointer == that.dataPointer &&
-				dataCount == that.dataCount &&
-				dataCapacity == that.dataCapacity &&
-				indexPosition == that.indexPosition &&
-				crc32.equals(that.crc32);
-	}
-
-	@Override
-	public int hashCode() {
-		return Objects.hash(dataPointer, dataCount, dataCapacity, indexPosition, crc32);
-	}
 
 	/*
 	 * File pointer to the first byte of record data (8 bytes).
@@ -72,6 +47,12 @@ public class RecordHeader {
 		this.crc32 = crc32;
 	}
 
+	protected Long crc32tmp = Long.valueOf(-1);
+
+	public void setTempCrc32(long crc32tmp) {
+		this.crc32tmp = crc32tmp;
+	}
+
 	protected RecordHeader(){}
 
 	protected RecordHeader(RecordHeader copyMe) {
@@ -80,6 +61,7 @@ public class RecordHeader {
 		this.dataCapacity = copyMe.dataCapacity;
 		this.indexPosition = copyMe.indexPosition;
 		this.setCrc32(copyMe.crc32.longValue());
+		this.setTempCrc32(copyMe.crc32tmp.longValue());
 	}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
@@ -111,6 +93,8 @@ public class RecordHeader {
 		dataCount = buffer.getInt();
 		long crc32 = buffer.getLong();
 		this.setCrc32(crc32);
+		long crc32tmp = buffer.getLong();
+		this.setTempCrc32(crc32tmp);
 	}
 
 	/*
@@ -126,6 +110,7 @@ public class RecordHeader {
 		buffer.putInt(dataCapacity);
 		buffer.putInt(dataCount);
 		buffer.putLong(crc32.longValue());
+		buffer.putLong(crc32tmp.longValue());
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 	}
 

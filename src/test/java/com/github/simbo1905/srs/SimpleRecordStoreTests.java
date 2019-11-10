@@ -442,7 +442,6 @@ public class SimpleRecordStoreTests {
 
     @Test
     public void testUpdateOneRecordWithIOExceptions() throws Exception {
-        disableCrc32.set(true);
         List<UUID> uuids = createUuid(2);
 
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
@@ -466,8 +465,6 @@ public class SimpleRecordStoreTests {
                 Assert.assertThat(put, is(uuidUpdated.toString()));
             }
         }, uuids);
-
-        disableCrc32.set(false);
     }
 
     @Test

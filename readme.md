@@ -15,15 +15,15 @@ it easier to override with faster in-memory structures.
 1. The records are held in a single `RandomAccessFile` comprising of: 
    1. A header which is the number of records. 
    2. An index region which is all the headers with possibly some free space at the end.
-   3. The record region where deletes and updates may have created free space between records.   
-1. An insert:: 
+   3. The record region where past deletes and updates may have created free space between records.  
+1. An insert:
+   1. May cause the index region to expand. This is done by moving the first records to the end of the file. 
    1. May insert the record into any free space that is large enough. 
-   1. Else may cause the index region to expand. This is done by moving the first record to the end of the file. 
    1. Else inserts the record at the end of the file expanding as necessary.  
 1. An update:
    1. May be the same size as the old records in which case it is a direct overwrite. 
-   1. Else may be smaller than the old record in which case free space is created. 
-   1. Else may be bigger than the old record. If so it is moved to to the back of the file expanding it as necessary.
+   1. May be smaller than the old record in which case free space is created. 
+   1. May be bigger than the old record. If so it is moved to to the back of the file expanding as necessary.
    1. Any free space created by a move follows the same rules as for deletion below. 
 1. A delete may:
    1. May shrink the file if it is the last record. 
@@ -41,9 +41,11 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>0.4.1</version>
+	<version>0.6.0</version>
 </dependency>
 ```
+
+See `SimpleRecordStoreApiTests.java` for examples of the public API which is minimal. 
 
 ## Build
 

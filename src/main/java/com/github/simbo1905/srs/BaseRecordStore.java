@@ -315,7 +315,7 @@ public abstract class BaseRecordStore {
             writeRecordDataNoCrc32(updateMeHeader, value);
             // update it main CRC
             updateMeHeader.setCrc32(crc);
-            // write the header with the main CRC0
+            // write the header with the main CRC
             writeRecordHeaderToIndex(updateMeHeader);
             return;
         }

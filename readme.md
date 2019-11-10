@@ -30,7 +30,7 @@ it easier to override with faster in-memory structures.
    1. Else move the second record backwards if it is the first record (issue [#12](https://github.com/simbo1905/simple-record-store/issues/12)). 
    1. Else will create some free space in the middle of the file which is a write to the header of the previous record. 
    1. Will overwrite the deleted header by moving the last header over it decrementing the headers count.   
-1. Records are written with a CRC32 checksum which is checked upon load.  
+1. Record date sections are written with an optional CRC32 checksum which is checked upon load. If you write zip data that has a built in CRC32 you can disable this in the constructor. 
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption. 
 
 ## Using
@@ -41,7 +41,7 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>0.7.0</version>
+	<version>0.8.0</version>
 </dependency>
 ```
 

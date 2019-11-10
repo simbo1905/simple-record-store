@@ -1,14 +1,13 @@
 
-#### Simple Record Store
+## Simple Record Store
 
 Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-shows how to creates a simple KV storage file. That code isn't safe to crashes though due to the ordering of writes. 
-This version has a test that throws an exception on every write operation and verifies that the storage isn't corrupt
+shows how to creates a simple KV storage file with fixed key length. That code isn't safe to crashes due to the ordering of writes. 
+This version has tests that throws an exception on every write operation and verifies that the storage isn't corrupt
 the write appears to be atomic when the header is flushed. 
 
-This implementation: 
+With this (re)implementation: 
 
-1. Uses an memory map of the position of records and their length. 
 1. Records must have a unique string key. The maximum size of this key must be fixed for the life of the store. 
 It is intended that you use something like a UUID or SHa256 as a surragate key that is unique and fixed width.
 1. The records are held in a single `RandomAccessFile` comprising of: 
@@ -33,6 +32,8 @@ It is intended that you use something like a UUID or SHa256 as a surragate key t
 expansion of the index region. 
 1. Records are written with a CRC32 checksum which is checked upon load. 
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption.
+1. Uses an memory map of the position of records and their length. 
+
 
 ## Using
 
@@ -45,6 +46,8 @@ The latest release on maven central is:
 	<version>0.6.0</version>
 </dependency>
 ```
+
+See `SimpleRecordStoreApiTests.java` for examples of the public API which is minimal. 
 
 ## Build
 

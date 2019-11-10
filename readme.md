@@ -2,9 +2,9 @@
 ## Simple Record Store
 
 Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-shows how to creates a simple KV storage file with fixed key length. That code isn't safe to crashes due to the ordering of writes. 
+shows how to creates a simple KV storage file with fixed key length. That code isn't safe to crashes due to the ordering of writes. It also uses java serialsation for writes which has many problems. 
 This version has tests that throws an exception on every write operation and verifies that the storage isn't corrupt
-the write appears to be atomic when the header is flushed. 
+the write appears to be atomic when the header is flushed. It also only stores binary values leaving it to the caller to choose the best serialisation mechanism. 
 
 With this (re)implementation: 
 

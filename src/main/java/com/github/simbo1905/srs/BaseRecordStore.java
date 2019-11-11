@@ -310,16 +310,14 @@ public abstract class BaseRecordStore {
         val updateMeHeader = keyToRecordHeader(key);
 
         // if can update in place
-        if (value.length <= updateMeHeader.getDataCapacity()) {
+        if (value.length <= updateMeHeader.getDataCapacity() && disableCrc32 == false) {
             long crc = 0;
-            if( !disableCrc32 ) {
-                CRC32 crc32 = new CRC32();
-                crc32.update(value, 0, value.length);
-                updateMeHeader.setTempCrc32(crc32.getValue());
-                updateMeHeader.setDataCountTmp(value.length);
-                // write with the backup crc so one of the two CRCs will be valid after a crash
-                writeRecordHeaderToIndex(updateMeHeader);
-            }
+            CRC32 crc32 = new CRC32();
+            crc32.update(value, 0, value.length);
+            updateMeHeader.setTempCrc32(crc32.getValue());
+            updateMeHeader.setDataCountTmp(value.length);
+            // write with the backup crc so one of the two CRCs will be valid after a crash
+            writeRecordHeaderToIndex(updateMeHeader);
             updateMeHeader.dataCount = value.length;
             updateFreeSpaceIndex(updateMeHeader);
             // write the main data
@@ -347,7 +345,7 @@ public abstract class BaseRecordStore {
 
         val originalHeader = new RecordHeader(updateMeHeader);
 
-        // this doesn't fit in the slot so follow the insert logic
+        // follow the insert logic
         if (value.length > updateMeHeader.getDataCapacity()) {
             // when we move we add capacity to the previous record
             RecordHeader previous = getRecordAt(updateMeHeader.dataPointer - 1);

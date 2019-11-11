@@ -7,7 +7,6 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Objects;
 
 import static com.github.simbo1905.srs.BaseRecordStore.RECORD_HEADER_LENGTH;
 
@@ -24,6 +23,16 @@ public class RecordHeader {
 	 * Actual number of bytes of data held in this record (4 bytes).
 	 */
 	protected int dataCount;
+
+	protected int dataCountTmp;
+
+	public int getDataCountTmp() {
+		return dataCountTmp;
+	}
+
+	public void setDataCountTmp(int dataCountTmp) {
+		this.dataCountTmp = dataCountTmp;
+	}
 
 	/*
 	 * Number of bytes of data that this record can hold (4 bytes).
@@ -64,6 +73,7 @@ public class RecordHeader {
 		this.indexPosition = copyMe.indexPosition;
 		this.setCrc32(copyMe.crc32.longValue());
 		this.setTempCrc32(copyMe.crc32tmp.longValue());
+		this.setDataCountTmp(copyMe.getDataCountTmp());
 	}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
@@ -97,6 +107,8 @@ public class RecordHeader {
 		this.setCrc32(crc32);
 		long crc32tmp = buffer.getLong();
 		this.setTempCrc32(crc32tmp);
+		int dataCountTmp = buffer.getInt();
+		this.setDataCountTmp(dataCountTmp);
 	}
 
 	/*
@@ -113,6 +125,7 @@ public class RecordHeader {
 		buffer.putInt(dataCount);
 		buffer.putLong(crc32.longValue());
 		buffer.putLong(crc32tmp.longValue());
+		buffer.putInt(dataCountTmp);
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 	}
 

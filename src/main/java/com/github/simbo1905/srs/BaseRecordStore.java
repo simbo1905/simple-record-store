@@ -8,6 +8,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.function.Function;
 import java.util.zip.CRC32;
 
@@ -26,7 +29,7 @@ public abstract class BaseRecordStore {
     protected static final int FILE_HEADERS_REGION_LENGTH = 16;
 
     // Number of bytes in the record header.
-    protected static final int RECORD_HEADER_LENGTH = 32;
+    protected static final int RECORD_HEADER_LENGTH = 36;
 
     public static int getMaxKeyLengthOrDefault(String value) {
         final String key = String.format("%s.MAX_KEY_LENGTH", BaseRecordStore.class.getName());
@@ -40,6 +43,15 @@ public abstract class BaseRecordStore {
     // about your data. Note we store binary keys with a header byte to indicate the real lenght of
     // the key so you need to +1 your max length
     protected static final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault("64");
+
+    protected static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefault(true);
+
+    private static boolean getPadDataToKeyLengthOrDefault(boolean defaultValue) {
+        final String key = String.format("%s.MAX_KEY_LENGTH", BaseRecordStore.class.getName());
+        String keyLength = System.getenv(key) == null ? Boolean.valueOf(defaultValue).toString() : System.getenv(key);
+        keyLength = System.getProperty(key, keyLength);
+        return Boolean.valueOf(keyLength);
+    }
 
     // The total length of one index entry - the key length plus the record
     // header length.
@@ -230,7 +242,7 @@ public abstract class BaseRecordStore {
         if (key.length > MAX_KEY_LENGTH) {
             throw new RecordsFileException(
                     "Key is larger than permitted size of " + MAX_KEY_LENGTH
-                            + " bytes");
+                            + " bytes. Actual: "+key.length);
         }
         file.seek(indexPositionToKeyFp(currentNumRecords));
         file.write((byte)key.length);
@@ -299,20 +311,19 @@ public abstract class BaseRecordStore {
 
         // if can update in place
         if (value.length <= updateMeHeader.getDataCapacity()) {
-            updateMeHeader.dataCount = value.length;
-            updateFreeSpaceIndex(updateMeHeader);
             long crc = 0;
             if( !disableCrc32 ) {
                 CRC32 crc32 = new CRC32();
                 crc32.update(value, 0, value.length);
-                crc = crc32.getValue();
-                updateMeHeader.setTempCrc32(crc);
+                updateMeHeader.setTempCrc32(crc32.getValue());
+                updateMeHeader.setDataCountTmp(value.length);
                 // write with the backup crc so one of the two CRCs will be valid after a crash
                 writeRecordHeaderToIndex(updateMeHeader);
-                // write with the main data
             }
+            updateMeHeader.dataCount = value.length;
+            updateFreeSpaceIndex(updateMeHeader);
             // write the main data
-            writeRecordDataNoCrc32(updateMeHeader, value);
+            writeRecordData(updateMeHeader, value);
             // update it main CRC
             updateMeHeader.setCrc32(crc);
             // write the header with the main CRC
@@ -343,7 +354,7 @@ public abstract class BaseRecordStore {
             // allocate to next free space or expand the file
             RecordHeader newRecord = allocateRecord(key, value.length);
             // new record is expanded old record
-            newRecord.indexPosition = updateMeHeader.indexPosition;
+            //newRecord.indexPosition = updateMeHeader.indexPosition;
             newRecord.dataCount = value.length;
             long crc32 = writeRecordData(newRecord, value);
             newRecord.setCrc32(crc32);
@@ -355,7 +366,7 @@ public abstract class BaseRecordStore {
                 updateFreeSpaceIndex(previous);
                 writeRecordHeaderToIndex(previous);
             } else {
-                // FIXME this is really bad for a FIFO! Why don't we just expand the index area and have special free space logic?
+                // FIXME issue #12 this is really bad for a FIFO! Why don't we just expand the index area and have special free space logic?
                 // target record is first in the file and is shrunk by moving the sec
                 RecordHeader secondRecord = getRecordAt(originalHeader.dataPointer
                         + (long) originalHeader.getDataCapacity());
@@ -405,22 +416,62 @@ public abstract class BaseRecordStore {
      * Reads the record data for the given record header.
      */
     private byte[] readRecordData(RecordHeader header) throws IOException {
-        byte[] buf = new byte[header.dataCount];
+
+        val arrayOfPairs = new ArrayList<AbstractMap.SimpleImmutableEntry<Long, Integer>>();
+
+        // must not attempt to read beyond the end of the file
+        if( header.crc32.longValue() > -1 && header.dataCount+header.dataPointer <= getFileLength() ) {
+            arrayOfPairs.add(new AbstractMap.SimpleImmutableEntry<>(header.crc32, header.dataCount));
+        }
+
+        // must not attempt to read beyond the end of the file
+        if( header.crc32tmp.longValue() > -1 && header.dataCountTmp+header.dataPointer <= getFileLength() ) {
+            arrayOfPairs.add(new AbstractMap.SimpleImmutableEntry<>(header.crc32tmp, header.dataCountTmp));
+        }
+
+        // if there are two possible lengths the we need to load the larger.
+        arrayOfPairs.sort(Comparator.comparingInt(AbstractMap.SimpleImmutableEntry::getValue));
+        val dataCountMax = arrayOfPairs.get(arrayOfPairs.size()-1).getValue().intValue();
+
+        // read the data
+        byte[] buf = new byte[dataCountMax];
         file.seek(header.dataPointer);
         file.readFully(buf);
-        if( !disableCrc32 ) {
-            CRC32 crc32 = new CRC32();
-            crc32.update(buf, 0, buf.length);
-            val crc = crc32.getValue();
-            val expectedRrc = header.crc32.longValue();
-            val expectedCrcTemp = header.crc32tmp.longValue();
-            // note that when we do an update in place we have to write the new CRC as a tmp and if we crash before we copy tmp over we will need to check on tmp
-            if (expectedRrc != crc && expectedCrcTemp != crc ) {
-                throw new IllegalStateException(String.format("CRC32 check failed for %s", header.toString()));
+
+        if( disableCrc32 ) {
+            // if arrayOfPairs.size() > 0 then this is a guess. if we disable CRC32 we cannot reliably do update in place!
+            return buf;
+        }
+
+        // try the shorter one
+        val first = arrayOfPairs.get(0);
+
+        CRC32 crc32 = new CRC32();
+        crc32.update(buf, 0, first.getValue());
+        val expectedCrc = first.getKey();
+
+        if( expectedCrc.longValue() == crc32.getValue() ) {
+            return buf;
+        }
+
+        if( arrayOfPairs.size() > 1){
+            val last = arrayOfPairs.get(1);
+            crc32.reset();
+            crc32.update(buf, 0, last.getValue());
+            val expectedCrcLast = crc32.getValue();
+            if( expectedCrcLast == crc32.getValue() ){
+                val length = last.getValue();
+                if( length == buf.length ){
+                    return buf;
+                } else {
+                    byte[] less = new byte[length];
+                    System.arraycopy(buf, 0, less, 0, length);
+                    return less;
+                }
             }
         }
 
-        return buf;
+        throw new IllegalStateException(String.format("CRC32 check failed for data lenght %d with header %s", buf.length, header.toString()));
     }
 
     /*
@@ -432,9 +483,7 @@ public abstract class BaseRecordStore {
      */
     private long writeRecordData(RecordHeader header, byte[] data)
             throws IOException, RecordsFileException {
-        if (data.length > header.getDataCapacity()) { // FIXME this is a private method so make an assertion for unit tests
-            throw new RecordsFileException("Record data does not fit");
-        }
+        assert data.length <= header.getDataCapacity(): "Record data does not fit";
         header.dataCount = data.length;
         file.seek(header.dataPointer);
         file.write(data, 0, data.length);
@@ -449,9 +498,7 @@ public abstract class BaseRecordStore {
 
     private void writeRecordDataNoCrc32(RecordHeader header, byte[] data)
             throws IOException, RecordsFileException {
-        if (data.length > header.getDataCapacity()) { // FIXME this is a private method so make an assertion for unit tests
-            throw new RecordsFileException("Record data does not fit");
-        }
+        assert data.length <= header.getDataCapacity(): "Record data does not fit";
         header.dataCount = data.length;
         file.seek(header.dataPointer);
         file.write(data, 0, data.length);
@@ -527,17 +574,25 @@ public abstract class BaseRecordStore {
             writeDataStartPtrHeader(dataStartPtr);
             return;
         }
+        // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
             RecordHeader first = getRecordAt(dataStartPtr);
             byte[] data = readRecordData(first);
-            first.dataPointer = getFileLength();
-            first.setDataCapacity(data.length);
-            setFileLength(first.dataPointer + data.length);
+            long fileLen = getFileLength();
+            first.dataPointer = fileLen;
+            int dataLength = data.length;
+            int dataLengthPadded = getDataLengthPadded(dataLength);
+            first.setDataCapacity(dataLengthPadded);
+            setFileLength(fileLen + dataLengthPadded);
             writeRecordData(first, data);
             writeRecordHeaderToIndex(first);
             dataStartPtr += first.getDataCapacity();
             writeDataStartPtrHeader(dataStartPtr);
         }
+    }
+
+    protected static int getDataLengthPadded(int dataLength) {
+        return (PAD_DATA_TO_KEY_LENGTH)?Math.max(INDEX_ENTRY_LENGTH, dataLength):dataLength;
     }
 
     /*

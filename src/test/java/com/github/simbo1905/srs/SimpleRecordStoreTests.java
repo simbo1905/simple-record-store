@@ -1,24 +1,23 @@
 package com.github.simbo1905.srs;
 
-import static com.github.simbo1905.srs.BaseRecordStore.*;
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import lombok.val;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import lombok.val;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
+import static com.github.simbo1905.srs.BaseRecordStore.*;
+import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertThat;
 
 /**
  * Tests that the simple random access storage 'db' works and does not get
@@ -67,7 +66,7 @@ public class SimpleRecordStoreTests {
         @Override
         public void onWrite() throws IOException {
             if (crashAtIndex == calls++) {
-                throw new IOException("simulated write error at call index: " + crashAtIndex);
+                throw new IOException("simulated IOException at call index: " + crashAtIndex);
             }
         }
 
@@ -190,6 +189,15 @@ public class SimpleRecordStoreTests {
     private void writeUuid(UUID k) throws RecordsFileException, IOException {
         writeUuid(k, k);
     }
+    private void writeString(String k) throws RecordsFileException, IOException {
+        writeString(k, k);
+    }
+
+    private void writeString(String k, String v) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k);
+        byte[] value = serializerString.apply(v);
+        recordsFile.insertRecord(key, value);
+    }
 
     private void writeUuid(UUID k, UUID v) throws RecordsFileException, IOException {
         byte[] key = serializerString.apply(k.toString());
@@ -209,9 +217,21 @@ public class SimpleRecordStoreTests {
         recordsFile.updateRecord(key, value);
     }
 
+    private void updateString(String k, String v) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k);
+        byte[] value = serializerString.apply(v);
+        recordsFile.updateRecord(key, value);
+    }
+
     private void updateUuid(UUID k, UUID v1, UUID v2) throws RecordsFileException, IOException {
         byte[] key = serializerString.apply(k.toString());
         byte[] value = serializerString.apply(v1.toString() + v2.toString());
+        recordsFile.updateRecord(key, value);
+    }
+
+    private void updateString(String k, String v1, String v2) throws RecordsFileException, IOException {
+        byte[] key = serializerString.apply(k);
+        byte[] value = serializerString.apply(v1 + v2);
         recordsFile.updateRecord(key, value);
     }
 
@@ -438,8 +458,6 @@ public class SimpleRecordStoreTests {
         Assert.assertThat(put, is(uuidUpdated.toString()));
     }
 
-    final AtomicBoolean disableCrc32 = new AtomicBoolean(false);
-
     @Test
     public void testUpdateOneRecordWithIOExceptions() throws Exception {
         List<UUID> uuids = createUuid(2);
@@ -450,8 +468,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
                 deleteFileIfExists(fileName);
-                // FIXME: get this to work with CRC checks enabled
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, disableCrc32.get());
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -518,6 +535,25 @@ public class SimpleRecordStoreTests {
     }
 
     @Test
+    public void testUpdateExpandFirstRecord() throws Exception {
+        List<UUID> uuids = createUuid(2);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
+
+        // given
+        UUID first = uuids.get(0);
+        UUID last = uuids.get(1);
+
+        // when
+        writeUuid(first);
+        writeUuid(last);
+        updateUuid(first, last, last);
+
+        String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        Assert.assertThat(put, is(last.toString() + last.toString()));
+        String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+        Assert.assertThat(put2, is(last.toString()));
+    }
+    @Test
     public void testUpdateExpandFirstRecordWithIOExceptions() throws Exception {
         List<UUID> uuids = createUuid(2);
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
@@ -535,6 +571,13 @@ public class SimpleRecordStoreTests {
                 // when
                 writeUuid(first);
                 writeUuid(last);
+
+                System.out.println("normal>--------");
+                System.out.println("first="+first);
+                System.out.println(" last="+last);
+                FileRecordStore.dumpFile(fileName, true);
+                System.out.println("--------<normal");
+
                 updateUuid(first, last, last);
 
                 String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
@@ -543,6 +586,22 @@ public class SimpleRecordStoreTests {
                 Assert.assertThat(put2, is(last.toString()));
             }
         }, uuids);
+    }
+
+    @Test
+    public void testUpdateExpandOnlyRecord() throws Exception {
+        List<UUID> uuids = createUuid(1);
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
+
+        // given
+        UUID first = uuids.get(0);
+
+        // when
+        writeUuid(first);
+        updateUuid(first, first, first);
+
+        String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        Assert.assertThat(put, is(first.toString() + first.toString()));
     }
 
     @Test
@@ -636,13 +695,13 @@ public class SimpleRecordStoreTests {
                 // when
                 writeUuid(uuid0);
                 writeUuid(uuid1, uuid1, uuid1);
-                updateUuid(uuid1, uuid1);
+                updateUuid(uuid1, uuid0);
 
                 //
                 String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid1.toString()));
+                Assert.assertThat(put1, is(uuid0.toString()));
             }
         }, uuids);
     }
@@ -665,11 +724,11 @@ public class SimpleRecordStoreTests {
                 // when
                 writeUuid(uuid0, uuid0, uuid0);
                 writeUuid(uuid1, uuid1);
-                updateUuid(uuid0, uuid0);
+                updateUuid(uuid0, uuid1);
 
                 //
                 String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
+                Assert.assertThat(put0, is(uuid1.toString()));
                 String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
                 Assert.assertThat(put1, is(uuid1.toString()));
             }
@@ -696,13 +755,13 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid0, uuid0);
                 writeUuid(uuid1, uuid1, uuid1);
                 writeUuid(uuid2, uuid2);
-                updateUuid(uuid1, uuid1);
+                updateUuid(uuid1, uuid2);
 
                 //
                 String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid1.toString()));
+                Assert.assertThat(put1, is(uuid2.toString()));
                 String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
                 Assert.assertThat(put2, is(uuid2.toString()));
             }
@@ -711,7 +770,7 @@ public class SimpleRecordStoreTests {
 
     @Test
     public void testUpdateShrinkOnlyRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(1);
+        List<UUID> uuids = createUuid(2);
         verifyWorkWithIOExceptions(new InterceptedTestOperations() {
             @Override
             public void performTestOperations(WriteCallback wc, String fileName,
@@ -722,14 +781,15 @@ public class SimpleRecordStoreTests {
 
                 // given
                 UUID uuid0 = uuids.get(0);
+                UUID uuid1 = uuids.get(1);
 
                 // when
                 writeUuid(uuid0, uuid0, uuid0);
-                updateUuid(uuid0, uuid0);
+                updateUuid(uuid0, uuid1);
 
                 //
                 String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
+                Assert.assertThat(put0, is(uuid1.toString()));
             }
         }, uuids);
     }
@@ -918,16 +978,17 @@ public class SimpleRecordStoreTests {
                 try {
                     interceptedOperations.performTestOperations(crashAt, localFileName, uuids, written);
                 } catch (Exception ioe) {
+                    BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
                     try {
-                        BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", disableCrc32.get());
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {
-                            String v = deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
-                            // ToDo validate the written set is recovered
+                            // readRecordData has a CRC32 check where the payload must match the header
+                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
                             count--;
                         }
                         assertThat(count, is(0));
                     } catch (Exception e) {
+                        FileRecordStore.dumpFile(localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
                         throw new RuntimeException(msg, e);
                     }

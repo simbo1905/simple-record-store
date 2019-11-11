@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.zip.CRC32;
 
 import static java.lang.System.err;
 import static java.lang.System.out;
@@ -49,7 +50,7 @@ public class FileRecordStore extends BaseRecordStore {
 		super(dbPath, accessFlags, disableCrc32);
 		int numRecords = readNumRecordsHeader();
 		memIndex = Collections
-				.synchronizedMap(new HashMap<String, RecordHeader>(numRecords));
+				.synchronizedMap(new HashMap<>(numRecords));
 		for (int i = 0; i < numRecords; i++) {
 			byte[] key = readKeyFromIndex(i);
 			val k = keyOf(key);
@@ -131,17 +132,19 @@ public class FileRecordStore extends BaseRecordStore {
 	}
 
 	/*
-	 * This method searches the file for free space and then returns a
-	 * RecordHeader which uses the space. (O(n) memory accesses)
+	 * This method searches the free map for free space and then returns a
+	 * RecordHeader which uses the space.
 	 */
 	@Override
 	protected RecordHeader allocateRecord(byte[] key, int dataLength)
 			throws IOException {
+		// we pad the record to be at least the size of a header to avoid moving many values to expand the the index
+		int dataLengthPadded = getDataLengthPadded(dataLength);
 		// search for empty space
 		RecordHeader newRecord = null;
 		for (RecordHeader next : this.freeMap.keySet() ) {
 			int free = next.getFreeSpace();
-			if (dataLength <= free) {
+			if (dataLengthPadded <= free) {
 				newRecord = next.split();
 				updateFreeSpaceIndex(next);
 				writeRecordHeaderToIndex(next);
@@ -151,8 +154,8 @@ public class FileRecordStore extends BaseRecordStore {
 		if (newRecord == null) {
 			// append record to end of file - grows file to allocate space
 			long fp = getFileLength();
-			setFileLength(fp + dataLength);
-			newRecord = new RecordHeader(fp, dataLength);
+			setFileLength(fp + dataLengthPadded);
+			newRecord = new RecordHeader(fp, dataLengthPadded);
 		}
 		return newRecord;
 	}
@@ -227,12 +230,57 @@ public class FileRecordStore extends BaseRecordStore {
 		}
 		final String filename = args[0];
 		out.println("Reading from "+filename);
-		final BaseRecordStore recordFile = new FileRecordStore(filename, "r", false);
+		boolean disableCrc32 = false;
+		dumpFile(filename, disableCrc32);
+	}
+
+	public static void dumpFile(String filename, boolean disableCrc) throws IOException, RecordsFileException {
+		final BaseRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc);
 		out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
 		for(int index = 0; index < recordFile.getNumRecords(); index++ ){
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
-			final String key = keyOf(recordFile.readKeyFromIndex(index));
-			out.println(String.format("Key=%s, HeaderIndex=%s, HeaderCapacity=%s, HeaderActual=%s, HeaderPointer=%s", key, header.indexPosition, header.getDataCapacity(), header.dataCount, header.dataPointer));
+			final byte[] bk = recordFile.readKeyFromIndex(index);
+			final String k = keyOf(bk);
+			out.println(String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s, crc32tmp=%s",
+					index,
+					k,
+					header.indexPosition,
+					header.getDataCapacity(),
+					header.dataPointer,
+					header.dataCount,
+					header.crc32,
+					header.dataCountTmp,
+					header.crc32tmp
+			));
+			final byte[] data = recordFile.readRecordData(bk);
+			CRC32 crc32 = new CRC32();
+			crc32.update(data, 0, header.dataCount);
+			long crcActual = crc32.getValue();
+			boolean good = header.crc32.longValue() == crcActual;
+			if( good ){
+				String d = deserializerString.apply(data);
+				out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
+			} else {
+				crc32.reset();
+				crc32.update(data, 0, header.dataCountTmp);
+				long crcActualTmp = crc32.getValue();
+				good = header.crc32tmp.longValue() == crcActualTmp;
+				if( good ) {
+					if( data.length == header.dataCountTmp ){
+						String d = deserializerString.apply(data);
+						out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
+					} else {
+						byte[] less = new byte[header.dataCountTmp];
+						System.arraycopy(data, 0, less, 0, header.dataCountTmp);
+						String d = deserializerString.apply(less);
+						out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
+
+					}
+				} else {
+					String d = deserializerString.apply(data);
+					out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
+				}
+			}
 		}
 	}
 }

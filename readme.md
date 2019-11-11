@@ -85,7 +85,8 @@ You can set the following properties with either an environment variable or a -D
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
 | com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
 
-Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH which defaults to 32+64=96 bytes. 
+Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key 
+size to 36 then each record header will be 68 characters. 
 
 If you preallocate the store to be a size equal to or greater than the number of records you will store
 you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 

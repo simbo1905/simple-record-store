@@ -1,10 +1,11 @@
 
-#### Simple Record Store
+# Simple Record Store
 
-Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-shows how to creates a simple KV storage file. That code isn't safe to crashes though due to the ordering of writes. 
-This version has a test that throws an exception on every write operation and verifies that the storage isn't corrupt
-the write appears to be atomic when the header is flushed. 
+Simple Record Store is persistent hash table with a predefined maximum key length. Records are written into a single 
+file fronted by a HashMap to speed up queries. It is based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
+which shows how to creates a simple key value storage file. That code isn't safe to crashes though due to the ordering 
+of writes. This version has tests that throw exceptions on every file operation to validate the data on disk is consistent. 
+It also adds CRC32 checks to the data that are validated upon read.  
 
 This implementation: 
 

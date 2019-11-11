@@ -10,7 +10,7 @@ It also adds CRC32 checks to the data that are validated upon read.
 This implementation: 
 
 1. Supports a file of byte length Long.MAX_VALUE and a maximum of Integer.MAX_VALUE entries.
-1. Records must have a unique fixed length key. The maximum size of keys is fixed for the life of the store.  
+1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap of the position of records and their length to speed up queries. The intention is to make 
 it easier to override with faster in-memory structures. 
 1. The records are held in a single `RandomAccessFile` comprising of: 

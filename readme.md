@@ -3,8 +3,8 @@
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
 file. The set of all fixed length record headers are held in a HashMap. This means that all your keys must fit into heap 
-but all values are offloaded to disk. The order of writes are carefully arranged that any failures will not corrupt the 
-state of the data on disk. 
+but all values are offloaded onto disk. The order of writes are carefully arranged so that any failures will not corrupt 
+the state of the data on disk. 
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 

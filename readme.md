@@ -2,10 +2,13 @@
 # Simple Record Store
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
-file fronted by a HashMap to speed up queries. It is based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-which shows how to creates a simple key value storage file. That code isn't safe to crashes though due to the ordering 
-of writes. This version has tests that throw exceptions on every file operation to validate the data on disk is consistent. 
-It also adds CRC32 checks to the data that are validated upon read.  
+file. The set of all fixed length record headers are held in a HashMap. This means that all your keys must fit into heap 
+but all values are offloaded to disk. 
+
+It is based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
+which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
+of writes. This code base has tests that uses brute force search to throw exceptions on every file operation to validate 
+the data on disk is consistent. It also adds CRC32 checks to the data that are validated upon read.  
 
 This implementation: 
 
@@ -35,6 +38,32 @@ This implementation:
 built in CRC32 you can disable this in the constructor. Note that disabling CRC32 checks will prevent updates in situ. 
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption. This is confirmed 
 by unit tests that test a crash at every file operation. 
+
+If any IOException is thrown that does not mean that the write is known to have failed. It means that the write may have 
+failed and it is not known if state of the in memory map is consistent with that is on disk. The fix to this is to close 
+the store and open a fresh one to reload all the headers from disk. Given that the disk may be unavailable or full the 
+and reloading all the headers is expensive this code throws an error and expects the application to log what is going on 
+and decide how many times to attempt to reopen the store. 
+
+## Details
+
+The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
+
+You can set the following properties with either an environment variable or a -D flag. The -D flag takes precedence:
+
+| Property                                                | Default | Comment                 |
+|---------------------------------------------------------|---------|-------------------------|
+| com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
+| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
+
+Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key 
+size to 36 then each record header will be 68 characters. 
+
+If you preallocate the store to be a size equal to or greater than the number of records you will store
+you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
+can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
+RECORD_HEADER_LENGTH worth of records to the back fo the file. 
+
 
 ## Using
 
@@ -77,24 +106,6 @@ mvn release:prepare
 mvn release:perform
 ```
 
-## Details
-
-The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
-
-You can set the following properties with either an environment variable or a -D flag. The -D flag takes precedence:
-
-| Property                                                | Default | Comment                 |
-|---------------------------------------------------------|---------|-------------------------|
-| com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
-| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
-
-Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key 
-size to 36 then each record header will be 68 characters. 
-
-If you preallocate the store to be a size equal to or greater than the number of records you will store
-you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
-can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
-RECORD_HEADER_LENGTH worth of records to the back fo the file. 
 
 
 

@@ -21,8 +21,10 @@ This implementation:
    1. May insert the record into any free space between existing records that is large enough. 
    1. Else inserts the record at the end of the file expanding as necessary.  
 1. An update:
-   1. May write in situ as long as CRC32 checks are not disabled. If the record shinks free space is created. 
-   1. May expand the record causing it to move to the back of the file expanding as necessary. Moves generate free space.  
+   1. May write in situ if the new record has the same length
+   1. May write in situ if the new record is smaller and CRC32 checks are not disabled. Free space is created. 
+   1. Will move the record if it is now bigger. Moves cause new free space. 
+   1. May move to a big enough free space or will expand the file and write to the end.    
    1. Any free space created by a move follows the same rules as for deletion below. 
 1. A delete:
    1. May shrink the file if it is the last record. 

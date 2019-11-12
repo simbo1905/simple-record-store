@@ -308,14 +308,22 @@ public abstract class BaseRecordStore {
             throws RecordsFileException, IOException {
 
         val updateMeHeader = keyToRecordHeader(key);
+        val capacity = updateMeHeader.getDataCapacity();
 
-        // if can update in place
-        if (value.length <= updateMeHeader.getDataCapacity() && disableCrc32 == false) {
-            long crc = 0;
+        long crc = 0;
+        if ( disableCrc32 == false) {
             CRC32 crc32 = new CRC32();
             crc32.update(value, 0, value.length);
             updateMeHeader.setTempCrc32(crc32.getValue());
             updateMeHeader.setDataCountTmp(value.length);
+        }
+
+        val recordIsSameSize = value.length == capacity;
+        val recordIsSmallerAndCrcEnabled = disableCrc32 == false && value.length < capacity;
+
+        // can update in place if the record is same size no matter whether CRC32 is enabled.
+        // if record is smaller then we can only update in place if we have a CRC32 to validate which data length is valid
+        if( recordIsSameSize || recordIsSmallerAndCrcEnabled ){
             // write with the backup crc so one of the two CRCs will be valid after a crash
             writeRecordHeaderToIndex(updateMeHeader);
             updateMeHeader.dataCount = value.length;
@@ -337,8 +345,8 @@ public abstract class BaseRecordStore {
             setFileLength(fileLength + (value.length - updateMeHeader.getDataCapacity()) );
             updateMeHeader.setDataCapacity(value.length);
             updateFreeSpaceIndex(updateMeHeader);
-            long crc32 = writeRecordData(updateMeHeader, value);
-            updateMeHeader.setCrc32(crc32);
+            writeRecordDataNoCrc32(updateMeHeader, value);
+            updateMeHeader.setCrc32(crc);
             writeRecordHeaderToIndex(updateMeHeader);
             return;
         }
@@ -354,8 +362,8 @@ public abstract class BaseRecordStore {
             // new record is expanded old record
             //newRecord.indexPosition = updateMeHeader.indexPosition;
             newRecord.dataCount = value.length;
-            long crc32 = writeRecordData(newRecord, value);
-            newRecord.setCrc32(crc32);
+            writeRecordDataNoCrc32(newRecord, value);
+            newRecord.setCrc32(crc);
             writeRecordHeaderToIndex(newRecord);
             replaceEntryInIndex(key, updateMeHeader, newRecord);
             if( previous != null ){

@@ -13,6 +13,9 @@ the data on disk is consistent. It also adds CRC32 checks to the data that are v
 
 This implementation: 
 
+1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you workload has some 
+properties where you can safely set things to go faster or user less space. It is wise to use the defaults and only 
+change them if you have tests that prove safety and performance are not compromised. 
 1. Supports a file of byte length Long.MAX_VALUE and a maximum of Integer.MAX_VALUE entries.
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap to cache record headers. A record header is the key and compact metadata such as the the 
@@ -42,7 +45,7 @@ offset and length of record and an optional CRC32 checksum. This makes locating 
    free space at the end of the index space.    
 1. Record headers contain a CRC32 checksum which is checked when the data is loaded load. If you write zip data that has a 
 built in CRC32 you can disable this in the constructor. Note that disabling CRC32 checks will prevent updates in situ when 
-records shrink they will follow the insert logic instead.  
+records shrink. In which case the update with less data will write to a free location creating.  
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption. This is confirmed 
 by the unit tests that for every functional test records every file operations. The test then performs a brute force 
 replay crashing at every file operation and verifying the integrity of the data on disk after each crash. 

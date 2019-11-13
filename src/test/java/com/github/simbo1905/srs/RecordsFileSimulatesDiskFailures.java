@@ -7,7 +7,7 @@ import java.io.RandomAccessFile;
 public class RecordsFileSimulatesDiskFailures extends FileRecordStore {
 
 	public RecordsFileSimulatesDiskFailures(String dbPath, int initialSize, WriteCallback wc, boolean disableCrc32)
-			throws IOExceptionbbb {
+			throws IOException {
 		super(dbPath, initialSize, disableCrc32);
 		File f = new File(dbPath);
 		this.file = new InterceptedRandomAccessFile(new RandomAccessFile(f, "rw"),wc);

@@ -13,7 +13,6 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.zip.CRC32;
 
 import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
@@ -1048,34 +1047,201 @@ public class SimpleRecordStoreTests {
         }
     }
 
-    @Test
-    public void testDataWriteMethod() throws Exception {
-        String data = "some data";
-        byte[] bytesOut = data.getBytes();
-        int lenOut = bytesOut.length;
-        CRC32 crc32 = new CRC32();
-        crc32.update(bytesOut, 0, lenOut);
-        long crcOut = crc32.getValue();
 
-        ByteArrayOutputStream bout = new ByteArrayOutputStream();
-        DataOutputStream out = new DataOutputStream(bout);
-        out.writeInt(lenOut);
-        out.write(bytesOut);
-        out.writeLong(crcOut);
-        out.close();
+    void verifyWorkWithIOExceptions2(InterceptedTestOperations2 interceptedOperations, List<UUID> uuids) throws Exception {
+        final List<List<String>> writeStacks = new ArrayList<List<String>>();
 
-        byte[] wire = bout.toByteArray();
+        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
 
-        ByteArrayInputStream bin = new ByteArrayInputStream(wire);
-        DataInputStream in = new DataInputStream(bin);
-        int lenIn = in.readInt();
-        byte[] bytesIn = new byte[lenIn];
-        in.read(bytesIn);
-        long crcIn = in.readLong();
+        final List<String> localFileNames = new ArrayList<String>();
+        final String recordingFile = fileName("record");
+        localFileNames.add(recordingFile);
 
-        Assert.assertEquals(crcOut, crcIn);
-        Assert.assertEquals(lenOut, lenIn);
-        Assert.assertArrayEquals( bytesOut, bytesIn );
+        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
+        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
+
+        try {
+            for (int index = 0; index < writeStacks.size(); index++) {
+                final List<String> stack = writeStacks.get(index);
+                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
+                final String localFileName = fileName("crash" + index);
+                localFileNames.add(localFileName);
+                try {
+                    interceptedOperations.performTestOperations(crashAt, localFileName);
+                } catch (Exception ioe) {
+                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
+                    try {
+                        int count = possiblyCorruptedFile.getNumRecords();
+                        for (String k : possiblyCorruptedFile.keys()) {
+                            // readRecordData has a CRC32 check where the payload must match the header
+                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
+                            count--;
+                        }
+                        assertThat(count, is(0));
+                    } catch (Exception e) {
+                        FileRecordStore.dumpFile(localFileName, true);
+                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
+                        throw new RuntimeException(msg, e);
+                    }
+                }
+            }
+        } finally {
+            removeFiles(localFileNames);
+        }
     }
+
+
+    static interface InterceptedTestOperations2 {
+        void performTestOperations(WriteCallback wc,
+                                   String fileName) throws Exception;
+    }
+
+    void verifyWorkWithIOExceptions2(InterceptedTestOperations2 interceptedOperations) throws Exception {
+        final List<List<String>> writeStacks = new ArrayList<List<String>>();
+
+        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
+
+        final List<String> localFileNames = new ArrayList<String>();
+        final String recordingFile = fileName("record");
+        localFileNames.add(recordingFile);
+
+        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
+        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
+
+        try {
+            for (int index = 0; index < writeStacks.size(); index++) {
+                final List<String> stack = writeStacks.get(index);
+                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
+                final String localFileName = fileName("crash" + index);
+                localFileNames.add(localFileName);
+                try {
+                    interceptedOperations.performTestOperations(crashAt, localFileName);
+                } catch (Exception ioe) {
+                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
+                    try {
+                        int count = possiblyCorruptedFile.getNumRecords();
+                        for (String k : possiblyCorruptedFile.keys()) {
+                            // readRecordData has a CRC32 check where the payload must match the header
+                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
+                            count--;
+                        }
+                        assertThat(count, is(0));
+                    } catch (Exception e) {
+                        FileRecordStore.dumpFile(localFileName, true);
+                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
+                        throw new RuntimeException(msg, e);
+                    }
+                }
+            }
+        } finally {
+            removeFiles(localFileNames);
+        }
+    }
+
+    @Test
+    public void tesSplitFirstWithIOExceptions() throws Exception {
+
+        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
+        final String oneLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+                // when
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+                recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneSmall));
+                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+
+                // then
+                Assert.assertEquals(2, recordsFile.size());
+            }
+        });
+    }
+
+    @Test
+    public void tesSplitLastWithIOExceptions() throws Exception {
+
+        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
+        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
+        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+                // when
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
+                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
+                recordsFile.updateRecord(keyOf("two"), serializerString.apply(twoSmall));
+                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+
+                // then
+                Assert.assertEquals(3, recordsFile.size());
+            }
+        });
+    }
+
+    @Test
+    public void testUpdateLargeMiddleWithIOExceptions() throws Exception {
+
+        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
+        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
+        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+                // when
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
+                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
+                recordsFile.updateRecord(keyOf("two"), serializerString.apply(twoSmall));
+                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+
+                // then
+                Assert.assertEquals(3, recordsFile.size());
+            }
+        });
+    }
+
+    @Test
+    public void testUpdateExpandWithIOExceptions() throws Exception {
+
+        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
+        final String oneLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+                // when
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
+
+                val length = recordsFile.getFileLength();
+
+                recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneLarge));
+
+                // then
+                Assert.assertEquals(1, recordsFile.size());
+            }
+        });
+    }
+
 
 }

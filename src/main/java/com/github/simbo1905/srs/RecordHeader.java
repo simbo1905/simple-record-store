@@ -3,8 +3,6 @@ package com.github.simbo1905.srs;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
@@ -45,14 +43,6 @@ class RecordHeader {
 	long crc32 = -1;
 
 	protected RecordHeader(){}
-
-	protected RecordHeader(RecordHeader copyMe) {
-		this.dataPointer = copyMe.dataPointer;
-		this.dataCount = copyMe.dataCount;
-		this.dataCapacity = copyMe.dataCapacity;
-		this.indexPosition = copyMe.indexPosition;
-		this.crc32 = copyMe.crc32;
-	}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
 		this.dataPointer = dataPointer;
@@ -119,12 +109,6 @@ class RecordHeader {
 		RecordHeader newRecord = new RecordHeader(newFp, getFreeSpace(disableCrc32));
 		dataCapacity = dataCount;
 		return newRecord;
-	}
-
-	public RecordHeader move(long fp) {
-		RecordHeader moved = new RecordHeader(this);
-		moved.dataPointer = fp;
-		return moved;
 	}
 
 	public void incrementDataCapacity(int dataCapacity) {

@@ -17,38 +17,48 @@ import static java.lang.System.out;
 
 public class FileRecordStore {
 
-    public static final Function<String, byte[]> serializerString = (string) -> stringToBytes(string);
-    public static final Function<byte[], String> deserializerString = (bytes) -> bytesToString(bytes);
+    public static final Function<String, byte[]> serializerString = FileRecordStore::stringToBytes;
+    public static final Function<byte[], String> deserializerString = FileRecordStore::bytesToString;
+
     // Number of bytes in the record header.
     static final int RECORD_HEADER_LENGTH = 28;
+
     // Total length in bytes of the global database headers. FIXME this should be long+int to 12?
     private static final int FILE_HEADERS_REGION_LENGTH = 16;
     private static final int DEFAULT_MAX_KEY_LENGTH = 64;
+
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
-    // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surragate key out of anything unique
-    // about your data. Note we store binary keys with a header byte to indicate the real lenght of
+    // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
+	// unique about your data. Note we store binary keys with a header byte to indicate the real length of
     // the key so you need to +1 your max length
     private static final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault();
     private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
+
     // The total length of one index entry - the key length plus the record
     // header length.
     private static final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH
             + RECORD_HEADER_LENGTH;
+
     // File pointer to the num records header.
     private static final long NUM_RECORDS_HEADER_LOCATION = 0;
+
     // File pointer to the data start pointer header.
     private static final long DATA_START_HEADER_LOCATION = 4;
+
     /*
      * Hashtable which holds the in-memory index. For efficiency, the entire
      * index is cached in memory. The hashtable wraps the byte[] key as a String
      * as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
      */
     protected Map<String, RecordHeader> memIndex;
+
     /*default*/ RandomAccessFileInterface file;
+
     // Current file pointer to the start of the record data.
-    long dataStartPtr;
+	private long dataStartPtr;
+
     // only change this when debugging in unit tests
-    boolean disableCrc32;
+	private boolean disableCrc32;
 
     /*
      * Creates a new database file. The initialSize parameter determines the
@@ -117,7 +127,7 @@ public class FileRecordStore {
     }
 
     @SneakyThrows
-    public static String keyOf(byte[] key) {
+	private static String keyOf(byte[] key) {
         return new String(key, StandardCharsets.UTF_8);
     }
 
@@ -136,20 +146,20 @@ public class FileRecordStore {
         return sb.toString();
     }
 
-    protected static int getDataLengthPadded(int dataLength) {
+    private static int getDataLengthPadded(int dataLength) {
         return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(INDEX_ENTRY_LENGTH, dataLength) : dataLength;
     }
 
-    public static final byte[] stringToBytes(String s) {
+    private static final byte[] stringToBytes(String s) {
         return s.getBytes(StandardCharsets.UTF_8);
     }
 
-    public static final String bytesToString(byte[] bytes) {
+    private static final String bytesToString(byte[] bytes) {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
     @Synchronized
-    public Iterable<String> keys() {
+	Iterable<String> keys() {
         return new HashSet(memIndex.keySet());
     }
 
@@ -157,7 +167,7 @@ public class FileRecordStore {
      * Returns the current number of records in the database.
      */
     @Synchronized
-    public int getNumRecords() {
+	int getNumRecords() {
         return memIndex.size();
     }
 
@@ -177,7 +187,7 @@ public class FileRecordStore {
     /*
      * Maps a key to a record header by looking it up in the in-memory index.
      */
-    protected RecordHeader keyToRecordHeader(byte[] key) {
+	private RecordHeader keyToRecordHeader(byte[] key) {
         val k = keyOf(key);
         RecordHeader h = memIndex.get(k);
         if (h == null) {
@@ -187,7 +197,7 @@ public class FileRecordStore {
         return h;
     }
 
-    Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
+    private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
         @Override
         public int compare(RecordHeader o1, RecordHeader o2) {
             return (int) (o1.getFreeSpace(true) - o2.getFreeSpace(true));
@@ -197,14 +207,15 @@ public class FileRecordStore {
     /*
      * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
      */
-    ConcurrentNavigableMap<RecordHeader, Integer> freeMap = new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
+	private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
+            new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
 
     /*
      * Updates a map of record headers to free space values.
      *
      * @param rh Record that has new free space.
      */
-    protected void updateFreeSpaceIndex(RecordHeader rh) {
+	private void updateFreeSpaceIndex(RecordHeader rh) {
         int free = rh.getFreeSpace(disableCrc32);
         if (free > 0) {
             freeMap.put(rh, free);
@@ -217,7 +228,7 @@ public class FileRecordStore {
      * This method searches the free map for free space and then returns a
      * RecordHeader which uses the space.
      */
-    protected RecordHeader allocateRecord(byte[] key, int dataLength)
+	private RecordHeader allocateRecord(byte[] key, int dataLength)
             throws IOException {
 
         // we needs space for the length int and the optional long crc32
@@ -268,7 +279,7 @@ public class FileRecordStore {
      *
      * ToDo speed this search up with an index into the map
      */
-    protected RecordHeader getRecordAt(long targetFp) {
+	private RecordHeader getRecordAt(long targetFp) {
         for (RecordHeader next : this.memIndex.values()) {
             if (targetFp >= next.dataPointer
                     && targetFp < next.dataPointer + (long) next.getDataCapacity()) {
@@ -299,8 +310,8 @@ public class FileRecordStore {
      * Adds the new record to the in-memory index and calls the super class add
      * the index entry to the file.
      */
-    protected void addEntryToIndex(byte[] key, RecordHeader newRecord,
-                                   int currentNumRecords) throws IOException {
+	private void addEntryToIndex(byte[] key, RecordHeader newRecord,
+								 int currentNumRecords) throws IOException {
         if (key.length > MAX_KEY_LENGTH) {
             throw new IllegalArgumentException(
                     "Key is larger than permitted size of " + MAX_KEY_LENGTH
@@ -316,18 +327,12 @@ public class FileRecordStore {
         memIndex.put(keyOf(key), newRecord);
     }
 
-    protected void replaceEntryInIndex(byte[] key, RecordHeader header,
-                                       RecordHeader newRecord) {
-        // nothing to do but lets subclasses do additional bookwork
-        memIndex.put(keyOf(key), newRecord);
-    }
-
     /*
      * Removes the record from the index. Replaces the target with the entry at
      * the end of the index.
      */
-    protected void deleteEntryFromIndex(byte[] key, RecordHeader header,
-                                        int currentNumRecords) throws IOException {
+	private void deleteEntryFromIndex(byte[] key, RecordHeader header,
+									  int currentNumRecords) throws IOException {
         if (header.indexPosition != currentNumRecords - 1) {
             byte[] lastKey = readKeyFromIndex(currentNumRecords - 1);
             RecordHeader last = keyToRecordHeader(lastKey);
@@ -353,7 +358,7 @@ public class FileRecordStore {
         dumpFile(filename, disableCrc32);
     }
 
-    public static void dumpFile(String filename, boolean disableCrc) throws IOException {
+    static void dumpFile(String filename, boolean disableCrc) throws IOException {
         final FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc);
         out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
         for (int index = 0; index < recordFile.getNumRecords(); index++) {
@@ -380,18 +385,18 @@ public class FileRecordStore {
         file.fsync();
     }
 
-    protected long getFileLength() throws IOException {
+    long getFileLength() throws IOException {
         return file.length();
     }
 
-    protected void setFileLength(long l) throws IOException {
+    private void setFileLength(long l) throws IOException {
         file.setLength(l);
     }
 
     /*
      * Reads the number of records header from the file.
      */
-    protected int readNumRecordsHeader() throws IOException {
+	private int readNumRecordsHeader() throws IOException {
         file.seek(NUM_RECORDS_HEADER_LOCATION);
         return file.readInt();
     }
@@ -399,7 +404,7 @@ public class FileRecordStore {
     /*
      * Writes the number of records header to the file.
      */
-    protected void writeNumRecordsHeader(int numRecords) throws IOException {
+	private void writeNumRecordsHeader(int numRecords) throws IOException {
         file.seek(NUM_RECORDS_HEADER_LOCATION);
         file.writeInt(numRecords);
     }
@@ -407,7 +412,7 @@ public class FileRecordStore {
     /*
      * Reads the data start pointer header from the file.
      */
-    protected long readDataStartHeader() throws IOException {
+	private long readDataStartHeader() throws IOException {
         file.seek(DATA_START_HEADER_LOCATION);
         return file.readLong();
     }
@@ -425,7 +430,7 @@ public class FileRecordStore {
      * Returns a file pointer in the index pointing to the first byte in the key
      * located at the given index position.
      */
-    long indexPositionToKeyFp(int pos) {
+	private long indexPositionToKeyFp(int pos) {
         return FILE_HEADERS_REGION_LENGTH + (INDEX_ENTRY_LENGTH * pos);
     }
 
@@ -440,7 +445,7 @@ public class FileRecordStore {
     /*
      * Reads the ith key from the index.
      */
-    byte[] readKeyFromIndex(int position) throws IOException {
+	private byte[] readKeyFromIndex(int position) throws IOException {
         file.seek(indexPositionToKeyFp(position));
         byte len = file.readByte();
         byte[] key = new byte[len];
@@ -451,7 +456,7 @@ public class FileRecordStore {
     /*
      * Reads the ith record header from the index.
      */
-    RecordHeader readRecordHeaderFromIndex(int position) throws IOException {
+	private RecordHeader readRecordHeaderFromIndex(int position) throws IOException {
         file.seek(indexPositionToRecordHeaderFp(position));
         return RecordHeader.readHeader(file);
     }
@@ -459,7 +464,7 @@ public class FileRecordStore {
     /*
      * Writes the ith record header to the index.
      */
-    protected void writeRecordHeaderToIndex(RecordHeader header)
+	private void writeRecordHeaderToIndex(RecordHeader header)
             throws IOException {
         file.seek(indexPositionToRecordHeaderFp(header.indexPosition));
         header.write(file);
@@ -469,7 +474,7 @@ public class FileRecordStore {
      *
      */
     @Synchronized
-    public RecordHeader insertRecord(byte[] key, byte[] value)
+    public void insertRecord(byte[] key, byte[] value)
             throws IOException {
         if (recordExists(key)) {
             throw new IllegalArgumentException("Key exists: " + key);
@@ -478,10 +483,9 @@ public class FileRecordStore {
         RecordHeader newRecord = allocateRecord(key, payloadLength(value.length));
         writeRecordData(newRecord, value);
         addEntryToIndex(key, newRecord, getNumRecords());
-        return newRecord;
-    }
+	}
 
-    int payloadLength(int raw) {
+    private int payloadLength(int raw) {
         int len = raw + 4; // for length prefix
         if (!disableCrc32) {
             len += 8;
@@ -499,14 +503,8 @@ public class FileRecordStore {
         val updateMeHeader = keyToRecordHeader(key);
         val capacity = updateMeHeader.getDataCapacity();
 
-        long crc = 0;
-        if (disableCrc32 == false) {
-            CRC32 crc32 = new CRC32();
-            crc32.update(value, 0, value.length);
-        }
-
         val recordIsSameSize = value.length == capacity;
-        val recordIsSmallerAndCrcEnabled = disableCrc32 == false && value.length < capacity;
+        val recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
 
         // can update in place if the record is same size no matter whether CRC32 is enabled.
         // if record is smaller then we can only update in place if we have a CRC32 to validate which data length is valid
@@ -517,15 +515,13 @@ public class FileRecordStore {
             updateFreeSpaceIndex(updateMeHeader);
             // write the main data
             writeRecordData(updateMeHeader, value);
-            // update it main CRC
-            updateMeHeader.crc32 = crc;
             // write the header with the main CRC
             writeRecordHeaderToIndex(updateMeHeader);
             return;
         }
 
         // if last record expand or contract the file
-        val endOfRecord = updateMeHeader.dataPointer + updateMeHeader.dataCount;
+        val endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
         val fileLength = getFileLength();
         if (endOfRecord == fileLength) {
             updateMeHeader.dataCount = value.length;
@@ -533,7 +529,6 @@ public class FileRecordStore {
             updateMeHeader.setDataCapacity(value.length);
             updateFreeSpaceIndex(updateMeHeader);
             writeRecordData(updateMeHeader, value);
-            updateMeHeader.crc32 = crc;
             writeRecordHeaderToIndex(updateMeHeader);
             return;
         }
@@ -547,9 +542,9 @@ public class FileRecordStore {
             // new record is expanded old record
             newRecord.dataCount = value.length;
             writeRecordData(newRecord, value);
-            newRecord.crc32 = crc;
             writeRecordHeaderToIndex(newRecord);
-            replaceEntryInIndex(key, updateMeHeader, newRecord);
+            // nothing to do but lets subclasses do additional bookwork
+            memIndex.put(keyOf(key), newRecord);
             if (previous != null) {
                 // append space of deleted record onto previous record
                 previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
@@ -588,7 +583,7 @@ public class FileRecordStore {
         byte[] buf = new byte[len];
         file.readFully(buf);
 
-        if (disableCrc32 == false) {
+        if (!disableCrc32) {
             byte[] crcBytes = new byte[8];
             file.readFully(crcBytes);
             val expectedCrc = (new DataInputStream(new ByteArrayInputStream(crcBytes))).readLong();
@@ -679,7 +674,8 @@ public class FileRecordStore {
         // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
             RecordHeader first = getRecordAt(dataStartPtr);
-            byte[] data = readRecordData(first);
+			assert first != null;
+			byte[] data = readRecordData(first);
             long fileLen = getFileLength();
             first.dataPointer = fileLen;
             int dataLength = payloadLength(data.length);
@@ -696,7 +692,7 @@ public class FileRecordStore {
     @SneakyThrows
     @Synchronized
     public void dumpHeaders(PrintStream out, boolean disableCrc32) {
-        val oldDiableCrc32 = this.disableCrc32;
+        val oldDisableCdc32 = this.disableCrc32;
         try {
             this.disableCrc32 = disableCrc32;
             out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), getFileLength(), dataStartPtr));
@@ -719,8 +715,11 @@ public class FileRecordStore {
                 out.println(String.format("%d data  len=%d data=%s", index, data.length, d));
             }
         } finally {
-            this.disableCrc32 = oldDiableCrc32;
+            this.disableCrc32 = oldDisableCdc32;
         }
+    }
 
+    public int size() {
+        return getNumRecords();
     }
 }

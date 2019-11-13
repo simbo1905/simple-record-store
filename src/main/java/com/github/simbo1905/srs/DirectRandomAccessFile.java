@@ -15,8 +15,6 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 		randomAccessFile.getChannel().force(false);
 	}
 
-
-
 	public int read(byte[] b) throws IOException {
 		return randomAccessFile.read(b);
 	}
@@ -24,8 +22,6 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 	public final void readFully(byte[] b) throws IOException {
 		randomAccessFile.readFully(b);
 	}
-
-
 
 	public void write(int b) throws IOException {
 		randomAccessFile.write(b);
@@ -38,8 +34,6 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 	public void write(byte[] b, int off, int len) throws IOException {
 		randomAccessFile.write(b, off, len);
 	}
-
-
 
 	public void seek(long pos) throws IOException {
 		randomAccessFile.seek(pos);
@@ -57,13 +51,9 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 		randomAccessFile.close();
 	}
 
-
-
 	public final byte readByte() throws IOException {
 		return randomAccessFile.readByte();
 	}
-
-
 
 	public final int readInt() throws IOException {
 		return randomAccessFile.readInt();
@@ -72,7 +62,6 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 	public final long readLong() throws IOException {
 		return randomAccessFile.readLong();
 	}
-
 
 	public final void writeInt(int v) throws IOException {
 		randomAccessFile.writeInt(v);
@@ -85,6 +74,4 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 	public DirectRandomAccessFile(RandomAccessFile randomAccessFile) {
 		this.randomAccessFile = randomAccessFile;
 	}
-
-
 }

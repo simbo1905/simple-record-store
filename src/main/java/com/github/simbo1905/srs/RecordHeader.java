@@ -24,16 +24,6 @@ public class RecordHeader {
 	 */
 	protected int dataCount;
 
-	protected int dataCountTmp;
-
-	public int getDataCountTmp() {
-		return dataCountTmp;
-	}
-
-	public void setDataCountTmp(int dataCountTmp) {
-		this.dataCountTmp = dataCountTmp;
-	}
-
 	/*
 	 * Number of bytes of data that this record can hold (4 bytes).
 	 */
@@ -52,17 +42,7 @@ public class RecordHeader {
 	 */
 	protected int indexPosition;
 
-	protected Long crc32 = Long.valueOf(-1);
-
-	public void setCrc32(long crc32) {
-		this.crc32 = crc32;
-	}
-
-	protected Long crc32tmp = Long.valueOf(-1);
-
-	public void setTempCrc32(long crc32tmp) {
-		this.crc32tmp = crc32tmp;
-	}
+	long crc32 = -1;
 
 	protected RecordHeader(){}
 
@@ -71,9 +51,7 @@ public class RecordHeader {
 		this.dataCount = copyMe.dataCount;
 		this.dataCapacity = copyMe.dataCapacity;
 		this.indexPosition = copyMe.indexPosition;
-		this.setCrc32(copyMe.crc32.longValue());
-		this.setTempCrc32(copyMe.crc32tmp.longValue());
-		this.setDataCountTmp(copyMe.getDataCountTmp());
+		this.crc32 = copyMe.crc32;
 	}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
@@ -86,8 +64,12 @@ public class RecordHeader {
 		this.indexPosition = indexPosition;
 	}
 
-	protected int getFreeSpace() {
-		return dataCapacity - dataCount;
+	protected int getFreeSpace(boolean disableCrc32) {
+		int len = dataCount + 4; // for length prefix
+		if(!disableCrc32) {
+			len += 8;
+		}
+		return dataCapacity - len;
 	}
 
 	/*
@@ -103,12 +85,7 @@ public class RecordHeader {
 		dataPointer = buffer.getLong();
 		dataCapacity = buffer.getInt();
 		dataCount = buffer.getInt();
-		long crc32 = buffer.getLong();
-		this.setCrc32(crc32);
-		long crc32tmp = buffer.getLong();
-		this.setTempCrc32(crc32tmp);
-		int dataCountTmp = buffer.getInt();
-		this.setDataCountTmp(dataCountTmp);
+		this.crc32 = buffer.getLong();
 	}
 
 	/*
@@ -123,9 +100,7 @@ public class RecordHeader {
 		buffer.putLong(dataPointer);
 		buffer.putInt(dataCapacity);
 		buffer.putInt(dataCount);
-		buffer.putLong(crc32.longValue());
-		buffer.putLong(crc32tmp.longValue());
-		buffer.putInt(dataCountTmp);
+		buffer.putLong(crc32);
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 	}
 
@@ -139,9 +114,9 @@ public class RecordHeader {
 	 * Returns a new record header which occupies the free space of this record.
 	 * Shrinks this record size by the size of its free space.
 	 */
-	protected RecordHeader split() {
-		long newFp = dataPointer + (long) dataCount;
-		RecordHeader newRecord = new RecordHeader(newFp, getFreeSpace());
+	protected RecordHeader split(boolean disableCrc32, int padding) {
+		long newFp = dataPointer + dataCount + padding;
+		RecordHeader newRecord = new RecordHeader(newFp, getFreeSpace(disableCrc32));
 		dataCapacity = dataCount;
 		return newRecord;
 	}

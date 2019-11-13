@@ -4,10 +4,7 @@ import lombok.Synchronized;
 import lombok.val;
 
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.zip.CRC32;
@@ -63,7 +60,7 @@ public class FileRecordStore extends BaseRecordStore {
 	@Override
 	@Synchronized
 	public Iterable<String> keys() {
-		return memIndex.keySet();
+		return new HashSet(memIndex.keySet());
 	}
 	
 	/*
@@ -107,7 +104,7 @@ public class FileRecordStore extends BaseRecordStore {
 	Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
 		@Override
 		public int compare(RecordHeader o1, RecordHeader o2) {
-			return (int)(o1.getFreeSpace() - o2.getFreeSpace());
+			return (int)(o1.getFreeSpace(true) - o2.getFreeSpace(true));
 		}
 	};
 
@@ -123,7 +120,7 @@ public class FileRecordStore extends BaseRecordStore {
 	 */
 	@Override
 	protected void updateFreeSpaceIndex(RecordHeader rh) {
-		int free = rh.getFreeSpace();
+		int free = rh.getFreeSpace(disableCrc32);
 		if( free > 0 ){
 			freeMap.put(rh,free);
 		} else {
@@ -138,19 +135,38 @@ public class FileRecordStore extends BaseRecordStore {
 	@Override
 	protected RecordHeader allocateRecord(byte[] key, int dataLength)
 			throws IOException {
+
+		// we needs space for the length int and the optional long crc32
+		int payloadLength = payloadLength(dataLength);
+
 		// we pad the record to be at least the size of a header to avoid moving many values to expand the the index
-		int dataLengthPadded = getDataLengthPadded(dataLength);
-		// search for empty space
+		int dataLengthPadded = getDataLengthPadded(payloadLength);
+
+		// FIFO deletes cause free space after the index.
+		long dataStart = readDataStartHeader();
+		long endIndexPtr = indexPositionToKeyFp(getNumRecords());
+		// we prefer speed overs space so we leave space for the header for this insert plus one for future use
+		long available = dataStart - endIndexPtr -  (2 * RECORD_HEADER_LENGTH);
+
 		RecordHeader newRecord = null;
+
+		if (dataLengthPadded <= available) {
+			newRecord = new RecordHeader(dataStart - dataLengthPadded, dataLengthPadded);
+			writeRecordHeaderToIndex(newRecord);
+			return newRecord;
+		}
+
+		// search for empty space
 		for (RecordHeader next : this.freeMap.keySet() ) {
-			int free = next.getFreeSpace();
+			int free = next.getFreeSpace(disableCrc32);
 			if (dataLengthPadded <= free) {
-				newRecord = next.split();
+				newRecord = next.split(disableCrc32, payloadLength(0));
 				updateFreeSpaceIndex(next);
 				writeRecordHeaderToIndex(next);
 				break;
 			}
 		}
+
 		if (newRecord == null) {
 			// append record to end of file - grows file to allocate space
 			long fp = getFileLength();
@@ -169,8 +185,7 @@ public class FileRecordStore extends BaseRecordStore {
 	 * ToDo speed this search up with an index into the map
 	 */
 	@Override
-	protected RecordHeader getRecordAt(long targetFp)
-			throws RecordsFileException {
+	protected RecordHeader getRecordAt(long targetFp) {
 		for( RecordHeader next : this.memIndex.values() ){
 			if (targetFp >= next.dataPointer
 					&& targetFp < next.dataPointer + (long) next.getDataCapacity()) {
@@ -200,7 +215,7 @@ public class FileRecordStore extends BaseRecordStore {
 	 */
 	@Override
 	protected void addEntryToIndex(byte[] key, RecordHeader newRecord,
-			int currentNumRecords) throws IOException, RecordsFileException {
+			int currentNumRecords) throws IOException {
 		super.addEntryToIndex(key, newRecord, currentNumRecords);
 		memIndex.put(keyOf(key), newRecord);
 	}
@@ -241,46 +256,19 @@ public class FileRecordStore extends BaseRecordStore {
 			final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
 			final byte[] bk = recordFile.readKeyFromIndex(index);
 			final String k = keyOf(bk);
-			out.println(String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s, crc32tmp=%s",
+			out.println(String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
 					index,
 					k,
 					header.indexPosition,
 					header.getDataCapacity(),
-					header.dataPointer,
 					header.dataCount,
-					header.crc32,
-					header.dataCountTmp,
-					header.crc32tmp
+					header.dataPointer,
+					header.crc32
 			));
 			final byte[] data = recordFile.readRecordData(bk);
-			CRC32 crc32 = new CRC32();
-			crc32.update(data, 0, header.dataCount);
-			long crcActual = crc32.getValue();
-			boolean good = header.crc32.longValue() == crcActual;
-			if( good ){
-				String d = deserializerString.apply(data);
-				out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
-			} else {
-				crc32.reset();
-				crc32.update(data, 0, header.dataCountTmp);
-				long crcActualTmp = crc32.getValue();
-				good = header.crc32tmp.longValue() == crcActualTmp;
-				if( good ) {
-					if( data.length == header.dataCountTmp ){
-						String d = deserializerString.apply(data);
-						out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
-					} else {
-						byte[] less = new byte[header.dataCountTmp];
-						System.arraycopy(data, 0, less, 0, header.dataCountTmp);
-						String d = deserializerString.apply(less);
-						out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
 
-					}
-				} else {
-					String d = deserializerString.apply(data);
-					out.println(String.format("%d data  Data=%s, len=%d, crcActual=%s, crcGood=true", index, d, data.length, good));
-				}
-			}
+			String d = deserializerString.apply(data);
+			out.println(String.format("%d data  len=%d data=%s", index, data.length, d));
 		}
 	}
 }

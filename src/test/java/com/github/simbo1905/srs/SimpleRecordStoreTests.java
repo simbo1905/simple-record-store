@@ -5,8 +5,7 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -14,6 +13,7 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.zip.CRC32;
 
 import static com.github.simbo1905.srs.BaseRecordStore.*;
 import static org.hamcrest.Matchers.is;
@@ -144,7 +144,7 @@ public class SimpleRecordStoreTests {
 
         LOGGER.info("reading record...");
         Date d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
-        System.out.println("\tlast access was at: " + d.toString());
+        // System.out.println("\tlast access was at: " + d.toString());
 
         Assert.assertEquals(date, d);
 
@@ -153,7 +153,7 @@ public class SimpleRecordStoreTests {
 
         LOGGER.info("reading record...");
         d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
-        System.out.println("\tlast access was at: " + d.toString());
+        // System.out.println("\tlast access was at: " + d.toString());
 
         LOGGER.info("deleting record...");
         recordsFile.deleteRecord(keyOf("foo.lastAccessTime"));
@@ -189,6 +189,7 @@ public class SimpleRecordStoreTests {
     private void writeUuid(UUID k) throws RecordsFileException, IOException {
         writeUuid(k, k);
     }
+
     private void writeString(String k) throws RecordsFileException, IOException {
         writeString(k, k);
     }
@@ -233,6 +234,22 @@ public class SimpleRecordStoreTests {
         byte[] key = serializerString.apply(k);
         byte[] value = serializerString.apply(v1 + v2);
         recordsFile.updateRecord(key, value);
+    }
+
+    @Test
+    public void testInsertOneRecord() throws Exception {
+        // given
+        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        List<UUID> uuids = createUuid(1);
+
+        // when
+        UUID uuid0 = uuids.get(0);
+        writeUuid(uuid0);
+
+        // then
+        String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+
+        Assert.assertThat(put0, is(uuid0.toString()));
     }
 
     @Test
@@ -354,10 +371,47 @@ public class SimpleRecordStoreTests {
                 UUID uuid1 = uuids.get(1);
                 UUID uuid2 = uuids.get(2);
 
+                // System.out.println("\nbefore write uuid0 -----------------");
+
                 writeUuid(uuid0);
+
+                // System.out.println("\nafter write uuid0 -----------------");
+                // System.out.println("\nmemory: ");
+                //recordsFile.dumpHeaders(// System.out, true);
+                // System.out.println("\ndisk: ");
+                FileRecordStore.dumpFile(fileName, false);
+
+                // System.out.println("\nbefore write uuid1 -----------------");
+
+
                 writeUuid(uuid1);
+
+                // System.out.println("\nafter write uuid1 -----------------");
+                // System.out.println("\nmemory: ");
+                //recordsFile.dumpHeaders(// System.out, true);
+                // System.out.println("\ndisk: ");
+                FileRecordStore.dumpFile(fileName, false);
+
+                // System.out.println("\nbefore delete uuid0 -----------------");
+
                 recordsFile.deleteRecord(keyOf(uuid0.toString()));
+
+                // System.out.println("\nafter delete uuid0 -----------------");
+                // System.out.println("\nmemory: ");
+                //ecordsFile.dumpHeaders(// System.out, true);
+                // System.out.println("\ndisk: ");
+                FileRecordStore.dumpFile(fileName, false);
+                // System.out.flush();
+
+                // System.out.println("\nbefore write uuid2 -----------------");
+
                 writeUuid(uuid2);
+
+                // System.out.println("\nafter write uuid2 -----------------");
+                // System.out.println("\nmemory: ");
+                //recordsFile.dumpHeaders(// System.out, true);
+                // System.out.println("\ndisk: ");
+                //FileRecordStore.dumpFile(fileName, true);
 
                 // then
                 String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
@@ -553,6 +607,7 @@ public class SimpleRecordStoreTests {
         String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
         Assert.assertThat(put2, is(last.toString()));
     }
+
     @Test
     public void testUpdateExpandFirstRecordWithIOExceptions() throws Exception {
         List<UUID> uuids = createUuid(2);
@@ -571,12 +626,6 @@ public class SimpleRecordStoreTests {
                 // when
                 writeUuid(first);
                 writeUuid(last);
-
-                System.out.println("normal>--------");
-                System.out.println("first="+first);
-                System.out.println(" last="+last);
-                FileRecordStore.dumpFile(fileName, true);
-                System.out.println("--------<normal");
 
                 updateUuid(first, last, last);
 
@@ -648,23 +697,23 @@ public class SimpleRecordStoreTests {
         // when
         writeUuid(uuid0);
 
-//        System.out.println(recordsFile.getFileLength());
+//        // System.out.println(recordsFile.getFileLength());
 //        printHeaders(hook);
 
         writeUuid(uuid1);
 
-//        System.out.println(recordsFile.getFileLength());
+//        // System.out.println(recordsFile.getFileLength());
 //        printHeaders(hook);
 
         updateUuid(uuid1, uuid1, uuid1);
 
-//        System.out.println(recordsFile.getFileLength());
+//        // System.out.println(recordsFile.getFileLength());
 //        printHeaders(hook);
 
         // then
         writeUuid(uuid2);
 
-//        System.out.println(recordsFile.getFileLength());
+//        // System.out.println(recordsFile.getFileLength());
 //        printHeaders(hook);
 
         updateUuid(uuid1, uuid3);
@@ -673,8 +722,8 @@ public class SimpleRecordStoreTests {
 
     private void printHeaders(AtomicReference<Map<String, RecordHeader>> hook) {
         val state = hook.get().values().stream().map(h -> h.toString()).collect(Collectors.joining("\n"));
-        System.out.println(state);
-        System.out.println();
+        // System.out.println(state);
+        // System.out.println();
     }
 
     @Test
@@ -997,6 +1046,36 @@ public class SimpleRecordStoreTests {
         } finally {
             removeFiles(localFileNames);
         }
+    }
+
+    @Test
+    public void testDataWriteMethod() throws Exception {
+        String data = "some data";
+        byte[] bytesOut = data.getBytes();
+        int lenOut = bytesOut.length;
+        CRC32 crc32 = new CRC32();
+        crc32.update(bytesOut, 0, lenOut);
+        long crcOut = crc32.getValue();
+
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bout);
+        out.writeInt(lenOut);
+        out.write(bytesOut);
+        out.writeLong(crcOut);
+        out.close();
+
+        byte[] wire = bout.toByteArray();
+
+        ByteArrayInputStream bin = new ByteArrayInputStream(wire);
+        DataInputStream in = new DataInputStream(bin);
+        int lenIn = in.readInt();
+        byte[] bytesIn = new byte[lenIn];
+        in.read(bytesIn);
+        long crcIn = in.readLong();
+
+        Assert.assertEquals(crcOut, crcIn);
+        Assert.assertEquals(lenOut, lenIn);
+        Assert.assertArrayEquals( bytesOut, bytesIn );
     }
 
 }

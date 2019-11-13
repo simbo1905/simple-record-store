@@ -80,8 +80,7 @@ public class FileRecordStore {
         setFileLength(FileRecordStore.this.dataStartPtr); // (i+1)th index entry would start.
         writeNumRecordsHeader(0);
         FileRecordStore.this.writeDataStartPtrHeader(FileRecordStore.this.dataStartPtr);
-        memIndex = Collections
-                .synchronizedMap(new HashMap<String, RecordHeader>(initialSize));
+        memIndex = new HashMap<String, RecordHeader>(initialSize);
     }
 
     /*
@@ -99,8 +98,7 @@ public class FileRecordStore {
         this.file = new DirectRandomAccessFile(new RandomAccessFile(f, accessFlags));
         FileRecordStore.this.dataStartPtr = readDataStartHeader();
         int numRecords = readNumRecordsHeader();
-        memIndex = Collections
-                .synchronizedMap(new HashMap<>(numRecords));
+        memIndex = new HashMap<>(numRecords);
         for (int i = 0; i < numRecords; i++) {
             byte[] key = readKeyFromIndex(i);
             val k = keyOf(key);
@@ -191,7 +189,6 @@ public class FileRecordStore {
         val k = keyOf(key);
         RecordHeader h = memIndex.get(k);
         if (h == null) {
-        	// FIXME use optional instead
             throw new IllegalArgumentException("Key not found: " + key);
         }
         return h;
@@ -381,6 +378,7 @@ public class FileRecordStore {
         }
     }
 
+    @Synchronized
     public void fsync() throws IOException {
         file.fsync();
     }

@@ -23,8 +23,8 @@ public class FileRecordStore {
     // Number of bytes in the record header.
     static final int RECORD_HEADER_LENGTH = 28;
 
-    // Total length in bytes of the global database headers. FIXME this should be long+int to 12?
-    private static final int FILE_HEADERS_REGION_LENGTH = 16;
+    // Total length in bytes of the global database headers.
+    private static final int FILE_HEADERS_REGION_LENGTH = 12;
     private static final int DEFAULT_MAX_KEY_LENGTH = 64;
 
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.

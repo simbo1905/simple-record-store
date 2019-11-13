@@ -12,7 +12,7 @@ import static com.github.simbo1905.srs.FileRecordStore.RECORD_HEADER_LENGTH;
 
 @ToString
 @EqualsAndHashCode
-public class RecordHeader {
+class RecordHeader {
 
 	/*
 	 * File pointer to the first byte of record data (8 bytes).
@@ -75,7 +75,7 @@ public class RecordHeader {
 	/*
 	 * Read as a single operation to avoid corruption
 	 */
-	protected void read(DataInput in) throws IOException {
+	protected void read(RandomAccessFileInterface in) throws IOException {
 		byte[] header = new byte[RECORD_HEADER_LENGTH];
 		in.readFully(header);
 		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
@@ -92,7 +92,7 @@ public class RecordHeader {
 	 * in order to improve the likelihood of not corrupting the header write as
 	 * a single operation
 	 */
-	protected void write(DataOutput out) throws IOException {
+	protected void write(RandomAccessFileInterface out) throws IOException {
 		if( dataCount < 0) {
 			throw new IllegalStateException("dataCount has not been initialized "+this.toString());
 		}
@@ -104,7 +104,7 @@ public class RecordHeader {
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 	}
 
-	protected static RecordHeader readHeader(DataInput in) throws IOException {
+	protected static RecordHeader readHeader(RandomAccessFileInterface in) throws IOException {
 		RecordHeader r = new RecordHeader();
 		r.read(in);
 		return r;

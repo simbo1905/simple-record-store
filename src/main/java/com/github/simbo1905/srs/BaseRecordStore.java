@@ -487,25 +487,28 @@ public abstract class BaseRecordStore {
     @Synchronized
     public void deleteRecord(byte[] key)
             throws RecordsFileException, IOException {
+
         RecordHeader delRec = keyToRecordHeader(key);
-        RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
         int currentNumRecords = getNumRecords();
         deleteEntryFromIndex(key, delRec, currentNumRecords);
+
         if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
             // shrink file since this is the last record in the file
             setFileLength(delRec.dataPointer);
-        } else {
-            if (previous != null) {
-                // append space of deleted record onto previous record
-                previous.incrementDataCapacity(delRec.getDataCapacity());
-                updateFreeSpaceIndex(previous);
-                writeRecordHeaderToIndex(previous);
-            } else {
-                // make free space at the end of the index area
-                writeDataStartPtrHeader(delRec.dataPointer);
-            }
+            return;
         }
-        //throw new AssertionError("this line should be unreachable");
+
+        RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
+
+        if (previous != null) {
+            // append space of deleted record onto previous record
+            previous.incrementDataCapacity(delRec.getDataCapacity());
+            updateFreeSpaceIndex(previous);
+            writeRecordHeaderToIndex(previous);
+        } else {
+            // make free space at the end of the index area
+            writeDataStartPtrHeader(delRec.dataPointer);
+        }
     }
 
     // Checks to see if there is space for and additional index entry. If

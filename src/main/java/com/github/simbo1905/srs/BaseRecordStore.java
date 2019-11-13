@@ -501,33 +501,11 @@ public abstract class BaseRecordStore {
                 updateFreeSpaceIndex(previous);
                 writeRecordHeaderToIndex(previous);
             } else {
-                // FIXME this is really bad for a FIFO! Why don't we just expand the index area and have special free space logic?
-                // target record is first in the file and is deleted by adding
-                // its space to the second record.
-                RecordHeader secondRecord = getRecordAt(delRec.dataPointer
-                        + (long) delRec.getDataCapacity());
-                byte[] data = readRecordData(secondRecord);
-
-                final long fp = getFileLength();
-                if (secondRecord.dataCount > delRec.dataCount) {
-                    // wont fit entirely in slot so risk of corrupting itself
-                    // make a backup at the end of the file first
-                    setFileLength(fp + secondRecord.dataCount);
-                    RecordHeader tempRecord = secondRecord.move(fp);
-                    writeRecordData(tempRecord, data);
-                    writeRecordHeaderToIndex(tempRecord);
-                }
-                secondRecord.dataPointer = delRec.dataPointer;
-                secondRecord.incrementDataCapacity(delRec.getDataCapacity());
-                updateFreeSpaceIndex(secondRecord);
-                writeRecordData(secondRecord, data);
-                writeRecordHeaderToIndex(secondRecord);
-                if (secondRecord.dataCount > delRec.dataCount) {
-                    // delete backup at the end of the file
-                    setFileLength(fp);
-                }
+                // make free space at the end of the index area
+                writeDataStartPtrHeader(delRec.dataPointer);
             }
         }
+        //throw new AssertionError("this line should be unreachable");
     }
 
     // Checks to see if there is space for and additional index entry. If

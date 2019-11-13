@@ -15,7 +15,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 
-import static com.github.simbo1905.srs.BaseRecordStore.*;
+import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThat;
 
@@ -94,7 +94,7 @@ public class SimpleRecordStoreTests {
         db.deleteOnExit();
     }
 
-    BaseRecordStore recordsFile = null;
+    FileRecordStore recordsFile = null;
 
     @After
     public void deleteDb() throws Exception {
@@ -186,51 +186,51 @@ public class SimpleRecordStoreTests {
         }, uuids);
     }
 
-    private void writeUuid(UUID k) throws RecordsFileException, IOException {
+    private void writeUuid(UUID k) throws IOException {
         writeUuid(k, k);
     }
 
-    private void writeString(String k) throws RecordsFileException, IOException {
+    private void writeString(String k) throws IOException {
         writeString(k, k);
     }
 
-    private void writeString(String k, String v) throws RecordsFileException, IOException {
+    private void writeString(String k, String v) throws IOException {
         byte[] key = serializerString.apply(k);
         byte[] value = serializerString.apply(v);
         recordsFile.insertRecord(key, value);
     }
 
-    private void writeUuid(UUID k, UUID v) throws RecordsFileException, IOException {
+    private void writeUuid(UUID k, UUID v) throws IOException {
         byte[] key = serializerString.apply(k.toString());
         byte[] value = serializerString.apply(v.toString());
         recordsFile.insertRecord(key, value);
     }
 
-    private void writeUuid(UUID k, UUID v, UUID v2) throws RecordsFileException, IOException {
+    private void writeUuid(UUID k, UUID v, UUID v2) throws IOException {
         byte[] key = serializerString.apply(k.toString());
         byte[] value = serializerString.apply(v.toString() + v2.toString());
         recordsFile.insertRecord(key, value);
     }
 
-    private void updateUuid(UUID k, UUID v) throws RecordsFileException, IOException {
+    private void updateUuid(UUID k, UUID v) throws IOException {
         byte[] key = serializerString.apply(k.toString());
         byte[] value = serializerString.apply(v.toString());
         recordsFile.updateRecord(key, value);
     }
 
-    private void updateString(String k, String v) throws RecordsFileException, IOException {
+    private void updateString(String k, String v) throws IOException {
         byte[] key = serializerString.apply(k);
         byte[] value = serializerString.apply(v);
         recordsFile.updateRecord(key, value);
     }
 
-    private void updateUuid(UUID k, UUID v1, UUID v2) throws RecordsFileException, IOException {
+    private void updateUuid(UUID k, UUID v1, UUID v2) throws IOException {
         byte[] key = serializerString.apply(k.toString());
         byte[] value = serializerString.apply(v1.toString() + v2.toString());
         recordsFile.updateRecord(key, value);
     }
 
-    private void updateString(String k, String v1, String v2) throws RecordsFileException, IOException {
+    private void updateString(String k, String v1, String v2) throws IOException {
         byte[] key = serializerString.apply(k);
         byte[] value = serializerString.apply(v1 + v2);
         recordsFile.updateRecord(key, value);
@@ -1027,7 +1027,7 @@ public class SimpleRecordStoreTests {
                 try {
                     interceptedOperations.performTestOperations(crashAt, localFileName, uuids, written);
                 } catch (Exception ioe) {
-                    BaseRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
+                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
                     try {
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {

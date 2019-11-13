@@ -1,6 +1,5 @@
 package com.github.simbo1905.srs.test;
 
-import com.github.simbo1905.srs.BaseRecordStore;
 import com.github.simbo1905.srs.FileRecordStore;
 import com.github.simbo1905.srs.SimpleRecordStoreTests;
 import lombok.val;
@@ -13,13 +12,13 @@ import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.github.simbo1905.srs.BaseRecordStore.deserializerString;
-import static com.github.simbo1905.srs.BaseRecordStore.serializerString;
+import static com.github.simbo1905.srs.FileRecordStore.deserializerString;
+import static com.github.simbo1905.srs.FileRecordStore.serializerString;
 import static org.hamcrest.Matchers.is;
 
 public class SimpleRecordStoreApiTests {
     String fileName;
-    BaseRecordStore recordsFile = null;
+    FileRecordStore recordsFile = null;
     int initialSize;
     static final String TMP = System.getProperty("java.io.tmpdir");
 
@@ -66,7 +65,7 @@ public class SimpleRecordStoreApiTests {
 
         this.recordsFile.fsync();
 
-        val data = this.recordsFile.readRecordData(BaseRecordStore.keyOf(uuid.toString()));
+        val data = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
         Assert.assertThat(deserializerString.apply(data), is(uuid.toString()));
 
         this.recordsFile.updateRecord(serializerString.apply(uuid), serializerString.apply("updated"));
@@ -77,7 +76,7 @@ public class SimpleRecordStoreApiTests {
 
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
-        val updated = this.recordsFile.readRecordData(BaseRecordStore.keyOf(uuid.toString()));
+        val updated = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
         Assert.assertThat(deserializerString.apply(updated), is("updated"));
     }
 

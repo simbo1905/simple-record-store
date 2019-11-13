@@ -8,7 +8,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
-import static com.github.simbo1905.srs.BaseRecordStore.RECORD_HEADER_LENGTH;
+import static com.github.simbo1905.srs.FileRecordStore.RECORD_HEADER_LENGTH;
 
 @ToString
 @EqualsAndHashCode

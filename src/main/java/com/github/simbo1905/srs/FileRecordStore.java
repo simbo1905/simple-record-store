@@ -10,14 +10,13 @@ import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
-import java.util.zip.CRC32;
-
-import java.util.logging.Logger;
 import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.zip.CRC32;
 
 public class FileRecordStore {
 
-    private final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
+    final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     public static final Function<String, byte[]> serializerString = FileRecordStore::stringToBytes;
     public static final Function<byte[], String> deserializerString = FileRecordStore::bytesToString;
@@ -240,7 +239,7 @@ public class FileRecordStore {
         long dataStart = readDataStartHeader();
         long endIndexPtr = indexPositionToKeyFp(getNumRecords());
         // we prefer speed overs space so we leave space for the header for this insert plus one for future use
-        long available = dataStart - endIndexPtr - (2 * RECORD_HEADER_LENGTH);
+        long available = dataStart - endIndexPtr - (2 * INDEX_ENTRY_LENGTH);
 
         RecordHeader newRecord = null;
 
@@ -315,9 +314,14 @@ public class FileRecordStore {
                     "Key is larger than permitted size of " + MAX_KEY_LENGTH
                             + " bytes. Actual: " + key.length);
         }
-        file.seek(indexPositionToKeyFp(currentNumRecords));
-        file.write((byte) key.length);
+        val fpk = indexPositionToKeyFp(currentNumRecords);
+        file.seek(fpk);
+        val len = (byte) key.length;
+        file.write(len);
         file.write(key);
+
+        FileRecordStore.logger.log(Level.FINEST, ">k fp:{0} len:{1} bytes:{2}", new Object[]{fpk, len, print(key) });
+
         file.seek(this.indexPositionToRecordHeaderFp(currentNumRecords));
         newRecord.write(file);
         newRecord.setIndexPosition(currentNumRecords);
@@ -445,10 +449,12 @@ public class FileRecordStore {
      * Reads the ith key from the index.
      */
 	private byte[] readKeyFromIndex(int position) throws IOException {
-        file.seek(indexPositionToKeyFp(position));
+	    val fp = indexPositionToKeyFp(position);
+        file.seek(fp);
         byte len = file.readByte();
         byte[] key = new byte[len];
         file.read(key);
+        FileRecordStore.logger.log(Level.FINEST, "<k  fp:{0} len:{1} bytes:{2}", new Object[]{fp, len, print(key) });
         return key;
     }
 
@@ -577,6 +583,13 @@ public class FileRecordStore {
         byte[] lenBytes = new byte[4];
         file.readFully(lenBytes);
         int len = (new DataInputStream(new ByteArrayInputStream(lenBytes))).readInt();
+        logger.log(Level.FINEST,
+                "<d fp:{0} len:{1} bytes:{2} ",
+                new Object[]{header.dataPointer, len, print(lenBytes)});
+
+        assert header.dataPointer + len < getFileLength():
+                String.format("attempting to read up to %d beyond length of file %d",
+                        (header.dataCount + len), getFileLength());
 
         // read the body
         byte[] buf = new byte[len];
@@ -591,10 +604,12 @@ public class FileRecordStore {
 
             val actualCrc = crc32.getValue();
 
-            //System.out.println(String.format("< in=crs:%d, len:%d %s bytes:%s", actualCrc, len, bytesToString(buf), print(buf)));
+            logger.log(Level.FINEST,
+                    "<d fp:{0} len:{1} crc:{2} data:{3} bytes:{4}",
+                    new Object[]{header.dataPointer+4, len, actualCrc, bytesToString(buf), print(buf)});
 
             if (actualCrc != expectedCrc) {
-                throw new IllegalStateException(String.format("CRC32 check failed for data length %d with header %s", buf.length, header.toString()));
+                throw new IllegalStateException(String.format("CRC32 check failed for data length {0} with header {1}", buf.length, header.toString()));
             }
         }
 
@@ -627,7 +642,9 @@ public class FileRecordStore {
         val payload = bout.toByteArray();
         file.seek(header.dataPointer);
         file.write(payload, 0, payload.length);
-        //System.out.println(String.format(">out=crs:%d, len:%d %s bytes:%s", crc, data.length, bytesToString(data), print(data)));
+        byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
+        logger.log(Level.FINEST, ">d fp:{0} len:{1} bytes:{2}", new Object[]{header.dataPointer, payload.length, print(lenBytes) });
+        logger.log(Level.FINEST, ">d fp:{0} len:{1} crc:{2} data:{3} bytes:{4}", new Object[]{header.dataPointer+4, payload.length, crc, bytesToString(payload), print(data)});
     }
 
     /*
@@ -690,7 +707,7 @@ public class FileRecordStore {
 
     @SneakyThrows
     @Synchronized
-    public void dumpHeaders(Level level, boolean disableCrc32) {
+    public void logAll(Level level, boolean disableCrc32) {
         val oldDisableCdc32 = this.disableCrc32;
         try {
             this.disableCrc32 = disableCrc32;

@@ -5,7 +5,8 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -16,7 +17,8 @@ import java.util.stream.Collectors;
 
 import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThat;
 
 /**
  * Tests that the simple random access storage 'db' works and does not get
@@ -1158,9 +1160,31 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
+
+                logger.log(Level.INFO, "insertRecord one:");
+
                 recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+
+                logger.log(Level.INFO, "mem after insert one ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert one ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                logger.log(Level.INFO, "updateRecord one:");
                 recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneSmall));
+
+                logger.log(Level.INFO, "mem after insert one ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert one ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                logger.log(Level.INFO, "updateRecord one:");
                 recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+
+                logger.log(Level.INFO, "mem after insert one ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert one ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
@@ -1264,31 +1288,84 @@ public class SimpleRecordStoreTests {
                 // when
                 recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
 
-                logger.log(Level.INFO, "after insert one ----------------------");
-                recordsFile.dumpHeaders(Level.INFO,false);
+//                logger.log(Level.INFO, "after insert one ----------------------");
+//                recordsFile.dumpHeaders(Level.INFO,false);
 
                 recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
-
-                logger.log(Level.INFO, "after insert two ----------------------");
-                recordsFile.dumpHeaders(Level.INFO,false);
 
                 val maxLen = recordsFile.getFileLength();
                 recordsFile.deleteRecord(keyOf("one"));
 
-                logger.log(Level.INFO, "after delete one ----------------------");
-                recordsFile.dumpHeaders(Level.INFO,false);
-
                 recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
-
-                logger.log(Level.INFO, "after insert three ----------------------");
-                recordsFile.dumpHeaders(Level.INFO,false);
-
 
                 val finalLen = recordsFile.getFileLength();
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
                 assertEquals(maxLen, finalLen);
+            }
+        });
+    }
+
+    static {
+        Logger.getLogger("").setLevel(Level.FINEST);
+        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
+    }
+
+    @Test
+    public void testFreeSpaceInMiddleWithIOExceptions() throws Exception {
+        final String one = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
+        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        final String three = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+        final String four = Collections.nCopies( 38, "4" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+
+                // when
+                logger.log(Level.INFO, "insertRecord one:");
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(one));
+
+                logger.log(Level.INFO, "mem after insert one ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert one ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                logger.log(Level.INFO, "insertRecord two:");
+
+                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
+
+                logger.log(Level.INFO, "mem after insert two ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert two ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                logger.log(Level.INFO, "insertRecord three:");
+                recordsFile.insertRecord(keyOf("three"), serializerString.apply(three));
+
+                logger.log(Level.INFO, "mem after insert three ----------------------");
+                recordsFile.logAll(Level.INFO,false);
+                logger.log(Level.INFO, "disk after insert three ----------------------");
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                val maxLen = recordsFile.getFileLength();
+                recordsFile.deleteRecord(keyOf("two"));
+
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                recordsFile.insertRecord(keyOf("four"), serializerString.apply(four));
+
+                FileRecordStore.dumpFile(Level.INFO, fileName, true);
+
+                val finalLen = recordsFile.getFileLength();
+
+                // then
+                Assert.assertEquals(3, recordsFile.size());
+                //assertEquals(maxLen, finalLen);
             }
         });
     }

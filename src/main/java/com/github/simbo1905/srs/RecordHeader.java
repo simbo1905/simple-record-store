@@ -2,11 +2,14 @@ package com.github.simbo1905.srs;
 
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
+import lombok.val;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.logging.Level;
 
 import static com.github.simbo1905.srs.FileRecordStore.RECORD_HEADER_LENGTH;
+import static com.github.simbo1905.srs.FileRecordStore.print;
 
 @ToString
 @EqualsAndHashCode
@@ -67,7 +70,10 @@ class RecordHeader {
 	 */
 	protected void read(RandomAccessFileInterface in) throws IOException {
 		byte[] header = new byte[RECORD_HEADER_LENGTH];
+		val fp = in.getFilePointer();
 		in.readFully(header);
+		FileRecordStore.logger.log(Level.FINEST, "<h fp:{0} len:{1} bytes:{2}", new Object[]{fp, header.length, print(header) });
+
 		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.put(header);
 		buffer.flip();
@@ -86,12 +92,15 @@ class RecordHeader {
 		if( dataCount < 0) {
 			throw new IllegalStateException("dataCount has not been initialized "+this.toString());
 		}
+		val fp = out.getFilePointer();
 		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.putLong(dataPointer);
 		buffer.putInt(dataCapacity);
 		buffer.putInt(dataCount);
 		buffer.putLong(crc32);
+		val array = buffer.array();
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
+		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} len:{1} bytes:{2}", new Object[]{fp, array.length, print(array) });
 	}
 
 	protected static RecordHeader readHeader(RandomAccessFileInterface in) throws IOException {

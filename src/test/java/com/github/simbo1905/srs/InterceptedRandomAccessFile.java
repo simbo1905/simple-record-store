@@ -18,7 +18,11 @@ public final class InterceptedRandomAccessFile implements RandomAccessFileInterf
 
 	@Override
 	public void fsync() throws IOException {
+	}
 
+	@Override
+	public long getFilePointer() throws IOException {
+		return file.getFilePointer();
 	}
 
 	/* (non-Javadoc)

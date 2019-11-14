@@ -11,6 +11,11 @@ final class DirectRandomAccessFile implements RandomAccessFileInterface {
 	final private RandomAccessFile randomAccessFile;
 
 	@Override
+	public long getFilePointer() throws IOException {
+		return randomAccessFile.getFilePointer();
+	}
+
+	@Override
 	public void fsync() throws IOException {
 		randomAccessFile.getChannel().force(false);
 	}

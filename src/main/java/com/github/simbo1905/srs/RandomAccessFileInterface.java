@@ -13,37 +13,39 @@ interface RandomAccessFileInterface {
 	 */
 	void fsync() throws IOException;
 
-	public abstract int hashCode();
+	long getFilePointer() throws IOException;
 
-	public abstract boolean equals(Object obj);
+	int hashCode();
 
-	public abstract String toString();
+	boolean equals(Object obj);
 
-	public abstract int read(byte[] b) throws IOException;
+	String toString();
 
-	public abstract void readFully(byte[] b) throws IOException;
+	int read(byte[] b) throws IOException;
 
-	public abstract void write(int b) throws IOException;
+	void readFully(byte[] b) throws IOException;
 
-	public abstract void write(byte[] b) throws IOException;
+	void write(int b) throws IOException;
 
-	public abstract void write(byte[] b, int off, int len) throws IOException;
+	void write(byte[] b) throws IOException;
 
-	public abstract void seek(long pos) throws IOException;
+	void write(byte[] b, int off, int len) throws IOException;
 
-	public abstract long length() throws IOException;
+	void seek(long pos) throws IOException;
 
-	public abstract void setLength(long newLength) throws IOException;
+	long length() throws IOException;
 
-	public abstract void close() throws IOException;
+	void setLength(long newLength) throws IOException;
 
-	public abstract byte readByte() throws IOException;
+	void close() throws IOException;
 
-	public abstract int readInt() throws IOException;
+	byte readByte() throws IOException;
 
-	public abstract long readLong() throws IOException;
+	int readInt() throws IOException;
 
-	public abstract void writeInt(int v) throws IOException;
+	long readLong() throws IOException;
 
-	public abstract void writeLong(long v) throws IOException;
+	void writeInt(int v) throws IOException;
+
+	void writeLong(long v) throws IOException;
 }

@@ -300,6 +300,8 @@ public class FileRecordStore {
         } finally {
             memIndex.clear();
             memIndex = null;
+            freeMap.clear();
+            freeMap = null;
         }
     }
 
@@ -493,7 +495,7 @@ public class FileRecordStore {
     private int payloadLength(int raw) {
         int len = raw + 4; // for length prefix
         if (!disableCrc32) {
-            len += 8;
+            len += 8; // for crc32 long
         }
         return len;
     }

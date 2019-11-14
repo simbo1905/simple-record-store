@@ -12,10 +12,12 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
 import java.util.zip.CRC32;
 
-import static java.lang.System.err;
-import static java.lang.System.out;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 
 public class FileRecordStore {
+
+    private final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     public static final Function<String, byte[]> serializerString = FileRecordStore::stringToBytes;
     public static final Function<byte[], String> deserializerString = FileRecordStore::bytesToString;
@@ -346,22 +348,22 @@ public class FileRecordStore {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            err.println("not file passed");
+            System.err.println("no file passed");
         }
         final String filename = args[0];
-        out.println("Reading from " + filename);
+        logger.info("Reading from " + filename);
         boolean disableCrc32 = false;
-        dumpFile(filename, disableCrc32);
+        dumpFile(Level.INFO, filename, disableCrc32);
     }
 
-    static void dumpFile(String filename, boolean disableCrc) throws IOException {
+    static void dumpFile(Level level, String filename, boolean disableCrc) throws IOException {
         final FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc);
-        out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
+        logger.log(level, String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
         for (int index = 0; index < recordFile.getNumRecords(); index++) {
             final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
             final byte[] bk = recordFile.readKeyFromIndex(index);
             final String k = keyOf(bk);
-            out.println(String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+            logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                     index,
                     k,
                     header.indexPosition,
@@ -373,7 +375,7 @@ public class FileRecordStore {
             final byte[] data = recordFile.readRecordData(bk);
 
             String d = deserializerString.apply(data);
-            out.println(String.format("%d data  len=%d data=%s", index, data.length, d));
+            logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
         }
     }
 
@@ -653,7 +655,7 @@ public class FileRecordStore {
             writeRecordHeaderToIndex(previous);
         } else {
             // make free space at the end of the index area
-            writeDataStartPtrHeader(delRec.dataPointer);
+            writeDataStartPtrHeader(delRec.dataPointer + delRec.getDataCapacity());
         }
     }
 
@@ -688,16 +690,16 @@ public class FileRecordStore {
 
     @SneakyThrows
     @Synchronized
-    public void dumpHeaders(PrintStream out, boolean disableCrc32) {
+    public void dumpHeaders(Level level, boolean disableCrc32) {
         val oldDisableCdc32 = this.disableCrc32;
         try {
             this.disableCrc32 = disableCrc32;
-            out.println(String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), getFileLength(), dataStartPtr));
+            logger.log(level, String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), getFileLength(), dataStartPtr));
             for (int index = 0; index < getNumRecords(); index++) {
                 final RecordHeader header = readRecordHeaderFromIndex(index);
                 final byte[] bk = readKeyFromIndex(index);
                 final String k = keyOf(bk);
-                out.println(String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                         index,
                         k,
                         header.indexPosition,
@@ -709,7 +711,7 @@ public class FileRecordStore {
                 final byte[] data = readRecordData(bk);
 
                 String d = deserializerString.apply(data);
-                out.println(String.format("%d data  len=%d data=%s", index, data.length, d));
+                logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
             }
         } finally {
             this.disableCrc32 = oldDisableCdc32;

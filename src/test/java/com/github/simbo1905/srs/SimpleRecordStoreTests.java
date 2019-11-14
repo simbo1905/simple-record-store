@@ -24,6 +24,11 @@ import static org.junit.Assert.*;
  */
 public class SimpleRecordStoreTests {
 
+    static {
+        System.setProperty("java.util.logging.SimpleFormatter.format",
+                "%1$tT %4$s %2$s %5$s%6$s%n");
+    }
+
     /**
      * A utility to recored how many times file write operations are called
      * and what the stack looks like for them.
@@ -73,13 +78,13 @@ public class SimpleRecordStoreTests {
 
     static final String TMP = System.getProperty("java.io.tmpdir");
 
-    private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTests.class.getName());
+    private final static Logger logger = Logger.getLogger(SimpleRecordStoreTests.class.getName());
 
     String fileName;
     int initialSize;
 
     public SimpleRecordStoreTests() {
-        LOGGER.setLevel(Level.ALL);
+        logger.setLevel(Level.ALL);
         init(TMP + "junit.records", 0);
     }
 
@@ -135,34 +140,34 @@ public class SimpleRecordStoreTests {
     public void originalTest() throws Exception {
         recordsFile = new FileRecordStore(fileName, initialSize, false);
 
-        LOGGER.info("creating records file...");
+        logger.info("creating records file...");
 
-        LOGGER.info("adding a record...");
+        logger.info("adding a record...");
         final Date date = new Date();
         recordsFile.insertRecord(keyOf("foo.lastAccessTime"), serializerDate.apply(date));
 
-        LOGGER.info("reading record...");
+        logger.info("reading record...");
         Date d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
         // System.out.println("\tlast access was at: " + d.toString());
 
         Assert.assertEquals(date, d);
 
-        LOGGER.info("updating record...");
+        logger.info("updating record...");
         recordsFile.updateRecord(keyOf("foo.lastAccessTime"), serializerDate.apply(new Date()));
 
-        LOGGER.info("reading record...");
+        logger.info("reading record...");
         d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
         // System.out.println("\tlast access was at: " + d.toString());
 
-        LOGGER.info("deleting record...");
+        logger.info("deleting record...");
         recordsFile.deleteRecord(keyOf("foo.lastAccessTime"));
         if (recordsFile.recordExists(keyOf("foo.lastAccessTime"))) {
             throw new Exception("Record not deleted");
         } else {
-            LOGGER.info("record successfully deleted.");
+            logger.info("record successfully deleted.");
         }
 
-        LOGGER.info("test completed.");
+        logger.info("test completed.");
     }
 
     @Test
@@ -174,7 +179,7 @@ public class SimpleRecordStoreTests {
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
 
-                LOGGER.info(String.format("writing to: " + fileName));
+                logger.info(String.format("writing to: " + fileName));
 
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
@@ -378,7 +383,7 @@ public class SimpleRecordStoreTests {
                 // System.out.println("\nmemory: ");
                 //recordsFile.dumpHeaders(// System.out, true);
                 // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(fileName, false);
+                FileRecordStore.dumpFile(Level.INFO, fileName, false);
 
                 // System.out.println("\nbefore write uuid1 -----------------");
 
@@ -389,7 +394,7 @@ public class SimpleRecordStoreTests {
                 // System.out.println("\nmemory: ");
                 //recordsFile.dumpHeaders(// System.out, true);
                 // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(fileName, false);
+                FileRecordStore.dumpFile(Level.INFO, fileName, false);
 
                 // System.out.println("\nbefore delete uuid0 -----------------");
 
@@ -399,7 +404,7 @@ public class SimpleRecordStoreTests {
                 // System.out.println("\nmemory: ");
                 //ecordsFile.dumpHeaders(// System.out, true);
                 // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(fileName, false);
+                FileRecordStore.dumpFile(Level.INFO, fileName, false);
                 // System.out.flush();
 
                 // System.out.println("\nbefore write uuid2 -----------------");
@@ -1036,7 +1041,7 @@ public class SimpleRecordStoreTests {
                         }
                         assertThat(count, is(0));
                     } catch (Exception e) {
-                        FileRecordStore.dumpFile(localFileName, true);
+                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
                         throw new RuntimeException(msg, e);
                     }
@@ -1079,7 +1084,7 @@ public class SimpleRecordStoreTests {
                         }
                         assertThat(count, is(0));
                     } catch (Exception e) {
-                        FileRecordStore.dumpFile(localFileName, true);
+                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
                         throw new RuntimeException(msg, e);
                     }
@@ -1127,7 +1132,7 @@ public class SimpleRecordStoreTests {
                         }
                         assertThat(count, is(0));
                     } catch (Exception e) {
-                        FileRecordStore.dumpFile(localFileName, true);
+                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
                         throw new RuntimeException(msg, e);
                     }
@@ -1254,14 +1259,31 @@ public class SimpleRecordStoreTests {
             public void performTestOperations(WriteCallback wc,
                                               String fileName) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
                 recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+
+                logger.log(Level.INFO, "after insert one ----------------------");
+                recordsFile.dumpHeaders(Level.INFO,false);
+
                 recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+
+                logger.log(Level.INFO, "after insert two ----------------------");
+                recordsFile.dumpHeaders(Level.INFO,false);
+
                 val maxLen = recordsFile.getFileLength();
                 recordsFile.deleteRecord(keyOf("one"));
+
+                logger.log(Level.INFO, "after delete one ----------------------");
+                recordsFile.dumpHeaders(Level.INFO,false);
+
                 recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+
+                logger.log(Level.INFO, "after insert three ----------------------");
+                recordsFile.dumpHeaders(Level.INFO,false);
+
+
                 val finalLen = recordsFile.getFileLength();
 
                 // then

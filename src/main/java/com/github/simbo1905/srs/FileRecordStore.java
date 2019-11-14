@@ -244,7 +244,6 @@ public class FileRecordStore {
 
         if (dataLengthPadded <= available) {
             newRecord = new RecordHeader(dataStart - dataLengthPadded, dataLengthPadded);
-            writeRecordHeaderToIndex(newRecord);
             return newRecord;
         }
 

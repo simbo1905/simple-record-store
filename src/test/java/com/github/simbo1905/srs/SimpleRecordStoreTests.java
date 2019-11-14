@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 
 import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import static org.junit.Assert.*;
 
 /**
  * Tests that the simple random access storage 'db' works and does not get
@@ -1243,5 +1243,32 @@ public class SimpleRecordStoreTests {
         });
     }
 
+    @Test
+    public void testFreeSpaceInIndexWithIOExceptions() throws Exception {
+        final String oneLarge = Collections.nCopies( 1024, "1" ).stream().collect( Collectors.joining() );
+        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
+        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc,
+                                              String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+                // when
+                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+                val maxLen = recordsFile.getFileLength();
+                recordsFile.deleteRecord(keyOf("one"));
+                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+                val finalLen = recordsFile.getFileLength();
+
+                // then
+                Assert.assertEquals(2, recordsFile.size());
+                assertEquals(maxLen, finalLen);
+            }
+        });
+    }
 
 }

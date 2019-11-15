@@ -14,6 +14,7 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
@@ -1161,30 +1162,11 @@ public class SimpleRecordStoreTests {
 
                 // when
 
-                logger.log(Level.INFO, "insertRecord one:");
-
                 recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
 
-                logger.log(Level.INFO, "mem after insert one ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert one ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
-
-                logger.log(Level.INFO, "updateRecord one:");
                 recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneSmall));
 
-                logger.log(Level.INFO, "mem after insert one ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert one ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
-
-                logger.log(Level.INFO, "updateRecord one:");
                 recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
-
-                logger.log(Level.INFO, "mem after insert one ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert one ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
@@ -1327,47 +1309,44 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                logger.log(Level.INFO, "insertRecord one:");
                 recordsFile.insertRecord(keyOf("one"), serializerString.apply(one));
-
-                logger.log(Level.INFO, "mem after insert one ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert one ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
-
-                logger.log(Level.INFO, "insertRecord two:");
 
                 recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
 
-                logger.log(Level.INFO, "mem after insert two ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert two ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
-
-                logger.log(Level.INFO, "insertRecord three:");
                 recordsFile.insertRecord(keyOf("three"), serializerString.apply(three));
-
-                logger.log(Level.INFO, "mem after insert three ----------------------");
-                recordsFile.logAll(Level.INFO,false);
-                logger.log(Level.INFO, "disk after insert three ----------------------");
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
 
                 val maxLen = recordsFile.getFileLength();
                 recordsFile.deleteRecord(keyOf("two"));
 
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
-
                 recordsFile.insertRecord(keyOf("four"), serializerString.apply(four));
-
-                FileRecordStore.dumpFile(Level.INFO, fileName, true);
 
                 val finalLen = recordsFile.getFileLength();
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
-                //assertEquals(maxLen, finalLen);
+                assertEquals(maxLen, finalLen);
             }
         });
     }
 
+    @Test
+    public void testMaxKeySize() throws IOException {
+        try{
+            System.setProperty(FileRecordStore.class.getCanonicalName()+".MAX_KEY_LENGTH", "256");
+
+            // given
+            recordsFile = new FileRecordStore(fileName, initialSize, false);
+
+            // when
+            final String longestKey = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+            writeString(longestKey);
+
+            // then
+            String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(longestKey)));
+
+            Assert.assertThat(put0, is(longestKey.toString()));
+        } finally {
+            System.setProperty(FileRecordStore.class.getCanonicalName()+".MAX_KEY_LENGTH", "64");
+        }
+    }
 }

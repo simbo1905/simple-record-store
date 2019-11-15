@@ -32,12 +32,12 @@ public class FileRecordStore {
     // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
 	// unique about your data. Note we store binary keys with a header byte to indicate the real length of
     // the key so you need to +1 your max length
-    private static final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault();
+    private final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault();
     private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
 
     // The total length of one index entry - the key length plus the record
     // header length.
-    private static final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH
+    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH
             + RECORD_HEADER_LENGTH;
 
     // File pointer to the num records header.
@@ -145,7 +145,7 @@ public class FileRecordStore {
         return sb.toString();
     }
 
-    private static int getDataLengthPadded(int dataLength) {
+    private int getDataLengthPadded(int dataLength) {
         return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(INDEX_ENTRY_LENGTH, dataLength) : dataLength;
     }
 
@@ -453,7 +453,7 @@ public class FileRecordStore {
 	private byte[] readKeyFromIndex(int position) throws IOException {
 	    val fp = indexPositionToKeyFp(position);
         file.seek(fp);
-        byte len = file.readByte();
+        int len = file.readByte() & 0xFF; // interpret as unsigned byte https://stackoverflow.com/a/56052675/329496
         byte[] key = new byte[len];
         file.read(key);
         FileRecordStore.logger.log(Level.FINEST, "<k  fp:{0} len:{1} bytes:{2}", new Object[]{fp, len, print(key) });

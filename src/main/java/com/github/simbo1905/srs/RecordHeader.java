@@ -7,6 +7,7 @@ import lombok.val;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.logging.Level;
+import java.util.zip.CRC32;
 
 import static com.github.simbo1905.srs.FileRecordStore.RECORD_HEADER_LENGTH;
 import static com.github.simbo1905.srs.FileRecordStore.print;
@@ -81,7 +82,15 @@ class RecordHeader {
 		dataPointer = buffer.getLong();
 		dataCapacity = buffer.getInt();
 		dataCount = buffer.getInt();
-		this.crc32 = buffer.getLong();
+		crc32 = buffer.getLong();
+
+		val array = buffer.array();
+		CRC32 crc = new CRC32();
+		crc.update(array, 0, 8 + 4  + 4);
+		val crc32expected = crc.getValue();
+		if( crc32 != crc32expected) {
+			throw new IllegalStateException(String.format("invalid header CRC32 expected %d for %s", crc32expected, this));
+		}
 	}
 
 	/*
@@ -97,8 +106,11 @@ class RecordHeader {
 		buffer.putLong(dataPointer);
 		buffer.putInt(dataCapacity);
 		buffer.putInt(dataCount);
-		buffer.putLong(crc32);
 		val array = buffer.array();
+		CRC32 crc = new CRC32();
+		crc.update(array, 0, 8 + 4  + 4);
+		crc32 = crc.getValue();
+		buffer.putLong(crc32);
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} len:{1} bytes:{2}", new Object[]{fp, array.length, print(array) });
 	}

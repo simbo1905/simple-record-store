@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32;
@@ -19,7 +18,7 @@ public class FileRecordStore {
     final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     // Number of bytes in the record header.
-    static final int RECORD_HEADER_LENGTH = 28;
+    static final int RECORD_HEADER_LENGTH = 24;
 
     // Total length in bytes of the global database headers.
     private static final int FILE_HEADERS_REGION_LENGTH = 12;
@@ -77,7 +76,8 @@ public class FileRecordStore {
      * dynamically, but the parameter is provide to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
      * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
-     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here. =
+     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
+     * will have a CRC check built in so you can safely disable here. =
      */
     public FileRecordStore(String dbPath, int initialSize, boolean disableCrc32) throws IOException {
         this.disableCrc32 = disableCrc32;
@@ -86,8 +86,7 @@ public class FileRecordStore {
             throw new IllegalArgumentException("Database already exits: " + dbPath);
         }
         this.file = new DirectRandomAccessFile(new RandomAccessFile(f, "rw"));
-        FileRecordStore.this.dataStartPtr = indexPositionToKeyFp(initialSize); // Record Data Region
-        // starts were the
+        FileRecordStore.this.dataStartPtr = indexPositionToKeyFp(initialSize); // Record Data Region starts were the
         setFileLength(FileRecordStore.this.dataStartPtr); // (i+1)th index entry would start.
         writeNumRecordsHeader(0);
         FileRecordStore.this.writeDataStartPtrHeader(FileRecordStore.this.dataStartPtr);
@@ -98,7 +97,8 @@ public class FileRecordStore {
      * Opens an existing database and initializes the in-memory index.
      * @param dbPath the location of the database file on disk to open.
      * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
-     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that will have a CRC check built in so you can safely disable here.
+     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
+     * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
         this.disableCrc32 = disableCrc32;

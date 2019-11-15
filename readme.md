@@ -16,7 +16,7 @@ This implementation:
 1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you workload has some 
 properties where you can safely set things to go faster or user less space. It is wise to use the defaults and only 
 change them if you have tests that prove safety and performance are not compromised. 
-1. Supports key length of 256 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
+1. Supports a maximum key length of 248 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
 1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does. 
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap to cache record headers. A record header is the key and compact metadata such as the the 

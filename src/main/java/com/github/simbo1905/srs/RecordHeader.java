@@ -69,11 +69,12 @@ class RecordHeader {
 	/*
 	 * Read as a single operation to avoid corruption
 	 */
-	protected void read(RandomAccessFileInterface in) throws IOException {
+	protected void read(int index, RandomAccessFileInterface in) throws IOException {
 		byte[] header = new byte[RECORD_HEADER_LENGTH];
 		val fp = in.getFilePointer();
 		in.readFully(header);
-		FileRecordStore.logger.log(Level.FINEST, "<h fp:{0} len:{1} bytes:{2}", new Object[]{fp, header.length, print(header) });
+		FileRecordStore.logger.log(Level.FINEST, "<h fp:{0} idx:{3} len:{1} bytes:{2}",
+				new Object[]{fp, header.length, print(header), index });
 
 		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
 		buffer.put(header);
@@ -112,12 +113,13 @@ class RecordHeader {
 		crc32 = crc.getValue();
 		buffer.putLong(crc32);
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
-		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} len:{1} bytes:{2}", new Object[]{fp, array.length, print(array) });
+		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} idx:{4} len:{1} end:{3} bytes:{2}",
+				new Object[]{fp, array.length, print(array), fp+array.length, indexPosition });
 	}
 
-	protected static RecordHeader readHeader(RandomAccessFileInterface in) throws IOException {
+	protected static RecordHeader readHeader(int index, RandomAccessFileInterface in) throws IOException {
 		RecordHeader r = new RecordHeader();
-		r.read(in);
+		r.read(index, in);
 		return r;
 	}
 

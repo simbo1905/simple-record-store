@@ -5,6 +5,7 @@ import lombok.Synchronized;
 import lombok.val;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
@@ -23,17 +24,18 @@ public class FileRecordStore {
     // Total length in bytes of the global database headers.
     private static final int FILE_HEADERS_REGION_LENGTH = 12;
     private static final int DEFAULT_MAX_KEY_LENGTH = 64;
+    private static final int CRC32_LENGTH = 8; // its an unsigned 32 that has to be in a long
 
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
     // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
-	// unique about your data. Note we store binary keys with a header byte to indicate the real length of
-    // the key so you need to +1 your max length
+	// unique about your data. You can also set it to be a max of 248 bytes. Note we store binary keys with a header byte
+    // and a CRC32 which is an unsigned 32 stored as a long.
     private final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault();
     private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
 
     // The total length of one index entry - the key length plus the record
-    // header length.
-    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH
+    // header length and the CRC of the key which is a long.
+    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH + Long.BYTES
             + RECORD_HEADER_LENGTH;
 
     // File pointer to the num records header.
@@ -200,7 +202,7 @@ public class FileRecordStore {
         val k = keyOf(key);
         RecordHeader h = memIndex.get(k);
         if (h == null) {
-            throw new IllegalArgumentException("Key not found: " + key);
+            throw new IllegalArgumentException(String.format("Key not found %s '%s'", print(key), bytesToString(key)));
         }
         return h;
     }
@@ -308,20 +310,20 @@ public class FileRecordStore {
      */
 	private void addEntryToIndex(byte[] key, RecordHeader newRecord,
 								 int currentNumRecords) throws IOException {
-        if (key.length > MAX_KEY_LENGTH) {
+        if (key.length > MAX_KEY_LENGTH - CRC32_LENGTH) {
             throw new IllegalArgumentException(
-                    "Key is larger than permitted size of " + MAX_KEY_LENGTH
-                            + " bytes. Actual: " + key.length);
+                    String.format("Key of len %d is larger than permitted max size of %d bytes. You can increase this to 248 using env var or system property %s.MAX_KEY_LENGTH",
+                            key.length,
+                            MAX_KEY_LENGTH,
+                            FileRecordStore.class.getName()));
         }
+
+        val fp = indexPositionToRecordHeaderFp(currentNumRecords);
         val fpk = indexPositionToKeyFp(currentNumRecords);
-        file.seek(fpk);
-        val len = (byte) key.length;
-        file.write(len);
-        file.write(key);
 
-        FileRecordStore.logger.log(Level.FINEST, ">k fp:{0} len:{1} bytes:{2}", new Object[]{fpk, len, print(key) });
+        writeKeyToIndex(key, currentNumRecords);
 
-        file.seek(this.indexPositionToRecordHeaderFp(currentNumRecords));
+        file.seek(indexPositionToRecordHeaderFp(currentNumRecords));
         newRecord.write(file);
         newRecord.setIndexPosition(currentNumRecords);
         writeNumRecordsHeader(currentNumRecords + 1);
@@ -338,9 +340,9 @@ public class FileRecordStore {
             byte[] lastKey = readKeyFromIndex(currentNumRecords - 1);
             RecordHeader last = keyToRecordHeader(lastKey);
             last.setIndexPosition(header.indexPosition);
-            file.seek(indexPositionToKeyFp(last.indexPosition));
-            file.write(lastKey.length);
-            file.write(lastKey);
+
+            writeKeyToIndex(lastKey, last.indexPosition);
+
             file.seek(this.indexPositionToRecordHeaderFp(last.indexPosition));
             last.write(file);
         }
@@ -444,25 +446,82 @@ public class FileRecordStore {
         return indexPositionToKeyFp(pos) + MAX_KEY_LENGTH;
     }
 
+    private void writeKeyToIndex(byte[] key, int index) throws IOException {
+        val len = (byte) key.length;
+        val writeLen = key.length + 1 + CRC32_LENGTH;
+
+        ByteBuffer buffer = ByteBuffer.allocate(writeLen);
+        buffer.put(len);
+        buffer.put(key, 0, key.length);
+
+        // compute crc from the backing array with what we have written
+        val array = buffer.array();
+        CRC32 crc = new CRC32();
+        crc.update(array, 1, key.length);
+        val crc32 = crc.getValue();
+
+        // add the crc which will write through to the backing array
+        buffer.putLong(crc32);
+
+        val fpk = indexPositionToKeyFp(index);
+        file.seek(fpk);
+        file.write(array, 0, writeLen);
+
+        FileRecordStore.logger.log(Level.FINEST,
+                ">k fp:{0} idx:{5} len:{1} end:{4} crc:{3} key:{6} bytes:{2}"
+                , new Object[]{fpk, len, print(key), crc32, fpk+len, index, bytesToString(key) });
+    }
+
     /*
      * Reads the ith key from the index.
      */
 	private byte[] readKeyFromIndex(int position) throws IOException {
 	    val fp = indexPositionToKeyFp(position);
         file.seek(fp);
+
         int len = file.readByte() & 0xFF; // interpret as unsigned byte https://stackoverflow.com/a/56052675/329496
+
+        assert len < MAX_KEY_LENGTH;
+
         byte[] key = new byte[len];
         file.read(key);
-        FileRecordStore.logger.log(Level.FINEST, "<k  fp:{0} len:{1} bytes:{2}", new Object[]{fp, len, print(key) });
+
+        byte[] crcBytes = new byte[CRC32_LENGTH];
+        file.read(crcBytes);
+        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+        buffer.put(crcBytes);
+        buffer.flip();
+        val crc32expected = buffer.getLong();
+
+        CRC32 crc = new CRC32();
+        crc.update(key, 0, key.length );
+        val crc32actual = crc.getValue();
+
+        FileRecordStore.logger.log(Level.FINEST,
+                "<k fp:{0} idx:{5} len:{1} end:{4} crc:{3} key:{6} bytes:{2}",
+                new Object[]{fp, len, print(key), crc32actual, fp+len, position, bytesToString(key)});
+
+        if( crc32actual != crc32expected ){
+            throw new IllegalStateException(
+                    String.format("invalid key CRC32 expected %d and actual %s for len %d and fp %d found key %s with bytes %s",
+                            crc32expected,
+                            crc32actual,
+                            len,
+                            fp,
+                            bytesToString(key),
+                            print(key)
+                    ));
+        }
+
         return key;
     }
 
     /*
      * Reads the ith record header from the index.
      */
-	private RecordHeader readRecordHeaderFromIndex(int position) throws IOException {
-        file.seek(indexPositionToRecordHeaderFp(position));
-        return RecordHeader.readHeader(file);
+	private RecordHeader readRecordHeaderFromIndex(int index) throws IOException {
+        file.seek(indexPositionToRecordHeaderFp(index));
+        return RecordHeader.readHeader(index, file);
     }
 
     /*
@@ -642,8 +701,11 @@ public class FileRecordStore {
         file.seek(header.dataPointer);
         file.write(payload, 0, payload.length);
         byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
-        logger.log(Level.FINEST, ">d fp:{0} len:{1} bytes:{2}", new Object[]{header.dataPointer, payload.length, print(lenBytes) });
-        logger.log(Level.FINEST, ">d fp:{0} len:{1} crc:{2} data:{3} bytes:{4}", new Object[]{header.dataPointer+4, payload.length, crc, bytesToString(payload), print(data)});
+        val end = header.dataPointer+payload.length;
+        logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{3} bytes:{2}",
+                new Object[]{header.dataPointer, payload.length, print(lenBytes), end });
+        logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{5} crc:{2} data:{3} bytes:{4}",
+                new Object[]{header.dataPointer+4, payload.length, crc, bytesToString(payload), print(data), end});
     }
 
     /*

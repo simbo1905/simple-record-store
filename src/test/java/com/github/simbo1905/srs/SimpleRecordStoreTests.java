@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static java.util.prefs.Preferences.MAX_KEY_LENGTH;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -169,6 +170,8 @@ public class SimpleRecordStoreTests {
             logger.info("record successfully deleted.");
         }
 
+        recordsFile = new FileRecordStore(fileName, "r", false);
+
         logger.info("test completed.");
     }
 
@@ -188,6 +191,8 @@ public class SimpleRecordStoreTests {
                 UUID uuid = uuids.get(0);
 
                 writeUuid(uuid);
+
+                recordsFile = new FileRecordStore(fileName, "r", false);
             }
         }, uuids);
     }
@@ -256,6 +261,8 @@ public class SimpleRecordStoreTests {
         String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
 
         Assert.assertThat(put0, is(uuid0.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -276,6 +283,8 @@ public class SimpleRecordStoreTests {
 
         Assert.assertThat(put0, is(uuid0.toString()));
         Assert.assertThat(put1, is(uuid1.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -516,6 +525,8 @@ public class SimpleRecordStoreTests {
 
         String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
         Assert.assertThat(put, is(uuidUpdated.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -563,6 +574,8 @@ public class SimpleRecordStoreTests {
         Assert.assertThat(pfirst, is(first.toString()));
         String pLast = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
         Assert.assertThat(pLast, is(last.toString() + last.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
 
@@ -612,6 +625,8 @@ public class SimpleRecordStoreTests {
         Assert.assertThat(put, is(last.toString() + last.toString()));
         String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
         Assert.assertThat(put2, is(last.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -657,6 +672,8 @@ public class SimpleRecordStoreTests {
 
         String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
         Assert.assertThat(put, is(first.toString() + first.toString()));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -703,33 +720,17 @@ public class SimpleRecordStoreTests {
         // when
         writeUuid(uuid0);
 
-//        // System.out.println(recordsFile.getFileLength());
-//        printHeaders(hook);
-
         writeUuid(uuid1);
 
-//        // System.out.println(recordsFile.getFileLength());
-//        printHeaders(hook);
-
         updateUuid(uuid1, uuid1, uuid1);
-
-//        // System.out.println(recordsFile.getFileLength());
-//        printHeaders(hook);
 
         // then
         writeUuid(uuid2);
 
-//        // System.out.println(recordsFile.getFileLength());
-//        printHeaders(hook);
-
         updateUuid(uuid1, uuid3);
 
-    }
+        recordsFile = new FileRecordStore(fileName, "r", false);
 
-    private void printHeaders(AtomicReference<Map<String, RecordHeader>> hook) {
-        val state = hook.get().values().stream().map(h -> h.toString()).collect(Collectors.joining("\n"));
-        // System.out.println(state);
-        // System.out.println();
     }
 
     @Test
@@ -865,10 +866,15 @@ public class SimpleRecordStoreTests {
 
         // when
         recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
-        recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+        logger.info("after insert small ------");
+        recordsFile.insertRecord(FileRecordStore.keyOf("larger"), FileRecordStore.stringToBytes(largeEntry));
+        logger.info("after insert larger ------");
         recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
-        String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
+        logger.info("after delete small ------");
+        String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger")));
         Assert.assertThat(large, is(largeEntry));
+
+        recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
@@ -887,9 +893,9 @@ public class SimpleRecordStoreTests {
 
                 // when
                 recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger"), FileRecordStore.stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
-                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
+                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger")));
                 Assert.assertThat(large, is(largeEntry));
             }
         }, uuids);
@@ -912,9 +918,9 @@ public class SimpleRecordStoreTests {
                 // when
                 recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
                 recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), FileRecordStore.stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("large"));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("larger1"));
                 String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
                 Assert.assertThat(small, is(smallEntry));
             }
@@ -938,13 +944,13 @@ public class SimpleRecordStoreTests {
                 // when
                 recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
                 recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), FileRecordStore.stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
 
                 // then
                 String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
                 Assert.assertThat(small, is(smallEntry));
-                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
+                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger1")));
                 Assert.assertThat(large, is(largeEntry));
             }
         }, uuids);
@@ -1264,26 +1270,31 @@ public class SimpleRecordStoreTests {
             public void performTestOperations(WriteCallback wc,
                                               String fileName) throws Exception {
                 deleteFileIfExists(fileName);
+
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
                 recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
-
-//                logger.log(Level.INFO, "after insert one ----------------------");
-//                recordsFile.dumpHeaders(Level.INFO,false);
+                logger.info("after insert one ------------------");
 
                 recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
+                logger.info("after insert two ------------------");
 
                 val maxLen = recordsFile.getFileLength();
+                logger.info("after getFileLength ------------------");
+
                 recordsFile.deleteRecord(FileRecordStore.keyOf("one"));
+                logger.info("after delete one ------------------");
 
                 recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
+                logger.info("after insert three ------------------");
 
                 val finalLen = recordsFile.getFileLength();
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
                 assertEquals(maxLen, finalLen);
+
             }
         });
     }
@@ -1337,7 +1348,7 @@ public class SimpleRecordStoreTests {
             recordsFile = new FileRecordStore(fileName, initialSize, false);
 
             // when
-            final String longestKey = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+            final String longestKey = Collections.nCopies( MAX_KEY_LENGTH, "1" ).stream().collect( Collectors.joining() );
             writeString(longestKey);
 
             // then

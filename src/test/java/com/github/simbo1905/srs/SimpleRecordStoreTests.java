@@ -16,7 +16,6 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -147,24 +146,24 @@ public class SimpleRecordStoreTests {
 
         logger.info("adding a record...");
         final Date date = new Date();
-        recordsFile.insertRecord(keyOf("foo.lastAccessTime"), serializerDate.apply(date));
+        recordsFile.insertRecord(FileRecordStore.keyOf("foo.lastAccessTime"), serializerDate.apply(date));
 
         logger.info("reading record...");
-        Date d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
+        Date d = deserializerDate.apply(recordsFile.readRecordData(FileRecordStore.keyOf("foo.lastAccessTime")));
         // System.out.println("\tlast access was at: " + d.toString());
 
         Assert.assertEquals(date, d);
 
         logger.info("updating record...");
-        recordsFile.updateRecord(keyOf("foo.lastAccessTime"), serializerDate.apply(new Date()));
+        recordsFile.updateRecord(FileRecordStore.keyOf("foo.lastAccessTime"), serializerDate.apply(new Date()));
 
         logger.info("reading record...");
-        d = deserializerDate.apply(recordsFile.readRecordData(keyOf("foo.lastAccessTime")));
+        d = deserializerDate.apply(recordsFile.readRecordData(FileRecordStore.keyOf("foo.lastAccessTime")));
         // System.out.println("\tlast access was at: " + d.toString());
 
         logger.info("deleting record...");
-        recordsFile.deleteRecord(keyOf("foo.lastAccessTime"));
-        if (recordsFile.recordExists(keyOf("foo.lastAccessTime"))) {
+        recordsFile.deleteRecord(FileRecordStore.keyOf("foo.lastAccessTime"));
+        if (recordsFile.recordExists(FileRecordStore.keyOf("foo.lastAccessTime"))) {
             throw new Exception("Record not deleted");
         } else {
             logger.info("record successfully deleted.");
@@ -202,44 +201,44 @@ public class SimpleRecordStoreTests {
     }
 
     private void writeString(String k, String v) throws IOException {
-        byte[] key = serializerString.apply(k);
-        byte[] value = serializerString.apply(v);
+        byte[] key = FileRecordStore.stringToBytes(k);
+        byte[] value = FileRecordStore.stringToBytes(v);
         recordsFile.insertRecord(key, value);
     }
 
     private void writeUuid(UUID k, UUID v) throws IOException {
-        byte[] key = serializerString.apply(k.toString());
-        byte[] value = serializerString.apply(v.toString());
+        byte[] key = FileRecordStore.stringToBytes(k.toString());
+        byte[] value = FileRecordStore.stringToBytes(v.toString());
         recordsFile.insertRecord(key, value);
     }
 
     private void writeUuid(UUID k, UUID v, UUID v2) throws IOException {
-        byte[] key = serializerString.apply(k.toString());
-        byte[] value = serializerString.apply(v.toString() + v2.toString());
+        byte[] key = FileRecordStore.stringToBytes(k.toString());
+        byte[] value = FileRecordStore.stringToBytes(v.toString() + v2.toString());
         recordsFile.insertRecord(key, value);
     }
 
     private void updateUuid(UUID k, UUID v) throws IOException {
-        byte[] key = serializerString.apply(k.toString());
-        byte[] value = serializerString.apply(v.toString());
+        byte[] key = FileRecordStore.stringToBytes(k.toString());
+        byte[] value = FileRecordStore.stringToBytes(v.toString());
         recordsFile.updateRecord(key, value);
     }
 
     private void updateString(String k, String v) throws IOException {
-        byte[] key = serializerString.apply(k);
-        byte[] value = serializerString.apply(v);
+        byte[] key = FileRecordStore.stringToBytes(k);
+        byte[] value = FileRecordStore.stringToBytes(v);
         recordsFile.updateRecord(key, value);
     }
 
     private void updateUuid(UUID k, UUID v1, UUID v2) throws IOException {
-        byte[] key = serializerString.apply(k.toString());
-        byte[] value = serializerString.apply(v1.toString() + v2.toString());
+        byte[] key = FileRecordStore.stringToBytes(k.toString());
+        byte[] value = FileRecordStore.stringToBytes(v1.toString() + v2.toString());
         recordsFile.updateRecord(key, value);
     }
 
     private void updateString(String k, String v1, String v2) throws IOException {
-        byte[] key = serializerString.apply(k);
-        byte[] value = serializerString.apply(v1 + v2);
+        byte[] key = FileRecordStore.stringToBytes(k);
+        byte[] value = FileRecordStore.stringToBytes(v1 + v2);
         recordsFile.updateRecord(key, value);
     }
 
@@ -254,7 +253,7 @@ public class SimpleRecordStoreTests {
         writeUuid(uuid0);
 
         // then
-        String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
 
         Assert.assertThat(put0, is(uuid0.toString()));
     }
@@ -272,8 +271,8 @@ public class SimpleRecordStoreTests {
         writeUuid(uuid1);
 
         // then
-        String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-        String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
+        String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
 
         Assert.assertThat(put0, is(uuid0.toString()));
         Assert.assertThat(put1, is(uuid1.toString()));
@@ -295,10 +294,10 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid0);
 
                 // when
-                recordsFile.deleteRecord(keyOf(uuid0.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
 
                 // then
-                if (recordsFile.recordExists(keyOf(uuid0.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
                     throw new Exception("Record not deleted");
                 }
             }
@@ -323,8 +322,8 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid1);
 
                 // then
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 Assert.assertThat(put1, is(uuid1.toString()));
             }
@@ -348,14 +347,14 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid1);
 
                 // when
-                recordsFile.deleteRecord(keyOf(uuid0.toString()));
-                recordsFile.deleteRecord(keyOf(uuid1.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
 
                 // then
-                if (recordsFile.recordExists(keyOf(uuid0.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
                     throw new Exception("Record not deleted");
                 }
-                if (recordsFile.recordExists(keyOf(uuid1.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
                     throw new Exception("Record not deleted");
                 }
             }
@@ -401,7 +400,7 @@ public class SimpleRecordStoreTests {
 
                 // System.out.println("\nbefore delete uuid0 -----------------");
 
-                recordsFile.deleteRecord(keyOf(uuid0.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
 
                 // System.out.println("\nafter delete uuid0 -----------------");
                 // System.out.println("\nmemory: ");
@@ -421,11 +420,11 @@ public class SimpleRecordStoreTests {
                 //FileRecordStore.dumpFile(fileName, true);
 
                 // then
-                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
                 Assert.assertThat(put1, is(uuid1.toString()));
                 Assert.assertThat(put2, is(uuid2.toString()));
-                if (recordsFile.recordExists(keyOf(uuid0.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
                     throw new Exception("Record not deleted");
                 }
             }
@@ -450,15 +449,15 @@ public class SimpleRecordStoreTests {
 
                 writeUuid(uuid0);
                 writeUuid(uuid1);
-                recordsFile.deleteRecord(keyOf(uuid1.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
                 writeUuid(uuid2);
 
                 // then
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 Assert.assertThat(put2, is(uuid2.toString()));
-                if (recordsFile.recordExists(keyOf(uuid1.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
                     throw new Exception("Record not deleted");
                 }
             }
@@ -485,17 +484,17 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid0);
                 writeUuid(uuid1);
                 writeUuid(uuid2);
-                recordsFile.deleteRecord(keyOf(uuid1.toString()));
+                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
                 writeUuid(uuid3);
 
                 // then
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
-                String put3 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid3.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
+                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid3.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
                 Assert.assertThat(put2, is(uuid2.toString()));
                 Assert.assertThat(put3, is(uuid3.toString()));
-                if (recordsFile.recordExists(keyOf(uuid1.toString()))) {
+                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
                     throw new Exception("Record not deleted");
                 }
             }
@@ -515,7 +514,7 @@ public class SimpleRecordStoreTests {
         writeUuid(uuid0);
         updateUuid(uuid0, uuidUpdated);
 
-        String put = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
         Assert.assertThat(put, is(uuidUpdated.toString()));
     }
 
@@ -539,7 +538,7 @@ public class SimpleRecordStoreTests {
                 writeUuid(uuid0);
                 updateUuid(uuid0, uuidUpdated);
 
-                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
                 Assert.assertThat(put, is(uuidUpdated.toString()));
             }
         }, uuids);
@@ -560,9 +559,9 @@ public class SimpleRecordStoreTests {
         writeUuid(last);
         updateUuid(last, last, last);
 
-        String pfirst = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        String pfirst = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
         Assert.assertThat(pfirst, is(first.toString()));
-        String pLast = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+        String pLast = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
         Assert.assertThat(pLast, is(last.toString() + last.toString()));
     }
 
@@ -587,9 +586,9 @@ public class SimpleRecordStoreTests {
                 writeUuid(last);
                 updateUuid(last, last, last);
 
-                String pfirst = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                String pfirst = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
                 Assert.assertThat(pfirst, is(first.toString()));
-                String pLast = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+                String pLast = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
                 Assert.assertThat(pLast, is(last.toString() + last.toString()));
             }
         }, uuids);
@@ -609,9 +608,9 @@ public class SimpleRecordStoreTests {
         writeUuid(last);
         updateUuid(first, last, last);
 
-        String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
         Assert.assertThat(put, is(last.toString() + last.toString()));
-        String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+        String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
         Assert.assertThat(put2, is(last.toString()));
     }
 
@@ -636,9 +635,9 @@ public class SimpleRecordStoreTests {
 
                 updateUuid(first, last, last);
 
-                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
                 Assert.assertThat(put, is(last.toString() + last.toString()));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(last.toString())));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
                 Assert.assertThat(put2, is(last.toString()));
             }
         }, uuids);
@@ -656,7 +655,7 @@ public class SimpleRecordStoreTests {
         writeUuid(first);
         updateUuid(first, first, first);
 
-        String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
         Assert.assertThat(put, is(first.toString() + first.toString()));
     }
 
@@ -678,7 +677,7 @@ public class SimpleRecordStoreTests {
                 writeUuid(first);
                 updateUuid(first, first, first);
 
-                String put = deserializerString.apply(recordsFile.readRecordData(keyOf(first.toString())));
+                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
                 Assert.assertThat(put, is(first.toString() + first.toString()));
             }
         }, uuids);
@@ -754,9 +753,9 @@ public class SimpleRecordStoreTests {
                 updateUuid(uuid1, uuid0);
 
                 //
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
-                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
                 Assert.assertThat(put1, is(uuid0.toString()));
             }
         }, uuids);
@@ -783,9 +782,9 @@ public class SimpleRecordStoreTests {
                 updateUuid(uuid0, uuid1);
 
                 //
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid1.toString()));
-                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
                 Assert.assertThat(put1, is(uuid1.toString()));
             }
         }, uuids);
@@ -814,11 +813,11 @@ public class SimpleRecordStoreTests {
                 updateUuid(uuid1, uuid2);
 
                 //
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid0.toString()));
-                String put1 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid1.toString())));
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
                 Assert.assertThat(put1, is(uuid2.toString()));
-                String put2 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid2.toString())));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
                 Assert.assertThat(put2, is(uuid2.toString()));
             }
         }, uuids);
@@ -844,7 +843,7 @@ public class SimpleRecordStoreTests {
                 updateUuid(uuid0, uuid1);
 
                 //
-                String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(uuid0.toString())));
+                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
                 Assert.assertThat(put0, is(uuid1.toString()));
             }
         }, uuids);
@@ -865,10 +864,10 @@ public class SimpleRecordStoreTests {
         String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
         // when
-        recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
-        recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
-        recordsFile.deleteRecord(keyOf("small"));
-        String large = deserializerString.apply(recordsFile.readRecordData(keyOf("large")));
+        recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+        recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+        recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
+        String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
         Assert.assertThat(large, is(largeEntry));
     }
 
@@ -887,10 +886,10 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
-                recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
-                recordsFile.deleteRecord(keyOf("small"));
-                String large = deserializerString.apply(recordsFile.readRecordData(keyOf("large")));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
+                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
                 Assert.assertThat(large, is(largeEntry));
             }
         }, uuids);
@@ -911,12 +910,12 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
-                recordsFile.insertRecord(keyOf("small2"), serializerString.apply(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
-                recordsFile.deleteRecord(keyOf("small2"));
-                recordsFile.deleteRecord(keyOf("large"));
-                String small = deserializerString.apply(recordsFile.readRecordData(keyOf("small")));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("large"));
+                String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
                 Assert.assertThat(small, is(smallEntry));
             }
         }, uuids);
@@ -937,15 +936,15 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
-                recordsFile.insertRecord(keyOf("small2"), serializerString.apply(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(keyOf("large"), serializerString.apply(largeEntry));
-                recordsFile.deleteRecord(keyOf("small2"));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(FileRecordStore.keyOf("large"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
 
                 // then
-                String small = deserializerString.apply(recordsFile.readRecordData(keyOf("small")));
+                String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
                 Assert.assertThat(small, is(smallEntry));
-                String large = deserializerString.apply(recordsFile.readRecordData(keyOf("large")));
+                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("large")));
                 Assert.assertThat(large, is(largeEntry));
             }
         }, uuids);
@@ -965,8 +964,8 @@ public class SimpleRecordStoreTests {
                 String smallEntry = uuids.get(0).toString();
 
                 // when
-                recordsFile.insertRecord(keyOf("small"), serializerString.apply(smallEntry));
-                recordsFile.deleteRecord(keyOf("small"));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
 
                 // then
                 Assert.assertTrue(recordsFile.isEmpty());
@@ -1039,7 +1038,7 @@ public class SimpleRecordStoreTests {
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {
                             // readRecordData has a CRC32 check where the payload must match the header
-                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
+                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
                             count--;
                         }
                         assertThat(count, is(0));
@@ -1082,7 +1081,7 @@ public class SimpleRecordStoreTests {
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {
                             // readRecordData has a CRC32 check where the payload must match the header
-                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
+                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
                             count--;
                         }
                         assertThat(count, is(0));
@@ -1130,7 +1129,7 @@ public class SimpleRecordStoreTests {
                         int count = possiblyCorruptedFile.getNumRecords();
                         for (String k : possiblyCorruptedFile.keys()) {
                             // readRecordData has a CRC32 check where the payload must match the header
-                            deserializerString.apply(possiblyCorruptedFile.readRecordData(keyOf(k)));
+                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
                             count--;
                         }
                         assertThat(count, is(0));
@@ -1162,11 +1161,11 @@ public class SimpleRecordStoreTests {
 
                 // when
 
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
 
-                recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneSmall));
+                recordsFile.updateRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
 
-                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
@@ -1190,10 +1189,10 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
-                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
-                recordsFile.updateRecord(keyOf("two"), serializerString.apply(twoSmall));
-                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
@@ -1217,10 +1216,10 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
-                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
-                recordsFile.updateRecord(keyOf("two"), serializerString.apply(twoSmall));
-                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
@@ -1242,11 +1241,11 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
 
                 val length = recordsFile.getFileLength();
 
-                recordsFile.updateRecord(keyOf("one"), serializerString.apply(oneLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
 
                 // then
                 Assert.assertEquals(1, recordsFile.size());
@@ -1268,17 +1267,17 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(oneLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
 
 //                logger.log(Level.INFO, "after insert one ----------------------");
 //                recordsFile.dumpHeaders(Level.INFO,false);
 
-                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
 
                 val maxLen = recordsFile.getFileLength();
-                recordsFile.deleteRecord(keyOf("one"));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("one"));
 
-                recordsFile.insertRecord(keyOf("three"), serializerString.apply(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
 
                 val finalLen = recordsFile.getFileLength();
 
@@ -1309,16 +1308,16 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(keyOf("one"), serializerString.apply(one));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(one));
 
-                recordsFile.insertRecord(keyOf("two"), serializerString.apply(twoLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
 
-                recordsFile.insertRecord(keyOf("three"), serializerString.apply(three));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(three));
 
                 val maxLen = recordsFile.getFileLength();
-                recordsFile.deleteRecord(keyOf("two"));
+                recordsFile.deleteRecord(FileRecordStore.keyOf("two"));
 
-                recordsFile.insertRecord(keyOf("four"), serializerString.apply(four));
+                recordsFile.insertRecord(FileRecordStore.keyOf("four"), FileRecordStore.stringToBytes(four));
 
                 val finalLen = recordsFile.getFileLength();
 
@@ -1342,7 +1341,7 @@ public class SimpleRecordStoreTests {
             writeString(longestKey);
 
             // then
-            String put0 = deserializerString.apply(recordsFile.readRecordData(keyOf(longestKey)));
+            String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(longestKey)));
 
             Assert.assertThat(put0, is(longestKey.toString()));
         } finally {

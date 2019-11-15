@@ -12,8 +12,7 @@ import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.github.simbo1905.srs.FileRecordStore.deserializerString;
-import static com.github.simbo1905.srs.FileRecordStore.serializerString;
+import static com.github.simbo1905.srs.FileRecordStore.stringToBytes;
 import static org.hamcrest.Matchers.is;
 
 public class SimpleRecordStoreApiTests {
@@ -55,23 +54,23 @@ public class SimpleRecordStoreApiTests {
         String uuid = uuids.toString();
 
         // when
-        this.recordsFile.insertRecord(serializerString.apply(uuid), serializerString.apply(uuid));
-        this.recordsFile.deleteRecord(serializerString.apply(uuid));
+        this.recordsFile.insertRecord(stringToBytes(uuid), stringToBytes(uuid));
+        this.recordsFile.deleteRecord(stringToBytes(uuid));
 
         Assert.assertTrue(this.recordsFile.isEmpty());
-        Assert.assertFalse(this.recordsFile.recordExists(serializerString.apply(uuid)));
+        Assert.assertFalse(this.recordsFile.recordExists(stringToBytes(uuid)));
 
-        this.recordsFile.insertRecord(serializerString.apply(uuid), serializerString.apply(uuid));
+        this.recordsFile.insertRecord(stringToBytes(uuid), stringToBytes(uuid));
 
         Assert.assertFalse(this.recordsFile.isEmpty());
-        Assert.assertTrue(this.recordsFile.recordExists(serializerString.apply(uuid)));
+        Assert.assertTrue(this.recordsFile.recordExists(stringToBytes(uuid)));
 
         this.recordsFile.fsync();
 
         val data = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
-        Assert.assertThat(deserializerString.apply(data), is(uuid.toString()));
+        Assert.assertThat(FileRecordStore.bytesToString(data), is(uuid.toString()));
 
-        this.recordsFile.updateRecord(serializerString.apply(uuid), serializerString.apply("updated"));
+        this.recordsFile.updateRecord(stringToBytes(uuid), stringToBytes("updated"));
 
         this.recordsFile.fsync();
 
@@ -80,7 +79,7 @@ public class SimpleRecordStoreApiTests {
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
         val updated = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
-        Assert.assertThat(deserializerString.apply(updated), is("updated"));
+        Assert.assertThat(recordsFile.bytesToString(updated), is("updated"));
 
     }
 

@@ -18,9 +18,6 @@ public class FileRecordStore {
 
     final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
-    public static final Function<String, byte[]> serializerString = FileRecordStore::stringToBytes;
-    public static final Function<byte[], String> deserializerString = FileRecordStore::bytesToString;
-
     // Number of bytes in the record header.
     static final int RECORD_HEADER_LENGTH = 28;
 
@@ -43,8 +40,9 @@ public class FileRecordStore {
     // File pointer to the num records header.
     private static final long NUM_RECORDS_HEADER_LOCATION = 0;
 
-    // File pointer to the data start pointer header.
     private static final long DATA_START_HEADER_LOCATION = 4;
+
+    /*default*/ RandomAccessFileInterface file;
 
     /*
      * Hashtable which holds the in-memory index. For efficiency, the entire
@@ -53,7 +51,19 @@ public class FileRecordStore {
      */
     protected Map<String, RecordHeader> memIndex;
 
-    /*default*/ RandomAccessFileInterface file;
+
+    private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
+        @Override
+        public int compare(RecordHeader o1, RecordHeader o2) {
+            return (int) (o1.getFreeSpace(true) - o2.getFreeSpace(true));
+        }
+    };
+
+    /*
+     * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
+     */
+    private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
+            new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
 
     // Current file pointer to the start of the record data.
 	private long dataStartPtr;
@@ -149,11 +159,11 @@ public class FileRecordStore {
         return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(INDEX_ENTRY_LENGTH, dataLength) : dataLength;
     }
 
-    private static final byte[] stringToBytes(String s) {
+    public static final byte[] stringToBytes(String s) {
         return s.getBytes(StandardCharsets.UTF_8);
     }
 
-    private static final String bytesToString(byte[] bytes) {
+    public static final String bytesToString(byte[] bytes) {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
@@ -194,19 +204,6 @@ public class FileRecordStore {
         }
         return h;
     }
-
-    private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
-        @Override
-        public int compare(RecordHeader o1, RecordHeader o2) {
-            return (int) (o1.getFreeSpace(true) - o2.getFreeSpace(true));
-        }
-    };
-
-    /*
-     * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
-     */
-	private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
-            new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
 
     /*
      * Updates a map of record headers to free space values.
@@ -380,7 +377,7 @@ public class FileRecordStore {
             ));
             final byte[] data = recordFile.readRecordData(bk);
 
-            String d = deserializerString.apply(data);
+            String d = bytesToString(data);
             logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
         }
     }
@@ -729,7 +726,7 @@ public class FileRecordStore {
                 ));
                 final byte[] data = readRecordData(bk);
 
-                String d = deserializerString.apply(data);
+                String d = bytesToString(data);
                 logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
             }
         } finally {

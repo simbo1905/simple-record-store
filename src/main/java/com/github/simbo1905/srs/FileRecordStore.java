@@ -19,12 +19,12 @@ public class FileRecordStore {
     final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     // Number of bytes in the record header.
-    static final int RECORD_HEADER_LENGTH = 24;
+    static final int RECORD_HEADER_LENGTH = 20;
 
     // Total length in bytes of the global database headers.
     private static final int FILE_HEADERS_REGION_LENGTH = 12;
     private static final int DEFAULT_MAX_KEY_LENGTH = 64;
-    private static final int CRC32_LENGTH = 8; // its an unsigned 32 that has to be in a long
+    private static final int CRC32_LENGTH = 4; // its an unsigned 32 that has to be in a long
 
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
     // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
@@ -34,8 +34,8 @@ public class FileRecordStore {
     private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
 
     // The total length of one index entry - the key length plus the record
-    // header length and the CRC of the key which is a long.
-    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH + Long.BYTES
+    // header length and the CRC of the key which is an unsigned 32 bits.
+    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH + Integer.BYTES
             + RECORD_HEADER_LENGTH;
 
     // File pointer to the num records header.
@@ -458,10 +458,10 @@ public class FileRecordStore {
         val array = buffer.array();
         CRC32 crc = new CRC32();
         crc.update(array, 1, key.length);
-        val crc32 = crc.getValue();
+        int crc32 = (int) (crc.getValue() & 0xFFFFFFFFL);
 
         // add the crc which will write through to the backing array
-        buffer.putLong(crc32);
+        buffer.putInt(crc32);
 
         val fpk = indexPositionToKeyFp(index);
         file.seek(fpk);
@@ -488,10 +488,10 @@ public class FileRecordStore {
 
         byte[] crcBytes = new byte[CRC32_LENGTH];
         file.read(crcBytes);
-        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
+        ByteBuffer buffer = ByteBuffer.allocate(CRC32_LENGTH);
         buffer.put(crcBytes);
         buffer.flip();
-        val crc32expected = buffer.getLong();
+        long crc32expected = buffer.getInt() & 0xffffffffL; // https://stackoverflow.com/a/22938125/329496
 
         CRC32 crc = new CRC32();
         crc.update(key, 0, key.length );
@@ -654,20 +654,21 @@ public class FileRecordStore {
         file.readFully(buf);
 
         if (!disableCrc32) {
-            byte[] crcBytes = new byte[8];
+            byte[] crcBytes = new byte[CRC32_LENGTH];
             file.readFully(crcBytes);
-            val expectedCrc = (new DataInputStream(new ByteArrayInputStream(crcBytes))).readLong();
+            val expectedCrc = (new DataInputStream(new ByteArrayInputStream(crcBytes))).readInt() & 0xffffffffL;
             CRC32 crc32 = new CRC32();
             crc32.update(buf, 0, buf.length);
 
-            val actualCrc = crc32.getValue();
+            long actualCrc = crc32.getValue();
 
             logger.log(Level.FINEST,
                     "<d fp:{0} len:{1} crc:{2} data:{3} bytes:{4}",
                     new Object[]{header.dataPointer+4, len, actualCrc, bytesToString(buf), print(buf)});
 
             if (actualCrc != expectedCrc) {
-                throw new IllegalStateException(String.format("CRC32 check failed for data length {0} with header {1}", buf.length, header.toString()));
+                throw new IllegalStateException(String.format("CRC32 check failed expected %d got %d for data length %d with header %s",
+                        expectedCrc, actualCrc, buf.length, header.toString()));
             }
         }
 
@@ -693,13 +694,13 @@ public class FileRecordStore {
         if (!disableCrc32) {
             CRC32 crc32 = new CRC32();
             crc32.update(data, 0, data.length);
-            crc = crc32.getValue();
-            out.writeLong(crc);
+            int crcInt = (int) (crc32.getValue() & 0xFFFFFFFFL);
+            out.writeInt(crcInt);
         }
         out.close();
         val payload = bout.toByteArray();
         file.seek(header.dataPointer);
-        file.write(payload, 0, payload.length);
+        file.write(payload, 0, payload.length); // drop
         byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
         val end = header.dataPointer+payload.length;
         logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{3} bytes:{2}",

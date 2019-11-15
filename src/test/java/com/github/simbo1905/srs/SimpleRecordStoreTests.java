@@ -15,6 +15,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.zip.CRC32;
 
 import static java.util.prefs.Preferences.MAX_KEY_LENGTH;
 import static org.hamcrest.Matchers.is;
@@ -1358,5 +1359,21 @@ public class SimpleRecordStoreTests {
         } finally {
             System.setProperty(FileRecordStore.class.getCanonicalName()+".MAX_KEY_LENGTH", "64");
         }
+    }
+
+    @Test
+    public void testCrc32asUnsignedInteger() {
+        final String data = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        val crc32 = new CRC32();
+        crc32.update(data.getBytes(), 0, 1024);
+        long crcLong = crc32.getValue();
+        int crcInt = (int) crcLong & 0xFFFFFFFF;
+        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+        buffer.putInt(crcInt);
+        buffer.flip();
+        int crcIntOut = buffer.getInt();
+        long crcLongOut = crcIntOut & 0xFFFFFFFFL;
+
+        assertEquals(crcLong, crcLongOut);
     }
 }

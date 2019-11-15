@@ -73,6 +73,7 @@ class RecordHeader {
 		byte[] header = new byte[RECORD_HEADER_LENGTH];
 		val fp = in.getFilePointer();
 		in.readFully(header);
+
 		FileRecordStore.logger.log(Level.FINEST, "<h fp:{0} idx:{3} len:{1} bytes:{2}",
 				new Object[]{fp, header.length, print(header), index });
 
@@ -83,12 +84,12 @@ class RecordHeader {
 		dataPointer = buffer.getLong();
 		dataCapacity = buffer.getInt();
 		dataCount = buffer.getInt();
-		crc32 = buffer.getLong();
+		crc32 = buffer.getInt() & 0xFFFFFFFFL;;
 
 		val array = buffer.array();
 		CRC32 crc = new CRC32();
 		crc.update(array, 0, 8 + 4  + 4);
-		val crc32expected = crc.getValue();
+		long crc32expected = crc.getValue();
 		if( crc32 != crc32expected) {
 			throw new IllegalStateException(String.format("invalid header CRC32 expected %d for %s", crc32expected, this));
 		}
@@ -111,7 +112,8 @@ class RecordHeader {
 		CRC32 crc = new CRC32();
 		crc.update(array, 0, 8 + 4  + 4);
 		crc32 = crc.getValue();
-		buffer.putLong(crc32);
+		int crc32int = (int) (crc32 & 0xFFFFFFFFL);
+		buffer.putInt(crc32int);
 		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} idx:{4} len:{1} end:{3} bytes:{2}",
 				new Object[]{fp, array.length, print(array), fp+array.length, indexPosition });

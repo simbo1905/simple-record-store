@@ -16,11 +16,12 @@ This implementation:
 1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you workload has some 
 properties where you can safely set things to go faster or user less space. It is wise to use the defaults and only 
 change them if you have tests that prove safety and performance are not compromised. 
-1. Supports a maximum key length of 248 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
+1. Supports a maximum key length of 252 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
 1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does. 
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
-1. Uses an in-memory HashMap to cache record headers. A record header is the key and compact metadata such as the the 
-offset and length of record and an optional CRC32 checksum. This makes locating a record in the file an `O(1)` lookup.  
+1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
+offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.
+1. Stores the key with a single byte length header and a checksum footer. 
 1. The records are held in a single `RandomAccessFile` comprising of: 
    1. A four byte header which is the number of records. 
    2. An index region which is all the headers with possibly some free space at the end. The index region can be 

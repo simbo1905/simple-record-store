@@ -14,10 +14,9 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.zip.CRC32;
 
-import static java.util.prefs.Preferences.MAX_KEY_LENGTH;
+import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -142,7 +141,7 @@ public class SimpleRecordStoreTests {
      */
     @Test
     public void originalTest() throws Exception {
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         logger.info("creating records file...");
 
@@ -251,7 +250,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testInsertOneRecord() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
         List<UUID> uuids = createUuid(1);
 
         // when
@@ -269,7 +268,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testInsertTwoRecords() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
         List<UUID> uuids = createUuid(2);
 
         // when
@@ -297,7 +296,7 @@ public class SimpleRecordStoreTests {
             public void performTestOperations(WriteCallback wc, String fileName,
                                               List<UUID> uuids,
                                               AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                recordsFile = new FileRecordStore(fileName, initialSize, false);
+                recordsFile = new FileRecordStore(fileName, initialSize);
 
                 // given
                 UUID uuid0 = uuids.get(0);
@@ -514,7 +513,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testUpdateOneRecord() throws Exception {
         List<UUID> uuids = createUuid(2);
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         // given
         UUID uuid0 = uuids.get(0);
@@ -560,7 +559,7 @@ public class SimpleRecordStoreTests {
     public void testUpdateExpandLastRecord() throws Exception {
         List<UUID> uuids = createUuid(2);
         deleteFileIfExists(fileName);
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         // given
         UUID first = uuids.get(0);
@@ -611,7 +610,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testUpdateExpandFirstRecord() throws Exception {
         List<UUID> uuids = createUuid(2);
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         // given
         UUID first = uuids.get(0);
@@ -662,7 +661,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testUpdateExpandOnlyRecord() throws Exception {
         List<UUID> uuids = createUuid(1);
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         // given
         UUID first = uuids.get(0);
@@ -706,7 +705,7 @@ public class SimpleRecordStoreTests {
 
         AtomicReference<Map<String, RecordHeader>> hook = new AtomicReference<>();
 
-        recordsFile = new FileRecordStore(fileName, initialSize, false) {
+        recordsFile = new FileRecordStore(fileName, initialSize) {
             {
                 hook.set(this.memIndex);
             }
@@ -861,7 +860,7 @@ public class SimpleRecordStoreTests {
     @Test
     public void testDeleteFirstEntries() throws Exception {
         List<UUID> uuids = createUuid(4);
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
         String smallEntry = uuids.get(0).toString();
         String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
@@ -1343,13 +1342,15 @@ public class SimpleRecordStoreTests {
     @Test
     public void testMaxKeySize() throws IOException {
         try{
-            System.setProperty(FileRecordStore.class.getCanonicalName()+".MAX_KEY_LENGTH", "256");
+            System.setProperty(String.format("%s.%s",
+                    FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                    Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
 
             // given
-            recordsFile = new FileRecordStore(fileName, initialSize, false);
+            recordsFile = new FileRecordStore(fileName, initialSize);
 
             // when
-            final String longestKey = Collections.nCopies( MAX_KEY_LENGTH, "1" ).stream().collect( Collectors.joining() );
+            final String longestKey = Collections.nCopies( recordsFile.maxKeyLength, "1" ).stream().collect( Collectors.joining() );
             writeString(longestKey);
 
             // then
@@ -1357,7 +1358,9 @@ public class SimpleRecordStoreTests {
 
             Assert.assertThat(put0, is(longestKey.toString()));
         } finally {
-            System.setProperty(FileRecordStore.class.getCanonicalName()+".MAX_KEY_LENGTH", "64");
+            System.setProperty(String.format("%s.%s",
+                    FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                    Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
         }
     }
 
@@ -1376,4 +1379,38 @@ public class SimpleRecordStoreTests {
 
         assertEquals(crcLong, crcLongOut);
     }
+
+    @Test
+    public void testKeyLengthRecordedInFile() throws Exception {
+        // set a super sized key
+        System.setProperty(String.format("%s.%s",
+                FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
+
+        String longestKey = Collections.nCopies( FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1" ).stream().collect( Collectors.joining() );
+
+        try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)){
+            byte[] key = FileRecordStore.stringToBytes(longestKey);
+            byte[] value = FileRecordStore.stringToBytes(longestKey);
+            recordsFile.insertRecord(key, value);
+        }
+
+        logger.info("post insert ---------");
+
+        logger.info( FileRecordStore.print(new File(fileName)));
+
+        logger.info("post print ---------");
+
+        // reset to the normal default
+        System.setProperty(String.format("%s.%s",
+                FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
+        recordsFile = new FileRecordStore(fileName, "r");
+
+        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(longestKey)));
+
+        Assert.assertThat(put0, is(longestKey));
+
+    }
+
 }

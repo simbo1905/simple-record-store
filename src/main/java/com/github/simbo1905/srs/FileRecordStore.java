@@ -14,34 +14,46 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32;
 
-public class FileRecordStore {
+public class FileRecordStore implements AutoCloseable {
 
     final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     // Number of bytes in the record header.
     static final int RECORD_HEADER_LENGTH = 20;
 
-    // Total length in bytes of the global database headers.
-    private static final int FILE_HEADERS_REGION_LENGTH = 12;
-    private static final int DEFAULT_MAX_KEY_LENGTH = 64;
-    private static final int CRC32_LENGTH = 4; // its an unsigned 32 that has to be in a long
+    // File index to the num records header.
+    private static final long NUM_RECORDS_HEADER_LOCATION = 1;
+
+    // File index to the start of the data region beyond the index region
+    private static final long DATA_START_HEADER_LOCATION = 5;
+
+    /**
+     * Total length in bytes of the global database headers:
+     * 1 byte is the key length that the file was created with. cannot be changed you can copy to a new store with a new length.
+     * 4 byte int is the number of records
+     * 8 byte long is the index to the start of the data region
+     */
+    private static final int FILE_HEADERS_REGION_LENGTH = 13;
+
+    // this can be overridden up to 2^8 - 4
+    public static final int DEFAULT_MAX_KEY_LENGTH = 64;
+
+    // its an unsigned 32 int
+    private static final int CRC32_LENGTH = 4;
+
+    public static final int MAX_KEY_LENGTH_THEORETICAL = Double.valueOf(Math.pow(2, 8)).intValue() - Integer.BYTES;
 
     // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
     // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
 	// unique about your data. You can also set it to be a max of 248 bytes. Note we store binary keys with a header byte
     // and a CRC32 which is an unsigned 32 stored as a long.
-    private final int MAX_KEY_LENGTH = getMaxKeyLengthOrDefault();
+    public final int maxKeyLength;
+
     private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
 
     // The total length of one index entry - the key length plus the record
     // header length and the CRC of the key which is an unsigned 32 bits.
-    private final int INDEX_ENTRY_LENGTH = MAX_KEY_LENGTH + Integer.BYTES
-            + RECORD_HEADER_LENGTH;
-
-    // File pointer to the num records header.
-    private static final long NUM_RECORDS_HEADER_LOCATION = 0;
-
-    private static final long DATA_START_HEADER_LOCATION = 4;
+    private final int indexEntryLength;
 
     /*default*/ RandomAccessFileInterface file;
 
@@ -78,21 +90,46 @@ public class FileRecordStore {
      * dynamically, but the parameter is provide to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
      * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
+     */
+    public FileRecordStore(String dbPath, int initialSize) throws IOException {
+        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false);
+    }
+
+    /*
+     * Creates a new database file. The initialSize parameter determines the
+     * amount of space which is allocated for the index. The index can grow
+     * dynamically, but the parameter is provide to increase efficiency.
+     * @param dbPath the location on disk to create the storage file.
+     * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
      * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
      * will have a CRC check built in so you can safely disable here. =
      */
-    public FileRecordStore(String dbPath, int initialSize, boolean disableCrc32) throws IOException {
+    public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
         this.disableCrc32 = disableCrc32;
+        this.maxKeyLength = maxKeyLength;
+        this.indexEntryLength = maxKeyLength + Integer.BYTES
+                + RECORD_HEADER_LENGTH;
+
         File f = new File(dbPath);
         if (f.exists()) {
             throw new IllegalArgumentException("Database already exits: " + dbPath);
         }
-        this.file = new DirectRandomAccessFile(new RandomAccessFile(f, "rw"));
-        FileRecordStore.this.dataStartPtr = indexPositionToKeyFp(initialSize); // Record Data Region starts were the
-        setFileLength(FileRecordStore.this.dataStartPtr); // (i+1)th index entry would start.
+        file = new DirectRandomAccessFile(new RandomAccessFile(f, "rw"));
+        dataStartPtr = indexPositionToKeyFp(initialSize); // set data region start index
+        setFileLength(dataStartPtr);
         writeNumRecordsHeader(0);
-        FileRecordStore.this.writeDataStartPtrHeader(FileRecordStore.this.dataStartPtr);
+        writeKeyLengthHeader();
+        writeDataStartPtrHeader(dataStartPtr);
         memIndex = new HashMap<String, RecordHeader>(initialSize);
+    }
+
+    /*
+     * Opens an existing database and initializes the in-memory index.
+     * @param dbPath the location of the database file on disk to open.
+     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+     */
+    public FileRecordStore(String dbPath, String accessFlags) throws IOException {
+        this(dbPath, accessFlags, false);
     }
 
     /*
@@ -103,13 +140,21 @@ public class FileRecordStore {
      * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
-        this.disableCrc32 = disableCrc32;
+
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new IllegalArgumentException("Database not found: " + dbPath);
         }
-        this.file = new DirectRandomAccessFile(new RandomAccessFile(f, accessFlags));
-        FileRecordStore.this.dataStartPtr = readDataStartHeader();
+        file = new DirectRandomAccessFile(new RandomAccessFile(f, accessFlags));
+        this.disableCrc32 = disableCrc32;
+        // load the max key length from first byte
+        file.seek(0);
+        val b = file.readByte();
+        this.maxKeyLength = b & 0xFF;
+        this.indexEntryLength = maxKeyLength + Integer.BYTES
+                + RECORD_HEADER_LENGTH;
+
+        dataStartPtr = readDataStartHeader();
         int numRecords = readNumRecordsHeader();
         memIndex = new HashMap<>(numRecords);
         for (int i = 0; i < numRecords; i++) {
@@ -121,8 +166,10 @@ public class FileRecordStore {
         }
     }
 
-    private static int getMaxKeyLengthOrDefault() {
-        final String key = String.format("%s.MAX_KEY_LENGTH", FileRecordStore.class.getName());
+    public static String MAX_KEY_LENGTH_PROPERTY = "MAX_KEY_LENGTH";
+
+    static int getMaxKeyLengthOrDefault() {
+        final String key = String.format("%s.%s", FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY);
         String keyLength = System.getenv(key) == null
                 ? Integer.valueOf(DEFAULT_MAX_KEY_LENGTH).toString()
                 : System.getenv(key);
@@ -131,7 +178,7 @@ public class FileRecordStore {
     }
 
     private static boolean getPadDataToKeyLengthOrDefaultTrue() {
-        final String key = String.format("%s.MAX_KEY_LENGTH", FileRecordStore.class.getName());
+        final String key = String.format("%s.%s", FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY);
         String keyLength = System.getenv(key) == null ? Boolean.valueOf(true).toString() : System.getenv(key);
         keyLength = System.getProperty(key, keyLength);
         return Boolean.parseBoolean(keyLength);
@@ -157,8 +204,18 @@ public class FileRecordStore {
         return sb.toString();
     }
 
+    @SneakyThrows
+    public static String print(File f) {
+        RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r");
+        val len = file.length();
+        assert len < Integer.MAX_VALUE;
+        val bytes = new byte[(int)len];
+        file.readFully(bytes);
+        return print(bytes);
+    }
+
     private int getDataLengthPadded(int dataLength) {
-        return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(INDEX_ENTRY_LENGTH, dataLength) : dataLength;
+        return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(indexEntryLength, dataLength) : dataLength;
     }
 
     public static final byte[] stringToBytes(String s) {
@@ -238,7 +295,7 @@ public class FileRecordStore {
         long dataStart = readDataStartHeader();
         long endIndexPtr = indexPositionToKeyFp(getNumRecords());
         // we prefer speed overs space so we leave space for the header for this insert plus one for future use
-        long available = dataStart - endIndexPtr - (2 * INDEX_ENTRY_LENGTH);
+        long available = dataStart - endIndexPtr - (2 * indexEntryLength);
 
         RecordHeader newRecord = null;
 
@@ -292,6 +349,7 @@ public class FileRecordStore {
     public void close() throws IOException  {
         try {
             try {
+                file.fsync();
                 file.close();
             } finally {
                 file = null;
@@ -310,16 +368,14 @@ public class FileRecordStore {
      */
 	private void addEntryToIndex(byte[] key, RecordHeader newRecord,
 								 int currentNumRecords) throws IOException {
-        if (key.length > MAX_KEY_LENGTH - CRC32_LENGTH) {
+        if (key.length > maxKeyLength) {
             throw new IllegalArgumentException(
-                    String.format("Key of len %d is larger than permitted max size of %d bytes. You can increase this to 248 using env var or system property %s.MAX_KEY_LENGTH",
+                    String.format("Key of len %d is larger than permitted max size of %d bytes. You can increase this to %d using env var or system property %s.MAX_KEY_LENGTH",
                             key.length,
-                            MAX_KEY_LENGTH,
+                            maxKeyLength,
+                            MAX_KEY_LENGTH_THEORETICAL,
                             FileRecordStore.class.getName()));
         }
-
-        val fp = indexPositionToRecordHeaderFp(currentNumRecords);
-        val fpk = indexPositionToKeyFp(currentNumRecords);
 
         writeKeyToIndex(key, currentNumRecords);
 
@@ -431,11 +487,21 @@ public class FileRecordStore {
     }
 
     /*
+     * Writes the max key length to the beginning of the file
+     */
+    private void writeKeyLengthHeader()
+            throws IOException {
+        file.seek(0);
+        val keyLength =(byte) maxKeyLength;
+        file.write(keyLength);
+    }
+
+    /*
      * Returns a file pointer in the index pointing to the first byte in the key
      * located at the given index position.
      */
 	private long indexPositionToKeyFp(int pos) {
-        return FILE_HEADERS_REGION_LENGTH + (INDEX_ENTRY_LENGTH * pos);
+        return FILE_HEADERS_REGION_LENGTH + (indexEntryLength * pos);
     }
 
     /*
@@ -443,7 +509,7 @@ public class FileRecordStore {
      * record pointer located at the given index position.
      */
     private long indexPositionToRecordHeaderFp(int pos) {
-        return indexPositionToKeyFp(pos) + MAX_KEY_LENGTH;
+        return indexPositionToKeyFp(pos) + maxKeyLength;
     }
 
     private void writeKeyToIndex(byte[] key, int index) throws IOException {
@@ -469,7 +535,7 @@ public class FileRecordStore {
 
         FileRecordStore.logger.log(Level.FINEST,
                 ">k fp:{0} idx:{5} len:{1} end:{4} crc:{3} key:{6} bytes:{2}"
-                , new Object[]{fpk, len, print(key), crc32, fpk+len, index, bytesToString(key) });
+                , new Object[]{fpk, len & 0xFF, print(key), crc32, fpk + (len & 0xFF), index, bytesToString(key) });
     }
 
     /*
@@ -481,13 +547,13 @@ public class FileRecordStore {
 
         int len = file.readByte() & 0xFF; // interpret as unsigned byte https://stackoverflow.com/a/56052675/329496
 
-        assert len < MAX_KEY_LENGTH;
+        assert len <= maxKeyLength: String.format("%d > %d", len, maxKeyLength);
 
         byte[] key = new byte[len];
         file.read(key);
 
         byte[] crcBytes = new byte[CRC32_LENGTH];
-        file.read(crcBytes);
+        file.readFully(crcBytes);
         ByteBuffer buffer = ByteBuffer.allocate(CRC32_LENGTH);
         buffer.put(crcBytes);
         buffer.flip();

@@ -8,10 +8,13 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
+import java.util.Collections;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
+import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 import static com.github.simbo1905.srs.FileRecordStore.stringToBytes;
 import static org.hamcrest.Matchers.is;
 
@@ -49,7 +52,7 @@ public class SimpleRecordStoreApiTests {
     @Test
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize, false);
+        recordsFile = new FileRecordStore(fileName, initialSize);
         UUID uuids = UUID.randomUUID();
         String uuid = uuids.toString();
 
@@ -83,4 +86,31 @@ public class SimpleRecordStoreApiTests {
 
     }
 
+
+    @Test
+    public void testKeyLengthRecordedInFile() throws Exception {
+        // set a super sized key
+        System.setProperty(String.format("%s.%s",
+                FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
+        // create a store with this key
+        recordsFile = new FileRecordStore(fileName, initialSize);
+
+        final String longestKey = Collections.nCopies( recordsFile.maxKeyLength - 5, "1" ).stream().collect( Collectors.joining() );
+        byte[] key = FileRecordStore.stringToBytes(longestKey);
+        byte[] value = FileRecordStore.stringToBytes(longestKey);
+        recordsFile.insertRecord(key, value);
+
+
+        // reset to the normal default
+        System.setProperty(String.format("%s.%s",
+                FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
+                Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
+        recordsFile = new FileRecordStore(fileName, "r");
+
+        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(longestKey)));
+
+        Assert.assertThat(put0, is(longestKey));
+
+    }
 }

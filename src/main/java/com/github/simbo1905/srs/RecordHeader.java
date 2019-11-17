@@ -29,7 +29,7 @@ class RecordHeader {
 	/*
 	 * Number of bytes of data that this record can hold (4 bytes).
 	 */
-	private int dataCapacity;
+	int dataCapacity;
 
 	public int getDataCapacity() {
 		return dataCapacity;
@@ -64,65 +64,6 @@ class RecordHeader {
 			len += 8;
 		}
 		return dataCapacity - len;
-	}
-
-	/*
-	 * Read as a single operation to avoid corruption
-	 */
-	protected void read(int index, RandomAccessFileInterface in) throws IOException {
-		byte[] header = new byte[RECORD_HEADER_LENGTH];
-		val fp = in.getFilePointer();
-		in.readFully(header);
-
-		FileRecordStore.logger.log(Level.FINEST, "<h fp:{0} idx:{3} len:{1} bytes:{2}",
-				new Object[]{fp, header.length, print(header), index });
-
-		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
-		buffer.put(header);
-		buffer.flip();
-
-		dataPointer = buffer.getLong();
-		dataCapacity = buffer.getInt();
-		dataCount = buffer.getInt();
-		crc32 = buffer.getInt() & 0xFFFFFFFFL;;
-
-		val array = buffer.array();
-		CRC32 crc = new CRC32();
-		crc.update(array, 0, 8 + 4  + 4);
-		long crc32expected = crc.getValue();
-		if( crc32 != crc32expected) {
-			throw new IllegalStateException(String.format("invalid header CRC32 expected %d for %s", crc32expected, this));
-		}
-	}
-
-	/*
-	 * in order to improve the likelihood of not corrupting the header write as
-	 * a single operation
-	 */
-	protected void write(RandomAccessFileInterface out) throws IOException {
-		if( dataCount < 0) {
-			throw new IllegalStateException("dataCount has not been initialized "+this.toString());
-		}
-		val fp = out.getFilePointer();
-		ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
-		buffer.putLong(dataPointer);
-		buffer.putInt(dataCapacity);
-		buffer.putInt(dataCount);
-		val array = buffer.array();
-		CRC32 crc = new CRC32();
-		crc.update(array, 0, 8 + 4  + 4);
-		crc32 = crc.getValue();
-		int crc32int = (int) (crc32 & 0xFFFFFFFFL);
-		buffer.putInt(crc32int);
-		out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
-		FileRecordStore.logger.log(Level.FINEST, ">h fp:{0} idx:{4} len:{1} end:{3} bytes:{2}",
-				new Object[]{fp, array.length, print(array), fp+array.length, indexPosition });
-	}
-
-	protected static RecordHeader readHeader(int index, RandomAccessFileInterface in) throws IOException {
-		RecordHeader r = new RecordHeader();
-		r.read(index, in);
-		return r;
 	}
 
 	/*

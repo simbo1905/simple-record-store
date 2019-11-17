@@ -380,10 +380,62 @@ public class FileRecordStore implements AutoCloseable {
         writeKeyToIndex(key, currentNumRecords);
 
         file.seek(indexPositionToRecordHeaderFp(currentNumRecords));
-        newRecord.write(file);
+        write(newRecord,file);
         newRecord.setIndexPosition(currentNumRecords);
         writeNumRecordsHeader(currentNumRecords + 1);
         memIndex.put(keyOf(key), newRecord);
+    }
+
+    void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
+        if( rh.dataCount < 0) {
+            throw new IllegalStateException("dataCount has not been initialized "+this.toString());
+        }
+        val fp = out.getFilePointer();
+        ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
+        buffer.putLong(rh.dataPointer);
+        buffer.putInt(rh.dataCapacity);
+        buffer.putInt(rh.dataCount);
+        val array = buffer.array();
+        CRC32 crc = new CRC32();
+        crc.update(array, 0, 8 + 4  + 4);
+        rh.crc32 = crc.getValue();
+        int crc32int = (int) (rh.crc32 & 0xFFFFFFFFL);
+        buffer.putInt(crc32int);
+        out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
+        logger.log(Level.FINEST, ">h fp:{0} idx:{4} len:{1} end:{3} bytes:{2}",
+                new Object[]{fp, array.length, print(array), fp+array.length, rh.indexPosition });
+    }
+
+    protected static void read(RecordHeader rh, int index, RandomAccessFileInterface in) throws IOException {
+        byte[] header = new byte[RECORD_HEADER_LENGTH];
+        val fp = in.getFilePointer();
+        in.readFully(header);
+
+        logger.log(Level.FINEST, "<h fp:{0} idx:{3} len:{1} bytes:{2}",
+                new Object[]{fp, header.length, print(header), index });
+
+        ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
+        buffer.put(header);
+        buffer.flip();
+
+        rh.dataPointer = buffer.getLong();
+        rh.dataCapacity = buffer.getInt();
+        rh.dataCount = buffer.getInt();
+        rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;;
+
+        val array = buffer.array();
+        CRC32 crc = new CRC32();
+        crc.update(array, 0, 8 + 4  + 4);
+        long crc32expected = crc.getValue();
+        if( rh.crc32 != crc32expected) {
+            throw new IllegalStateException(String.format("invalid header CRC32 expected %d for %s", crc32expected, rh));
+        }
+    }
+
+    protected static RecordHeader readHeader(int index, RandomAccessFileInterface in) throws IOException {
+        RecordHeader rh = new RecordHeader();
+        read(rh, index, in);
+        return rh;
     }
 
     /*
@@ -400,7 +452,7 @@ public class FileRecordStore implements AutoCloseable {
             writeKeyToIndex(lastKey, last.indexPosition);
 
             file.seek(this.indexPositionToRecordHeaderFp(last.indexPosition));
-            last.write(file);
+            write(last, file);
         }
         writeNumRecordsHeader(currentNumRecords - 1);
         RecordHeader deleted = memIndex.remove(keyOf(key));
@@ -587,7 +639,9 @@ public class FileRecordStore implements AutoCloseable {
      */
 	private RecordHeader readRecordHeaderFromIndex(int index) throws IOException {
         file.seek(indexPositionToRecordHeaderFp(index));
-        return RecordHeader.readHeader(index, file);
+        RecordHeader rh = new RecordHeader();
+        read(rh, index, file);
+        return rh;
     }
 
     /*
@@ -596,7 +650,7 @@ public class FileRecordStore implements AutoCloseable {
 	private void writeRecordHeaderToIndex(RecordHeader header)
             throws IOException {
         file.seek(indexPositionToRecordHeaderFp(header.indexPosition));
-        header.write(file);
+        write(header, file);
     }
 
     /*

@@ -3,7 +3,7 @@
 
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>0.9.8-SNAPSHOT</version>
+	<version>1.0.0-RC1</version>
 
 	<name>Simple Record Store</name>
 	<description>simple single file key value storage</description>
@@ -29,7 +29,7 @@
 		<connection>scm:git:git@github.com:simbo1905/simple-record-store.git</connection>
 		<developerConnection>scm:git:git@github.com:simbo1905/simple-record-store.git</developerConnection>
 		<url>https://github.com/simbo1905/simple-record-store.git</url>
-		<tag>HEAD</tag>
+		<tag>v1.0.0-RC1</tag>
 	</scm>
 
 

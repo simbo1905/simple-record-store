@@ -255,6 +255,10 @@ public class FileRecordStore implements AutoCloseable {
         return memIndex.isEmpty();
     }
 
+    public boolean recordExists(String key) {
+        return recordExists(keyOf(key));
+    }
+
     /*
      * Checks if there is a record belonging to the given key.
      */
@@ -663,6 +667,10 @@ public class FileRecordStore implements AutoCloseable {
         write(header, file);
     }
 
+    public void insertRecord(String key, byte[] value) throws IOException {
+	    insertRecord(keyOf(key), value);
+    }
+
     /*
      *
      */
@@ -684,6 +692,10 @@ public class FileRecordStore implements AutoCloseable {
             len += 8; // for crc32 long
         }
         return len;
+    }
+
+    public void updateRecord(String key, byte[] value) throws IOException {
+        updateRecord(keyOf(key), value);
     }
 
     /*
@@ -756,6 +768,10 @@ public class FileRecordStore implements AutoCloseable {
         }
 
         throw new AssertionError("this line should be unreachable");
+    }
+
+    public byte[] readRecordData(String key) throws IOException {
+        return readRecordData(keyOf(key));
     }
 
     /*
@@ -842,6 +858,10 @@ public class FileRecordStore implements AutoCloseable {
                 new Object[]{header.dataPointer, payload.length, print(lenBytes), end });
         logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{5} crc:{2} data:{3} bytes:{4}",
                 new Object[]{header.dataPointer+4, payload.length, crc, bytesToString(payload), print(data), end});
+    }
+
+    public void deleteRecord(String key) throws IOException {
+        deleteRecord(keyOf(key));
     }
 
     /*

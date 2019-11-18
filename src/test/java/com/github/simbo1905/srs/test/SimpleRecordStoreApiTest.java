@@ -56,25 +56,25 @@ public class SimpleRecordStoreApiTest {
         String uuid = UUID.randomUUID().toString();
 
         // when
-        this.recordsFile.insertRecord(stringToBytes(uuid), stringToBytes(uuid));
-        if( recordsFile.recordExists(stringToBytes(uuid))){
-            this.recordsFile.deleteRecord(stringToBytes(uuid));
+        this.recordsFile.insertRecord(uuid, stringToBytes(uuid));
+        if( recordsFile.recordExists(uuid)){
+            this.recordsFile.deleteRecord(uuid);
         }
 
         Assert.assertTrue(this.recordsFile.isEmpty());
-        Assert.assertFalse(this.recordsFile.recordExists(stringToBytes(uuid)));
+        Assert.assertFalse(this.recordsFile.recordExists(uuid));
 
-        this.recordsFile.insertRecord(stringToBytes(uuid), stringToBytes(uuid));
+        this.recordsFile.insertRecord(uuid, stringToBytes(uuid));
 
         Assert.assertFalse(this.recordsFile.isEmpty());
-        Assert.assertTrue(this.recordsFile.recordExists(stringToBytes(uuid)));
+        Assert.assertTrue(this.recordsFile.recordExists(uuid));
 
         this.recordsFile.fsync();
 
-        val data = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
+        val data = this.recordsFile.readRecordData(uuid);
         Assert.assertThat(FileRecordStore.bytesToString(data), is(uuid.toString()));
 
-        this.recordsFile.updateRecord(stringToBytes(uuid), stringToBytes("updated"));
+        this.recordsFile.updateRecord(uuid, stringToBytes("updated"));
 
         this.recordsFile.fsync();
 
@@ -82,7 +82,7 @@ public class SimpleRecordStoreApiTest {
 
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
-        val updated = this.recordsFile.readRecordData(FileRecordStore.keyOf(uuid.toString()));
+        val updated = this.recordsFile.readRecordData(uuid);
         Assert.assertThat(recordsFile.bytesToString(updated), is("updated"));
 
     }
@@ -101,7 +101,6 @@ public class SimpleRecordStoreApiTest {
         byte[] key = FileRecordStore.stringToBytes(longestKey);
         byte[] value = FileRecordStore.stringToBytes(longestKey);
         recordsFile.insertRecord(key, value);
-
 
         // reset to the normal default
         System.setProperty(String.format("%s.%s",

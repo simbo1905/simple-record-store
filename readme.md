@@ -2,9 +2,24 @@
 # Simple Record Store
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
-file. The set of all fixed length record headers are held in a HashMap. This means that all your keys must fit into heap 
-but all values are offloaded onto disk. The order of writes are carefully arranged so that any failures will not corrupt 
-the state of the data on disk. 
+file. All of your keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 
+arranged so that any failures will not corrupt the state of the data on disk. 
+
+## Using
+
+The latest release on maven central is:
+
+```xml
+<dependency>
+	<groupId>com.github.trex-paxos</groupId>
+	<artifactId>simple-record-store</artifactId>
+	<version>1.0.0-RC1</version>
+</dependency>
+```
+
+See `SimpleRecordStoreApiTests.java` for examples of the public API which is minimal. 
+
+## Details
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
@@ -16,6 +31,9 @@ This implementation:
 1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you workload has some 
 properties where you can safely set things to go faster or user less space. It is wise to use the defaults and only 
 change them if you have tests that prove safety and performance are not compromised. 
+1  Uses a HashMap to index record headers by key. It also uses a TreeMap to index record headers by the index of the 
+record data within the file. Records that have free space are held in a ConcurrentSkipList map sorted by the size of 
+the free space.  
 1. Supports a maximum key length of 247 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
 1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
@@ -76,21 +94,6 @@ If you preallocate the store to be a size equal to or greater than the number of
 you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
 can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
 RECORD_HEADER_LENGTH worth of records to the back fo the file. 
-
-
-## Using
-
-The latest release on maven central is:
-
-```xml
-<dependency>
-	<groupId>com.github.trex-paxos</groupId>
-	<artifactId>simple-record-store</artifactId>
-	<version>0.9.6</version>
-</dependency>
-```
-
-See `SimpleRecordStoreApiTests.java` for examples of the public API which is minimal. 
 
 ## Build
 

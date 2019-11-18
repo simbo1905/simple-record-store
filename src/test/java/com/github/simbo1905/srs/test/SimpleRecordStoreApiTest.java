@@ -53,12 +53,13 @@ public class SimpleRecordStoreApiTest {
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
-        UUID uuids = UUID.randomUUID();
-        String uuid = uuids.toString();
+        String uuid = UUID.randomUUID().toString();
 
         // when
         this.recordsFile.insertRecord(stringToBytes(uuid), stringToBytes(uuid));
-        this.recordsFile.deleteRecord(stringToBytes(uuid));
+        if( recordsFile.recordExists(stringToBytes(uuid))){
+            this.recordsFile.deleteRecord(stringToBytes(uuid));
+        }
 
         Assert.assertTrue(this.recordsFile.isEmpty());
         Assert.assertFalse(this.recordsFile.recordExists(stringToBytes(uuid)));

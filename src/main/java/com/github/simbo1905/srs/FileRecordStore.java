@@ -14,6 +14,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.CRC32;
 
+import static java.util.Optional.of;
+
 public class FileRecordStore implements AutoCloseable {
 
     final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
@@ -63,6 +65,11 @@ public class FileRecordStore implements AutoCloseable {
      * as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
      */
     protected Map<String, RecordHeader> memIndex;
+
+    /**
+     * TreeMap of headers by file index
+     */
+    protected TreeMap<Long, RecordHeader> positionIndex;
 
 
     private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
@@ -121,6 +128,7 @@ public class FileRecordStore implements AutoCloseable {
         writeKeyLengthHeader();
         writeDataStartPtrHeader(dataStartPtr);
         memIndex = new HashMap<String, RecordHeader>(initialSize);
+        positionIndex = new TreeMap<Long, RecordHeader>();
     }
 
     /*
@@ -157,12 +165,15 @@ public class FileRecordStore implements AutoCloseable {
         dataStartPtr = readDataStartHeader();
         int numRecords = readNumRecordsHeader();
         memIndex = new HashMap<>(numRecords);
+        positionIndex = new TreeMap<Long, RecordHeader>();
+
         for (int i = 0; i < numRecords; i++) {
             byte[] key = readKeyFromIndex(i);
             val k = keyOf(key);
             RecordHeader header = readRecordHeaderFromIndex(i);
             header.setIndexPosition(i);
             memIndex.put(k, header);
+            positionIndex.put(header.dataPointer, header);
         }
     }
 
@@ -327,19 +338,20 @@ public class FileRecordStore implements AutoCloseable {
     /*
      * Returns the record to which the target file pointer belongs - meaning the
      * specified location in the file is part of the record data of the
-     * RecordHeader which is returned. Returns null if the location is not part
-     * of a record. (O(n) mem accesses)
-     *
-     * ToDo speed this search up with an index into the map
+     * RecordHeader which is returned.
      */
-	private RecordHeader getRecordAt(long targetFp) {
-        for (RecordHeader next : this.memIndex.values()) {
-            if (targetFp >= next.dataPointer
-                    && targetFp < next.dataPointer + (long) next.getDataCapacity()) {
-                return next;
+	private Optional<RecordHeader> getRecordAt(long targetFp) {
+	    val floor = positionIndex.floorEntry(targetFp);
+        Optional<Map.Entry<Long, RecordHeader>> before = (floor != null)? of(floor): Optional.empty();
+        return before.map(entry ->{
+            val rh = entry.getValue();
+            if (targetFp >= rh.dataPointer
+                    && targetFp < rh.dataPointer + (long) rh.getDataCapacity()) {
+                return rh;
+            } else {
+                return null;
             }
-        }
-        return null;
+        });
     }
 
     /*
@@ -357,6 +369,8 @@ public class FileRecordStore implements AutoCloseable {
         } finally {
             memIndex.clear();
             memIndex = null;
+            positionIndex.clear();
+            positionIndex = null;
             freeMap.clear();
             freeMap = null;
         }
@@ -384,6 +398,7 @@ public class FileRecordStore implements AutoCloseable {
         newRecord.setIndexPosition(currentNumRecords);
         writeNumRecordsHeader(currentNumRecords + 1);
         memIndex.put(keyOf(key), newRecord);
+        positionIndex.put(newRecord.dataPointer, newRecord);
     }
 
     void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
@@ -432,12 +447,6 @@ public class FileRecordStore implements AutoCloseable {
         }
     }
 
-    protected static RecordHeader readHeader(int index, RandomAccessFileInterface in) throws IOException {
-        RecordHeader rh = new RecordHeader();
-        read(rh, index, in);
-        return rh;
-    }
-
     /*
      * Removes the record from the index. Replaces the target with the entry at
      * the end of the index.
@@ -456,6 +465,7 @@ public class FileRecordStore implements AutoCloseable {
         }
         writeNumRecordsHeader(currentNumRecords - 1);
         RecordHeader deleted = memIndex.remove(keyOf(key));
+	    positionIndex.remove(header.dataPointer);
         assert header == deleted;
     }
 
@@ -716,25 +726,30 @@ public class FileRecordStore implements AutoCloseable {
             return;
         }
 
-        // follow the insert logic
+        // perform a move. insert data to the end of the file then overwrite header.
         if (value.length > updateMeHeader.getDataCapacity()) {
-            // when we move we add capacity to the previous record
-            RecordHeader previous = getRecordAt(updateMeHeader.dataPointer - 1);
             // allocate to next free space or expand the file
             RecordHeader newRecord = allocateRecord(key, value.length);
             // new record is expanded old record
             newRecord.dataCount = value.length;
             writeRecordData(newRecord, value);
             writeRecordHeaderToIndex(newRecord);
-            // nothing to do but lets subclasses do additional bookwork
             memIndex.put(keyOf(key), newRecord);
-            if (previous != null) {
+            positionIndex.remove(updateMeHeader.dataPointer);
+            positionIndex.put(newRecord.dataPointer, newRecord);
+
+            // if there is a previous record add space to it
+            val previousIndex = updateMeHeader.dataPointer - 1;
+            val previousOptional = getRecordAt(previousIndex);
+
+            if (previousOptional.isPresent()) {
+                RecordHeader previous = previousOptional.get();
                 // append space of deleted record onto previous record
                 previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
                 updateFreeSpaceIndex(previous);
                 writeRecordHeaderToIndex(previous);
             } else {
-                // make free space at the end of the index area
+                // record free space at the end of the index area
                 writeDataStartPtrHeader(updateMeHeader.dataPointer);
             }
             return;
@@ -845,10 +860,11 @@ public class FileRecordStore implements AutoCloseable {
             return;
         }
 
-        RecordHeader previous = getRecordAt(delRec.dataPointer - 1);
+        val previousOptional = getRecordAt(delRec.dataPointer - 1);
 
-        if (previous != null) {
+        if (previousOptional.isPresent()) {
             // append space of deleted record onto previous record
+            val previous = previousOptional.get();
             previous.incrementDataCapacity(delRec.getDataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
@@ -871,8 +887,9 @@ public class FileRecordStore implements AutoCloseable {
         }
         // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
-            RecordHeader first = getRecordAt(dataStartPtr);
-			assert first != null;
+            val firstOptional = getRecordAt(dataStartPtr);
+			assert firstOptional.isPresent();
+			val first = firstOptional.get();
 			byte[] data = readRecordData(first);
             long fileLen = getFileLength();
             first.dataPointer = fileLen;

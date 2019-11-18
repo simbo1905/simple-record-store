@@ -16,7 +16,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.zip.CRC32;
 
-import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
+import static com.github.simbo1905.srs.FileRecordStore.*;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -25,12 +25,22 @@ import static org.junit.Assert.assertThat;
  * Tests that the simple random access storage 'db' works and does not get
  * corrupted under write errors.
  */
-public class SimpleRecordStoreTests {
+public class SimpleRecordStoreTest {
 
     static {
         System.setProperty("java.util.logging.SimpleFormatter.format",
                 "%1$tT %4$s %2$s %5$s%6$s%n");
     }
+
+
+    static {
+        // use this to set trace level logging
+        if( "Level.FINEST".equals((System.getProperty(FileRecordStore.class.getCanonicalName()+".logLevel")))){
+            Logger.getLogger("").setLevel(Level.FINEST);
+            Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
+        }
+    }
+
 
     /**
      * A utility to recored how many times file write operations are called
@@ -81,12 +91,12 @@ public class SimpleRecordStoreTests {
 
     static final String TMP = System.getProperty("java.io.tmpdir");
 
-    private final static Logger logger = Logger.getLogger(SimpleRecordStoreTests.class.getName());
+    private final static Logger logger = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
     String fileName;
     int initialSize;
 
-    public SimpleRecordStoreTests() {
+    public SimpleRecordStoreTest() {
         logger.setLevel(Level.ALL);
         init(TMP + "junit.records", 0);
     }
@@ -206,44 +216,44 @@ public class SimpleRecordStoreTests {
     }
 
     private void writeString(String k, String v) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k);
-        byte[] value = FileRecordStore.stringToBytes(v);
+        byte[] key = stringToBytes(k);
+        byte[] value = stringToBytes(v);
         recordsFile.insertRecord(key, value);
     }
 
     private void writeUuid(UUID k, UUID v) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k.toString());
-        byte[] value = FileRecordStore.stringToBytes(v.toString());
+        byte[] key = stringToBytes(k.toString());
+        byte[] value = stringToBytes(v.toString());
         recordsFile.insertRecord(key, value);
     }
 
     private void writeUuid(UUID k, UUID v, UUID v2) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k.toString());
-        byte[] value = FileRecordStore.stringToBytes(v.toString() + v2.toString());
+        byte[] key = stringToBytes(k.toString());
+        byte[] value = stringToBytes(v.toString() + v2.toString());
         recordsFile.insertRecord(key, value);
     }
 
     private void updateUuid(UUID k, UUID v) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k.toString());
-        byte[] value = FileRecordStore.stringToBytes(v.toString());
+        byte[] key = stringToBytes(k.toString());
+        byte[] value = stringToBytes(v.toString());
         recordsFile.updateRecord(key, value);
     }
 
     private void updateString(String k, String v) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k);
-        byte[] value = FileRecordStore.stringToBytes(v);
+        byte[] key = stringToBytes(k);
+        byte[] value = stringToBytes(v);
         recordsFile.updateRecord(key, value);
     }
 
     private void updateUuid(UUID k, UUID v1, UUID v2) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k.toString());
-        byte[] value = FileRecordStore.stringToBytes(v1.toString() + v2.toString());
+        byte[] key = stringToBytes(k.toString());
+        byte[] value = stringToBytes(v1.toString() + v2.toString());
         recordsFile.updateRecord(key, value);
     }
 
     private void updateString(String k, String v1, String v2) throws IOException {
-        byte[] key = FileRecordStore.stringToBytes(k);
-        byte[] value = FileRecordStore.stringToBytes(v1 + v2);
+        byte[] key = stringToBytes(k);
+        byte[] value = stringToBytes(v1 + v2);
         recordsFile.updateRecord(key, value);
     }
 
@@ -609,53 +619,83 @@ public class SimpleRecordStoreTests {
 
     @Test
     public void testUpdateExpandFirstRecord() throws Exception {
-        List<UUID> uuids = createUuid(2);
         recordsFile = new FileRecordStore(fileName, initialSize);
 
         // given
-        UUID first = uuids.get(0);
-        UUID last = uuids.get(1);
+        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
 
         // when
-        writeUuid(first);
-        writeUuid(last);
-        updateUuid(first, last, last);
+        recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
+        recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
+        recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
 
-        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-        Assert.assertThat(put, is(last.toString() + last.toString()));
-        String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
-        Assert.assertThat(put2, is(last.toString()));
+        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
+        Assert.assertThat(put, is(one));
+        String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
+        Assert.assertThat(put2, is(two));
 
         recordsFile = new FileRecordStore(fileName, "r", false);
     }
 
     @Test
     public void testUpdateExpandFirstRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
             @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+            public void performTestOperations(WriteCallback wc, String fileName) throws Exception {
                 deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+                recordsFile = new FileRecordStore(fileName, initialSize);
 
                 // given
-                UUID first = uuids.get(0);
-                UUID last = uuids.get(1);
 
                 // when
-                writeUuid(first);
-                writeUuid(last);
+                recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
+                recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
+                recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
 
-                updateUuid(first, last, last);
+                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
+                Assert.assertThat(put, is(one));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
+                Assert.assertThat(put2, is(two));
 
-                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-                Assert.assertThat(put, is(last.toString() + last.toString()));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
-                Assert.assertThat(put2, is(last.toString()));
+                recordsFile = new FileRecordStore(fileName, "r", false);
+
             }
-        }, uuids);
+        });
+    }
+
+    @Test
+    public void testUpdateExpandMiddleRecordWithIOExceptions() throws Exception {
+        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
+        final String three = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
+        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
+            @Override
+            public void performTestOperations(WriteCallback wc, String fileName) throws Exception {
+                deleteFileIfExists(fileName);
+                recordsFile = new FileRecordStore(fileName, initialSize);
+
+                // given
+                recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
+                recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
+                recordsFile.insertRecord(keyOf("three"), stringToBytes(three));
+
+                //when
+                recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
+
+                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
+                Assert.assertThat(put1, is(one));
+                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
+                Assert.assertThat(put2, is(two));
+                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("three")));
+                Assert.assertThat(put3, is(three));
+
+                recordsFile = new FileRecordStore(fileName, "r", false);
+
+            }
+        });
     }
 
     @Test
@@ -865,9 +905,9 @@ public class SimpleRecordStoreTests {
         String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
         // when
-        recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+        recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
         logger.info("after insert small ------");
-        recordsFile.insertRecord(FileRecordStore.keyOf("larger"), FileRecordStore.stringToBytes(largeEntry));
+        recordsFile.insertRecord(FileRecordStore.keyOf("larger"), stringToBytes(largeEntry));
         logger.info("after insert larger ------");
         recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
         logger.info("after delete small ------");
@@ -892,8 +932,8 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger"), stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
                 String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger")));
                 Assert.assertThat(large, is(largeEntry));
@@ -916,9 +956,9 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("larger1"));
                 String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
@@ -942,9 +982,9 @@ public class SimpleRecordStoreTests {
                 String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), FileRecordStore.stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), FileRecordStore.stringToBytes(largeEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
+                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), stringToBytes(largeEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
 
                 // then
@@ -970,7 +1010,7 @@ public class SimpleRecordStoreTests {
                 String smallEntry = uuids.get(0).toString();
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), FileRecordStore.stringToBytes(smallEntry));
+                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
                 recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
 
                 // then
@@ -1060,50 +1100,6 @@ public class SimpleRecordStoreTests {
         }
     }
 
-
-    void verifyWorkWithIOExceptions2(InterceptedTestOperations2 interceptedOperations, List<UUID> uuids) throws Exception {
-        final List<List<String>> writeStacks = new ArrayList<List<String>>();
-
-        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
-
-        final List<String> localFileNames = new ArrayList<String>();
-        final String recordingFile = fileName("record");
-        localFileNames.add(recordingFile);
-
-        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
-        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
-
-        try {
-            for (int index = 0; index < writeStacks.size(); index++) {
-                final List<String> stack = writeStacks.get(index);
-                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
-                final String localFileName = fileName("crash" + index);
-                localFileNames.add(localFileName);
-                try {
-                    interceptedOperations.performTestOperations(crashAt, localFileName);
-                } catch (Exception ioe) {
-                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
-                    try {
-                        int count = possiblyCorruptedFile.getNumRecords();
-                        for (String k : possiblyCorruptedFile.keys()) {
-                            // readRecordData has a CRC32 check where the payload must match the header
-                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
-                            count--;
-                        }
-                        assertThat(count, is(0));
-                    } catch (Exception e) {
-                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
-                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-                        throw new RuntimeException(msg, e);
-                    }
-                }
-            }
-        } finally {
-            removeFiles(localFileNames);
-        }
-    }
-
-
     static interface InterceptedTestOperations2 {
         void performTestOperations(WriteCallback wc,
                                    String fileName) throws Exception;
@@ -1167,11 +1163,11 @@ public class SimpleRecordStoreTests {
 
                 // when
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
 
-                recordsFile.updateRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
+                recordsFile.updateRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
 
                 // then
                 Assert.assertEquals(2, recordsFile.size());
@@ -1195,10 +1191,10 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
-                recordsFile.updateRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
@@ -1222,10 +1218,10 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
-                recordsFile.updateRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
@@ -1247,11 +1243,11 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
 
                 val length = recordsFile.getFileLength();
 
-                recordsFile.updateRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
+                recordsFile.updateRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
 
                 // then
                 Assert.assertEquals(1, recordsFile.size());
@@ -1274,10 +1270,10 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(oneLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
                 logger.info("after insert one ------------------");
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
                 logger.info("after insert two ------------------");
 
                 val maxLen = recordsFile.getFileLength();
@@ -1286,7 +1282,7 @@ public class SimpleRecordStoreTests {
                 recordsFile.deleteRecord(FileRecordStore.keyOf("one"));
                 logger.info("after delete one ------------------");
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(threeSmall));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
                 logger.info("after insert three ------------------");
 
                 val finalLen = recordsFile.getFileLength();
@@ -1297,11 +1293,6 @@ public class SimpleRecordStoreTests {
 
             }
         });
-    }
-
-    static {
-        Logger.getLogger("").setLevel(Level.FINEST);
-        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
     }
 
     @Test
@@ -1319,16 +1310,16 @@ public class SimpleRecordStoreTests {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), FileRecordStore.stringToBytes(one));
+                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(one));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), FileRecordStore.stringToBytes(twoLarge));
+                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), FileRecordStore.stringToBytes(three));
+                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(three));
 
                 val maxLen = recordsFile.getFileLength();
                 recordsFile.deleteRecord(FileRecordStore.keyOf("two"));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("four"), FileRecordStore.stringToBytes(four));
+                recordsFile.insertRecord(FileRecordStore.keyOf("four"), stringToBytes(four));
 
                 val finalLen = recordsFile.getFileLength();
 
@@ -1390,8 +1381,8 @@ public class SimpleRecordStoreTests {
         String longestKey = Collections.nCopies( FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1" ).stream().collect( Collectors.joining() );
 
         try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)){
-            byte[] key = FileRecordStore.stringToBytes(longestKey);
-            byte[] value = FileRecordStore.stringToBytes(longestKey);
+            byte[] key = stringToBytes(longestKey);
+            byte[] value = stringToBytes(longestKey);
             recordsFile.insertRecord(key, value);
         }
 

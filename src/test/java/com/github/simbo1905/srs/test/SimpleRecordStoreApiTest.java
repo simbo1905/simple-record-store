@@ -1,7 +1,7 @@
 package com.github.simbo1905.srs.test;
 
 import com.github.simbo1905.srs.FileRecordStore;
-import com.github.simbo1905.srs.SimpleRecordStoreTests;
+import com.github.simbo1905.srs.SimpleRecordStoreTest;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
@@ -18,15 +18,15 @@ import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 import static com.github.simbo1905.srs.FileRecordStore.stringToBytes;
 import static org.hamcrest.Matchers.is;
 
-public class SimpleRecordStoreApiTests {
+public class SimpleRecordStoreApiTest {
     String fileName;
     FileRecordStore recordsFile = null;
     int initialSize;
     static final String TMP = System.getProperty("java.io.tmpdir");
 
-    private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTests.class.getName());
+    private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
-    public SimpleRecordStoreApiTests() {
+    public SimpleRecordStoreApiTest() {
         LOGGER.setLevel(Level.ALL);
         init(TMP + "junit.records", 0);
     }

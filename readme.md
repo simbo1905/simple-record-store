@@ -24,7 +24,7 @@ See `SimpleRecordStoreApiTests.java` for examples of the public API which is min
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
 of writes. This code base has tests that uses brute force search to throw exceptions on every file operation to validate 
-the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are validated upon read from disk. If any IOException is thrown it does *not* mean that the write is known to have failed. It means that the write may have failed and that in memory state is not known to be consistent with that is on disk. The way to fix to this is to close the store and open a fresh one to reload all the headers from disk. 
+the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are validated upon read from disk. If any IOException is thrown it does *not* mean that the write is known to have failed. It means that the write may have failed and that the in-memory state *might* be inconsistent with what is on disk. The way to fix to this is to close the store and open a fresh one to reload all the headers from disk. 
 
 This implementation: 
 

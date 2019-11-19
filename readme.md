@@ -35,6 +35,7 @@ change them if you have tests that prove safety and performance are not compromi
 the free space.  
 1. Supports a maximum key length of 247 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
 1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
+1. Is thread safe. It uses an internal lock to protected all public methods. 
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.

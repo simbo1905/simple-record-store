@@ -3,7 +3,7 @@
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
 file. All of your keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 
-arranged so that any failures will not corrupt the state of the data on disk. 
+arranged so that any failures will not corrupt the state of the data on disk. The project has no runtime dependencies outside of the core JDK. 
 
 ## Using
 
@@ -75,6 +75,8 @@ failed and it is not known if the state of the in memory map is consistent with 
 the store and open a fresh one to reload all the headers from disk. Given that the disk may be unavailable or full the 
 and reloading all the headers is expensive this code throws an error and expects the application to log what is going on 
 and decide how many times to attempt to reopen the store. 
+
+Note that the source code using Lombok to be able to write cleaner and safer code. This is compile time only dependency. 
 
 ## Details
 

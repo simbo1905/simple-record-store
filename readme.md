@@ -3,7 +3,7 @@
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
 file. All of your keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 
-arranged so that any failures will not corrupt the state of the data on disk. 
+arranged so that any failures will not corrupt the state of the data on disk. The project has no runtime dependencies outside of the core JDK. 
 
 ## Using
 
@@ -24,18 +24,18 @@ See `SimpleRecordStoreApiTests.java` for examples of the public API which is min
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
 of writes. This code base has tests that uses brute force search to throw exceptions on every file operation to validate 
-the data on disk is always consistent. It also adds CRC32 checks to the data that are validated upon read. 
+the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are validated upon read from disk. If any IOException is thrown it does *not* mean that the write is known to have failed. It means that the write may have failed and that the in-memory state *might* be inconsistent with what is on disk. The way to fix to this is to close the store and open a fresh one to reload all the headers from disk. 
 
 This implementation: 
 
-1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you workload has some 
-properties where you can safely set things to go faster or user less space. It is wise to use the defaults and only 
+1. Defaults to prioritising safety, over speed, over space. You can override some defaults if your workload has some 
+properties where you can safely set things to go faster or use less space. It is wise to use the defaults and only 
 change them if you have tests that prove safety and performance are not compromised. 
-1  Uses a HashMap to index record headers by key. It also uses a TreeMap to index record headers by the index of the 
-record data within the file. Records that have free space are held in a ConcurrentSkipList map sorted by the size of 
+1  Uses a `HashMap` to index record headers by key. It also uses a `TreeMap` to index record headers by the offset of the record datwa within the file. Records that have free space are held in a `ConcurrentSkipList` map sorted by the size of 
 the free space.  
 1. Supports a maximum key length of 247 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
 1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
+1. Is thread safe. It uses an internal lock to protected all public methods. 
 1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.
@@ -70,11 +70,11 @@ records shrink. In which case the update with less data will write to a free loc
 by the unit tests that for every functional test records every file operations. The test then performs a brute force 
 replay crashing at every file operation and verifying the integrity of the data on disk after each crash. 
 
-If any IOException is thrown that does not mean that the write is known to have failed. It means that the write may have 
-failed and it is not known if the state of the in memory map is consistent with that is on disk. The fix to this is to close 
-the store and open a fresh one to reload all the headers from disk. Given that the disk may be unavailable or full the 
+Given that the disk may be unavailable or full the 
 and reloading all the headers is expensive this code throws an error and expects the application to log what is going on 
 and decide how many times to attempt to reopen the store. 
+
+Note that the source code using Lombok to be able to write cleaner and safer code. This is compile time only dependency. 
 
 ## Details
 

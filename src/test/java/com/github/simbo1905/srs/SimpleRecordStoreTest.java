@@ -134,6 +134,7 @@ public class SimpleRecordStoreTest {
                 try {
                     interceptedOperations.performTestOperations(crashAt, localFileName);
                 } catch (Exception ioe) {
+                    recordsFile.close();
                     FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
                     try {
                         int count = possiblyCorruptedFile.getNumRecords();
@@ -147,6 +148,8 @@ public class SimpleRecordStoreTest {
                         FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
                         throw new RuntimeException(msg, e);
+                    } finally {
+                        possiblyCorruptedFile.close();
                     }
                 }
             }

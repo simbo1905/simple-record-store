@@ -24,7 +24,7 @@ public class SimpleRecordStoreApiTest {
     String fileName;
     FileRecordStore recordsFile = null;
     int initialSize;
-    static final String TMP = System.getProperty("java.io.tmpdir");
+    static final String TMP = System.getProperty("java.io.tmpdir")+System.getProperty("file.separator");
 
     private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 

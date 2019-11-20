@@ -14,9 +14,11 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.zip.CRC32;
 
-import static com.github.simbo1905.srs.FileRecordStore.*;
+import static com.github.simbo1905.srs.ByteSequence.stringToUtf8;
+import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
@@ -35,7 +37,7 @@ public class SimpleRecordStoreTest {
 
     static {
         // use this to set trace level logging
-        if( "Level.FINEST".equals((System.getProperty(FileRecordStore.class.getCanonicalName()+".logLevel")))){
+        if ("Level.FINEST".equals((System.getProperty(FileRecordStore.class.getCanonicalName() + ".logLevel")))) {
             Logger.getLogger("").setLevel(Level.FINEST);
             Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
         }
@@ -86,7 +88,76 @@ public class SimpleRecordStoreTest {
                 throw new IOException("simulated IOException at call index: " + crashAtIndex);
             }
         }
+    }
 
+    static interface InterceptedTestOperations {
+        void performTestOperations(WriteCallback wc,
+                                   String fileName) throws Exception;
+    }
+
+    private void removeFiles(List<String> localFileNames) {
+        for (String file : localFileNames) {
+            File f = new File(file);
+            f.delete();
+        }
+    }
+
+    private String stackToString(List<String> stack) {
+        StringBuilder sb = new StringBuilder();
+        for (String s : stack) {
+            sb.append("\\n\\t");
+            sb.append(s);
+        }
+        return sb.toString();
+    }
+
+    private String fileName(String base) {
+        String fileName = TMP + base;
+        File file = new File(fileName);
+        file.deleteOnExit();
+        return fileName;
+    }
+
+    void verifyWorkWithIOExceptions(InterceptedTestOperations interceptedOperations) throws Exception {
+        final List<List<String>> writeStacks = new ArrayList<List<String>>();
+
+        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
+
+        final List<String> localFileNames = new ArrayList<String>();
+        final String recordingFile = fileName("record");
+        localFileNames.add(recordingFile);
+
+        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
+        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
+
+        try {
+            for (int index = 0; index < writeStacks.size(); index++) {
+                final List<String> stack = writeStacks.get(index);
+                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
+                final String localFileName = fileName("crash" + index);
+                localFileNames.add(localFileName);
+                try {
+                    interceptedOperations.performTestOperations(crashAt, localFileName);
+                } catch (Exception ioe) {
+                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
+                    try {
+                        int count = possiblyCorruptedFile.getNumRecords();
+                        for (val k : possiblyCorruptedFile.keys()) {
+                            // readRecordData has a CRC32 check where the payload must match the header
+                            possiblyCorruptedFile.readRecordData(k);
+                            count--;
+                        }
+                        assertThat(count, is(0));
+                    } catch (Exception e) {
+                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
+                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
+                        throw new RuntimeException(msg, e);
+                    }
+                }
+            }
+        } finally {
+            removeFiles(localFileNames);
+        }
     }
 
     static final String TMP = System.getProperty("java.io.tmpdir");
@@ -151,30 +222,29 @@ public class SimpleRecordStoreTest {
      */
     @Test
     public void originalTest() throws Exception {
-        recordsFile = new FileRecordStore(fileName, initialSize);
 
         logger.info("creating records file...");
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
         logger.info("adding a record...");
         final Date date = new Date();
-        recordsFile.insertRecord(FileRecordStore.keyOf("foo.lastAccessTime"), serializerDate.apply(date));
+        recordsFile.insertRecord(stringToUtf8("foo.lastAccessTime"), serializerDate.apply(date));
 
         logger.info("reading record...");
-        Date d = deserializerDate.apply(recordsFile.readRecordData(FileRecordStore.keyOf("foo.lastAccessTime")));
-        // System.out.println("\tlast access was at: " + d.toString());
+        Date d = deserializerDate.apply(recordsFile.readRecordData(stringToUtf8("foo.lastAccessTime")));
 
         Assert.assertEquals(date, d);
 
         logger.info("updating record...");
-        recordsFile.updateRecord(FileRecordStore.keyOf("foo.lastAccessTime"), serializerDate.apply(new Date()));
+        recordsFile.updateRecord(stringToUtf8("foo.lastAccessTime"), serializerDate.apply(new Date()));
 
         logger.info("reading record...");
-        d = deserializerDate.apply(recordsFile.readRecordData(FileRecordStore.keyOf("foo.lastAccessTime")));
-        // System.out.println("\tlast access was at: " + d.toString());
+        d = deserializerDate.apply(recordsFile.readRecordData(stringToUtf8("foo.lastAccessTime")));
 
         logger.info("deleting record...");
-        recordsFile.deleteRecord(FileRecordStore.keyOf("foo.lastAccessTime"));
-        if (recordsFile.recordExists(FileRecordStore.keyOf("foo.lastAccessTime"))) {
+        recordsFile.deleteRecord(stringToUtf8("foo.lastAccessTime"));
+
+        if (recordsFile.recordExists(stringToUtf8("foo.lastAccessTime"))) {
             throw new Exception("Record not deleted");
         } else {
             logger.info("record successfully deleted.");
@@ -187,1146 +257,746 @@ public class SimpleRecordStoreTest {
 
     @Test
     public void testInsertOneRecordWithIOExceptions() throws Exception {
-        final List<UUID> uuids = createUuid(1);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-
-                logger.info(String.format("writing to: " + fileName));
-
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-
-                UUID uuid = uuids.get(0);
-
-                writeUuid(uuid);
-
-                recordsFile = new FileRecordStore(fileName, "r", false);
-            }
-        }, uuids);
+        insertOneRecordWithIOExceptions("");
+        insertOneRecordWithIOExceptions(string1k);
     }
 
-    private void writeUuid(UUID k) throws IOException {
-        writeUuid(k, k);
-    }
+    public void insertOneRecordWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-    private void writeString(String k) throws IOException {
-        writeString(k, k);
-    }
+            val key = ByteSequence.of("key".getBytes());
+            val data = (dataPadding + "data").getBytes();
+            recordsFile.insertRecord(key, data);
 
-    private void writeString(String k, String v) throws IOException {
-        byte[] key = stringToBytes(k);
-        byte[] value = stringToBytes(v);
-        recordsFile.insertRecord(key, value);
-    }
+            // then
+            val put0 = recordsFile.readRecordData(key);
+            Assert.assertArrayEquals(put0, data);
 
-    private void writeUuid(UUID k, UUID v) throws IOException {
-        byte[] key = stringToBytes(k.toString());
-        byte[] value = stringToBytes(v.toString());
-        recordsFile.insertRecord(key, value);
-    }
-
-    private void writeUuid(UUID k, UUID v, UUID v2) throws IOException {
-        byte[] key = stringToBytes(k.toString());
-        byte[] value = stringToBytes(v.toString() + v2.toString());
-        recordsFile.insertRecord(key, value);
-    }
-
-    private void updateUuid(UUID k, UUID v) throws IOException {
-        byte[] key = stringToBytes(k.toString());
-        byte[] value = stringToBytes(v.toString());
-        recordsFile.updateRecord(key, value);
-    }
-
-    private void updateString(String k, String v) throws IOException {
-        byte[] key = stringToBytes(k);
-        byte[] value = stringToBytes(v);
-        recordsFile.updateRecord(key, value);
-    }
-
-    private void updateUuid(UUID k, UUID v1, UUID v2) throws IOException {
-        byte[] key = stringToBytes(k.toString());
-        byte[] value = stringToBytes(v1.toString() + v2.toString());
-        recordsFile.updateRecord(key, value);
-    }
-
-    private void updateString(String k, String v1, String v2) throws IOException {
-        byte[] key = stringToBytes(k);
-        byte[] value = stringToBytes(v1 + v2);
-        recordsFile.updateRecord(key, value);
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
 
     @Test
-    public void testInsertOneRecord() throws Exception {
-        // given
-        recordsFile = new FileRecordStore(fileName, initialSize);
-        List<UUID> uuids = createUuid(1);
-
-        // when
-        UUID uuid0 = uuids.get(0);
-        writeUuid(uuid0);
-
-        // then
-        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-
-        Assert.assertThat(put0, is(uuid0.toString()));
-
-        recordsFile = new FileRecordStore(fileName, "r", false);
+    public void testInsertTwoRecordWithIOExceptions() throws Exception {
+        insertTwoRecordWithIOExceptions("");
+        insertTwoRecordWithIOExceptions(string1k);
     }
 
-    @Test
-    public void testInsertTwoRecords() throws Exception {
-        // given
-        recordsFile = new FileRecordStore(fileName, initialSize);
-        List<UUID> uuids = createUuid(2);
+    public void insertTwoRecordWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-        // when
-        UUID uuid0 = uuids.get(0);
-        writeUuid(uuid0);
-        UUID uuid1 = uuids.get(1);
-        writeUuid(uuid1);
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
+            val key2 = ByteSequence.of("key2".getBytes());
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.insertRecord(key2, data2);
 
-        // then
-        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-        String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            val put2 = recordsFile.readRecordData(key2);
 
-        Assert.assertThat(put0, is(uuid0.toString()));
-        Assert.assertThat(put1, is(uuid1.toString()));
+            Assert.assertArrayEquals(put1, data1);
+            Assert.assertArrayEquals(put2, data2);
 
-        recordsFile = new FileRecordStore(fileName, "r", false);
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
 
     @Test
     public void testInsertThenDeleteRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(1);
-
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                recordsFile = new FileRecordStore(fileName, initialSize);
-
-                // given
-                UUID uuid0 = uuids.get(0);
-                writeUuid(uuid0);
-
-                // when
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
-
-                // then
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
-            }
-        }, uuids);
+        insertThenDeleteRecordWithIOExceptions("");
+        insertThenDeleteRecordWithIOExceptions(string1k);
     }
 
-    @Test
-    public void testInsertTwoRecordsWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+    public void insertThenDeleteRecordWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-                // when
-                UUID uuid0 = uuids.get(0);
-                writeUuid(uuid0);
-                UUID uuid1 = uuids.get(1);
-                writeUuid(uuid1);
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
+            recordsFile.deleteRecord(key1);
 
-                // then
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
-                Assert.assertThat(put1, is(uuid1.toString()));
+            // then
+            if (recordsFile.recordExists(key1)) {
+                throw new Exception("Record not deleted");
             }
-        }, uuids);
+
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
+
 
     @Test
     public void testInsertTwoThenDeleteTwoRecordsWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                UUID uuid0 = uuids.get(0);
-                writeUuid(uuid0);
-                UUID uuid1 = uuids.get(1);
-                writeUuid(uuid1);
-
-                // when
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
-
-                // then
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
-            }
-        }, uuids);
+        insertTwoThenDeleteTwoRecordsWithIOExceptions("");
+        insertTwoThenDeleteTwoRecordsWithIOExceptions(string1k);
     }
 
+    public void insertTwoThenDeleteTwoRecordsWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
+
+            val key2 = ByteSequence.of("key2".getBytes());
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.insertRecord(key2, data2);
+
+            recordsFile.deleteRecord(key1);
+            recordsFile.deleteRecord(key2);
+
+            // then
+            if (recordsFile.recordExists(key1)) {
+                throw new Exception("Record not deleted");
+            }
+            // then
+            if (recordsFile.recordExists(key2)) {
+                throw new Exception("Record not deleted");
+            }
+
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
+    }
+
+    final String string1k = Collections.nCopies(1024, "1").stream().collect(Collectors.joining());
 
     @Test
     public void testInsertTwoDeleteFirstInsertOneWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(3);
-
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
-                UUID uuid2 = uuids.get(2);
-
-                // System.out.println("\nbefore write uuid0 -----------------");
-
-                writeUuid(uuid0);
-
-                // System.out.println("\nafter write uuid0 -----------------");
-                // System.out.println("\nmemory: ");
-                //recordsFile.dumpHeaders(// System.out, true);
-                // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(Level.INFO, fileName, false);
-
-                // System.out.println("\nbefore write uuid1 -----------------");
-
-
-                writeUuid(uuid1);
-
-                // System.out.println("\nafter write uuid1 -----------------");
-                // System.out.println("\nmemory: ");
-                //recordsFile.dumpHeaders(// System.out, true);
-                // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(Level.INFO, fileName, false);
-
-                // System.out.println("\nbefore delete uuid0 -----------------");
-
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid0.toString()));
-
-                // System.out.println("\nafter delete uuid0 -----------------");
-                // System.out.println("\nmemory: ");
-                //ecordsFile.dumpHeaders(// System.out, true);
-                // System.out.println("\ndisk: ");
-                FileRecordStore.dumpFile(Level.INFO, fileName, false);
-                // System.out.flush();
-
-                // System.out.println("\nbefore write uuid2 -----------------");
-
-                writeUuid(uuid2);
-
-                // System.out.println("\nafter write uuid2 -----------------");
-                // System.out.println("\nmemory: ");
-                //recordsFile.dumpHeaders(// System.out, true);
-                // System.out.println("\ndisk: ");
-                //FileRecordStore.dumpFile(fileName, true);
-
-                // then
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
-                Assert.assertThat(put1, is(uuid1.toString()));
-                Assert.assertThat(put2, is(uuid2.toString()));
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid0.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
-            }
-        }, uuids);
+        insertTwoDeleteFirstInsertOneWithIOExceptions("");
+        insertTwoDeleteFirstInsertOneWithIOExceptions(string1k);
     }
 
+    public void insertTwoDeleteFirstInsertOneWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
+
+            val key2 = ByteSequence.of("key2".getBytes());
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.insertRecord(key2, data2);
+
+            recordsFile.deleteRecord(key1);
+
+            val key3 = ByteSequence.of("key3".getBytes());
+            val data3 = (dataPadding + "data3").getBytes();
+            recordsFile.insertRecord(key3, data3);
+
+            // then
+            if (recordsFile.recordExists(key1)) {
+                throw new Exception("Record not deleted");
+            }
+            val put2 = recordsFile.readRecordData(key2);
+            val put3 = recordsFile.readRecordData(key3);
+
+            Assert.assertArrayEquals(put2, data2);
+            Assert.assertArrayEquals(put3, data3);
+
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
+    }
 
     @Test
     public void testInsertTwoDeleteSecondInsertOneWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(3);
+        insertTwoDeleteSecondInsertOneWithIOExceptions("");
+        insertTwoDeleteSecondInsertOneWithIOExceptions(string1k);
+    }
 
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
-                UUID uuid2 = uuids.get(2);
+    void insertTwoDeleteSecondInsertOneWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-                writeUuid(uuid0);
-                writeUuid(uuid1);
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
-                writeUuid(uuid2);
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
 
-                // then
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
-                Assert.assertThat(put2, is(uuid2.toString()));
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
+            val key2 = ByteSequence.of("key2".getBytes());
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.insertRecord(key2, data2);
+
+            recordsFile.deleteRecord(key1);
+
+            val key3 = ByteSequence.of("key3".getBytes());
+            val data3 = (dataPadding + "data3").getBytes();
+            recordsFile.insertRecord(key3, data3);
+
+            // then
+            if (recordsFile.recordExists(key1)) {
+                throw new Exception("Record not deleted");
             }
-        }, uuids);
+            val put2 = recordsFile.readRecordData(key2);
+            val put3 = recordsFile.readRecordData(key3);
+
+            Assert.assertArrayEquals(put2, data2);
+            Assert.assertArrayEquals(put3, data3);
+
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
-
-    @Test
-    public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(4);
-
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                // given
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
-                UUID uuid2 = uuids.get(2);
-                UUID uuid3 = uuids.get(3);
-
-                writeUuid(uuid0);
-                writeUuid(uuid1);
-                writeUuid(uuid2);
-                recordsFile.deleteRecord(FileRecordStore.keyOf(uuid1.toString()));
-                writeUuid(uuid3);
-
-                // then
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
-                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid3.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
-                Assert.assertThat(put2, is(uuid2.toString()));
-                Assert.assertThat(put3, is(uuid3.toString()));
-                if (recordsFile.recordExists(FileRecordStore.keyOf(uuid1.toString()))) {
-                    throw new Exception("Record not deleted");
-                }
-            }
-        }, uuids);
-    }
-
-    @Test
-    public void testUpdateOneRecord() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        recordsFile = new FileRecordStore(fileName, initialSize);
-
-        // given
-        UUID uuid0 = uuids.get(0);
-        UUID uuidUpdated = uuids.get(1);
-
-        // when
-        writeUuid(uuid0);
-        updateUuid(uuid0, uuidUpdated);
-
-        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-        Assert.assertThat(put, is(uuidUpdated.toString()));
-
-        recordsFile = new FileRecordStore(fileName, "r", false);
-    }
+//        List<UUID> uuids = createUuid(3);
+//
+//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+//            @Override
+//            public void performTestOperations(WriteCallback wc, String fileName,
+//                                              List<UUID> uuids,
+//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+//                // given
+//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+//                UUID uuid0 = uuids.get(0);
+//                UUID uuid1 = uuids.get(1);
+//                UUID uuid2 = uuids.get(2);
+//
+//                writeUuid(uuid0);
+//                writeUuid(uuid1);
+//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
+//                writeUuid(uuid2);
+//
+//                // then
+//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
+//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
+//                Assert.assertThat(put0, is(uuid0.toString()));
+//                Assert.assertThat(put2, is(uuid2.toString()));
+//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
+//                    throw new Exception("Record not deleted");
+//                }
+//            }
+//        }, uuids);
+//    }
+//
+//    @Test
+//    public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
+//        List<UUID> uuids = createUuid(4);
+//
+//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
+//            @Override
+//            public void performTestOperations(WriteCallback wc, String fileName,
+//                                              List<UUID> uuids,
+//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
+//                deleteFileIfExists(fileName);
+//                // given
+//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+//                UUID uuid0 = uuids.get(0);
+//                UUID uuid1 = uuids.get(1);
+//                UUID uuid2 = uuids.get(2);
+//                UUID uuid3 = uuids.get(3);
+//
+//                writeUuid(uuid0);
+//                writeUuid(uuid1);
+//                writeUuid(uuid2);
+//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
+//                writeUuid(uuid3);
+//
+//                // then
+//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
+//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
+//                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid3.toString())));
+//                Assert.assertThat(put0, is(uuid0.toString()));
+//                Assert.assertThat(put2, is(uuid2.toString()));
+//                Assert.assertThat(put3, is(uuid3.toString()));
+//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
+//                    throw new Exception("Record not deleted");
+//                }
+//            }
+//        }, uuids);
+//    }
+//
 
     @Test
     public void testUpdateOneRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-
-                // given
-                UUID uuid0 = uuids.get(0);
-                UUID uuidUpdated = uuids.get(1);
-
-                // when
-                writeUuid(uuid0);
-                updateUuid(uuid0, uuidUpdated);
-
-                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                Assert.assertThat(put, is(uuidUpdated.toString()));
-            }
-        }, uuids);
+        updateOneRecordWithIOExceptions("");
+        updateOneRecordWithIOExceptions(string1k);
     }
+
+    void updateOneRecordWithIOExceptions(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
+
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.updateRecord(key1, data2);
+
+            val put1 = recordsFile.readRecordData(key1);
+
+            Assert.assertArrayEquals(put1, data2);
+
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
+    }
+
 
     @Test
     public void testUpdateExpandLastRecord() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        deleteFileIfExists(fileName);
-        recordsFile = new FileRecordStore(fileName, initialSize);
-
-        // given
-        UUID first = uuids.get(0);
-        UUID last = uuids.get(1);
-
-        // when
-        writeUuid(first);
-        writeUuid(last);
-        updateUuid(last, last, last);
-
-        String pfirst = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-        Assert.assertThat(pfirst, is(first.toString()));
-        String pLast = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
-        Assert.assertThat(pLast, is(last.toString() + last.toString()));
-
-        recordsFile = new FileRecordStore(fileName, "r", false);
+        updateExpandLastRecord("");
+        updateExpandLastRecord(string1k);
     }
 
+    void updateExpandLastRecord(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-    @Test
-    public void testUpdateExpandLastRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
 
-                // given
-                UUID first = uuids.get(0);
-                UUID last = uuids.get(1);
+            val data2 = (dataPadding + "data2xxxxxxxxxxxxxxxx").getBytes();
+            recordsFile.updateRecord(key1, data2);
 
-                // when
-                writeUuid(first);
-                writeUuid(last);
-                updateUuid(last, last, last);
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, data2);
 
-                String pfirst = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-                Assert.assertThat(pfirst, is(first.toString()));
-                String pLast = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(last.toString())));
-                Assert.assertThat(pLast, is(last.toString() + last.toString()));
-            }
-        }, uuids);
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
 
     @Test
     public void testUpdateExpandFirstRecord() throws Exception {
-        recordsFile = new FileRecordStore(fileName, initialSize);
-
-        // given
-        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
-        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
-
-        // when
-        recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
-        recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
-        recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
-
-        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
-        Assert.assertThat(put, is(one));
-        String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
-        Assert.assertThat(put2, is(two));
-
-        recordsFile = new FileRecordStore(fileName, "r", false);
+        updateExpandFirstRecord("");
+        updateExpandFirstRecord(string1k);
     }
 
-    @Test
-    public void testUpdateExpandFirstRecordWithIOExceptions() throws Exception {
-        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
-        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new FileRecordStore(fileName, initialSize);
+    void updateExpandFirstRecord(String dataPadding) throws Exception {
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-                // given
+            // when
+            val key1 = ByteSequence.of("key1".getBytes());
+            val data1 = (dataPadding + "data1").getBytes();
+            recordsFile.insertRecord(key1, data1);
 
-                // when
-                recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
-                recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
-                recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
+            val key2 = ByteSequence.of("key2".getBytes());
+            val data2 = (dataPadding + "data2").getBytes();
+            recordsFile.insertRecord(key2, data2);
 
-                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
-                Assert.assertThat(put, is(one));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
-                Assert.assertThat(put2, is(two));
+            val data1large = (dataPadding + "data1" + dataPadding).getBytes();
+            recordsFile.updateRecord(key1, data1large);
 
-                recordsFile = new FileRecordStore(fileName, "r", false);
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, data1large);
 
-            }
+            recordsFile = new FileRecordStore(fileName, "r", false);
         });
     }
 
     @Test
     public void testUpdateExpandMiddleRecordWithIOExceptions() throws Exception {
-        final String one = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
-        final String two = Collections.nCopies( 512, "1" ).stream().collect( Collectors.joining() );
-        final String three = Collections.nCopies( 256, "1" ).stream().collect( Collectors.joining() );
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new FileRecordStore(fileName, initialSize);
+        val one = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val two = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        val three = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // given
-                recordsFile.insertRecord(keyOf("one"), stringToBytes(one));
-                recordsFile.insertRecord(keyOf("two"), stringToBytes(one));
-                recordsFile.insertRecord(keyOf("three"), stringToBytes(three));
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
+            val key3 = ByteSequence.of("key3".getBytes());
+            recordsFile.insertRecord(key1, one);
+            recordsFile.insertRecord(key2, one); // 256
+            recordsFile.insertRecord(key3, three);
 
-                //when
-                recordsFile.updateRecord(keyOf("two"), stringToBytes(two));
+            //when
+            recordsFile.updateRecord(key2, two); // 512
 
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("one")));
-                Assert.assertThat(put1, is(one));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("two")));
-                Assert.assertThat(put2, is(two));
-                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("three")));
-                Assert.assertThat(put3, is(three));
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, one);
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, two);
+            val put3 = (recordsFile.readRecordData(key3));
+            Assert.assertArrayEquals(put3, three);
 
-                recordsFile = new FileRecordStore(fileName, "r", false);
-
-            }
+            recordsFile = new FileRecordStore(fileName, "r", false);
         });
     }
 
     @Test
     public void testUpdateExpandOnlyRecord() throws Exception {
-        List<UUID> uuids = createUuid(1);
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        val one = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val two = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-        // given
-        UUID first = uuids.get(0);
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            recordsFile.insertRecord(key1, one);
 
-        // when
-        writeUuid(first);
-        updateUuid(first, first, first);
+            // when
+            recordsFile.updateRecord(key1, two); // 512
 
-        String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-        Assert.assertThat(put, is(first.toString() + first.toString()));
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, two);
 
-        recordsFile = new FileRecordStore(fileName, "r", false);
-    }
-
-    @Test
-    public void testUpdateExpandOnlyRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(1);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-
-                // given
-                UUID first = uuids.get(0);
-
-                // when
-                writeUuid(first);
-                updateUuid(first, first, first);
-
-                String put = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(first.toString())));
-                Assert.assertThat(put, is(first.toString() + first.toString()));
-            }
-        }, uuids);
+            recordsFile = new FileRecordStore(fileName, "r", false);
+        });
     }
 
     @Test
     public void indexOfFatRecordCausesHole() throws Exception {
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        recordsFile = new FileRecordStore(fileName, initialSize);
 
-        AtomicReference<Map<String, RecordHeader>> hook = new AtomicReference<>();
-
-        recordsFile = new FileRecordStore(fileName, initialSize) {
-            {
-                hook.set(this.memIndex);
-            }
-        };
         // given
-        List<UUID> uuids = createUuid(4);
-        UUID uuid0 = uuids.get(0);
-        UUID uuid1 = uuids.get(1);
-        UUID uuid2 = uuids.get(2);
-        UUID uuid3 = uuids.get(3);
+        val key1 = ByteSequence.of("key1".getBytes());
+        val key2 = ByteSequence.of("key2".getBytes());
+        val key3 = ByteSequence.of("key3".getBytes());
 
         // when
-        writeUuid(uuid0);
+        recordsFile.insertRecord(key1, narrow);
 
-        writeUuid(uuid1);
+        recordsFile.insertRecord(key2, narrow);
 
-        updateUuid(uuid1, uuid1, uuid1);
+        recordsFile.updateRecord(key2, wide);
 
         // then
-        writeUuid(uuid2);
-
-        updateUuid(uuid1, uuid3);
+        recordsFile.insertRecord(key3, narrow);
+        recordsFile.updateRecord(key2, narrow);
 
         recordsFile = new FileRecordStore(fileName, "r", false);
-
     }
 
     @Test
     public void testUpdateShrinkLastRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // given
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
 
-                // when
-                writeUuid(uuid0);
-                writeUuid(uuid1, uuid1, uuid1);
-                updateUuid(uuid1, uuid0);
+            // when
+            recordsFile.insertRecord(key1, narrow);
 
-                //
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid0.toString()));
-            }
-        }, uuids);
+            recordsFile.insertRecord(key2, wide);
+
+            recordsFile.updateRecord(key2, narrow);
+
+            // then
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, narrow);
+        });
     }
 
     @Test
     public void testUpdateShrinkFirstRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // given
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
 
-                // when
-                writeUuid(uuid0, uuid0, uuid0);
-                writeUuid(uuid1, uuid1);
-                updateUuid(uuid0, uuid1);
+            // when
+            recordsFile.insertRecord(key1, wide);
 
-                //
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid1.toString()));
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid1.toString()));
-            }
-        }, uuids);
+            recordsFile.insertRecord(key2, narrow);
+
+            recordsFile.updateRecord(key1, narrow);
+
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, narrow);
+        });
     }
 
     @Test
     public void testUpdateShrinkMiddleRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(3);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // given
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
-                UUID uuid2 = uuids.get(2);
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
+            val key3 = ByteSequence.of("key3".getBytes());
 
-                // when
-                writeUuid(uuid0, uuid0);
-                writeUuid(uuid1, uuid1, uuid1);
-                writeUuid(uuid2, uuid2);
-                updateUuid(uuid1, uuid2);
+            // when
+            recordsFile.insertRecord(key1, narrow);
+            recordsFile.insertRecord(key2, wide);
+            recordsFile.insertRecord(key3, narrow);
 
-                //
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid0.toString()));
-                String put1 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid1.toString())));
-                Assert.assertThat(put1, is(uuid2.toString()));
-                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid2.toString())));
-                Assert.assertThat(put2, is(uuid2.toString()));
-            }
-        }, uuids);
+            recordsFile.updateRecord(key2, narrow);
+
+            // then
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, narrow);
+        });
     }
 
     @Test
     public void testUpdateShrinkOnlyRecordWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(2);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc, String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // given
-                UUID uuid0 = uuids.get(0);
-                UUID uuid1 = uuids.get(1);
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
 
-                // when
-                writeUuid(uuid0, uuid0, uuid0);
-                updateUuid(uuid0, uuid1);
+            // when
+            recordsFile.insertRecord(key1, wide);
+            recordsFile.updateRecord(key1, narrow);
 
-                //
-                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(uuid0.toString())));
-                Assert.assertThat(put0, is(uuid1.toString()));
-            }
-        }, uuids);
-    }
-
-    private void deleteFileIfExists(String path) {
-        val file = new File(path);
-        if (file.exists()) {
-            file.delete();
-        }
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, narrow);
+        });
     }
 
     @Test
     public void testDeleteFirstEntries() throws Exception {
-        List<UUID> uuids = createUuid(4);
-        recordsFile = new FileRecordStore(fileName, initialSize);
-        String smallEntry = uuids.get(0).toString();
-        String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-        // when
-        recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
-        logger.info("after insert small ------");
-        recordsFile.insertRecord(FileRecordStore.keyOf("larger"), stringToBytes(largeEntry));
-        logger.info("after insert larger ------");
-        recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
-        logger.info("after delete small ------");
-        String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger")));
-        Assert.assertThat(large, is(largeEntry));
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
 
-        recordsFile = new FileRecordStore(fileName, "r", false);
+            // when
+            recordsFile.insertRecord(key1, narrow);
+            recordsFile.insertRecord(key2, wide);
+            recordsFile.deleteRecord(key1);
+
+            // then
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, wide);
+        });
     }
 
     @Test
-    public void testDeleteFirstEntriesWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(4);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                String smallEntry = uuids.get(0).toString();
-                String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+    public void testDeleteLastEntry() throws Exception {
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger"), stringToBytes(largeEntry));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
-                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger")));
-                Assert.assertThat(large, is(largeEntry));
-            }
-        }, uuids);
-    }
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
 
-    @Test
-    public void testDeleteLastEntriesWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(4);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                String smallEntry = uuids.get(0).toString();
-                String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+            // when
+            recordsFile.insertRecord(key1, narrow);
+            recordsFile.insertRecord(key2, wide);
+            recordsFile.deleteRecord(key2);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), stringToBytes(largeEntry));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("larger1"));
-                String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
-                Assert.assertThat(small, is(smallEntry));
-            }
-        }, uuids);
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, narrow);
+        });
     }
 
     @Test
     public void testDeleteMiddleEntriesWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(4);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                String smallEntry = uuids.get(0).toString();
-                String largeEntry = uuids.get(1).toString() + uuids.get(2).toString() + uuids.get(3).toString();
+        val narrow = Collections.nCopies(256, "1").stream().collect(Collectors.joining()).getBytes();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
-                recordsFile.insertRecord(FileRecordStore.keyOf("small2"), stringToBytes(smallEntry)); // expansion reorders first couple of entries so try three
-                recordsFile.insertRecord(FileRecordStore.keyOf("larger1"), stringToBytes(largeEntry));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("small2"));
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
+            val key3 = ByteSequence.of("key3".getBytes());
 
-                // then
-                String small = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("small")));
-                Assert.assertThat(small, is(smallEntry));
-                String large = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf("larger1")));
-                Assert.assertThat(large, is(largeEntry));
-            }
-        }, uuids);
+            // when
+            recordsFile.insertRecord(key1, narrow);
+            recordsFile.insertRecord(key2, narrow);
+            recordsFile.insertRecord(key3, wide);
+            recordsFile.deleteRecord(key2);
+
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, narrow);
+            val put3 = recordsFile.readRecordData(key3);
+            Assert.assertArrayEquals(put3, wide);
+        });
     }
 
     @Test
     public void testDeleteOnlyEntryWithIOExceptions() throws Exception {
-        List<UUID> uuids = createUuid(1);
-        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName,
-                                              List<UUID> uuids,
-                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-                String smallEntry = uuids.get(0).toString();
+        val wide = Collections.nCopies(512, "1").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("small"), stringToBytes(smallEntry));
-                recordsFile.deleteRecord(FileRecordStore.keyOf("small"));
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
 
-                // then
-                Assert.assertTrue(recordsFile.isEmpty());
-            }
-        }, uuids);
-    }
+            // when
+            recordsFile.insertRecord(key1, wide);
+            recordsFile.deleteRecord(key1);
 
-    private void removeFiles(List<String> localFileNames) {
-        for (String file : localFileNames) {
-            File f = new File(file);
-            f.delete();
-        }
-    }
-
-    private String stackToString(List<String> stack) {
-        StringBuilder sb = new StringBuilder();
-        for (String s : stack) {
-            sb.append("\\n\\t");
-            sb.append(s);
-        }
-        return sb.toString();
-    }
-
-    private String fileName(String base) {
-        String fileName = TMP + base;
-        File file = new File(fileName);
-        file.deleteOnExit();
-        return fileName;
-    }
-
-    static interface InterceptedTestOperations {
-        void performTestOperations(WriteCallback wc,
-                                   String fileName,
-                                   List<UUID> uuids,
-                                   AtomicReference<Set<Entry<String, String>>> written) throws Exception;
-    }
-
-
-    public static List<UUID> createUuid(int count) {
-        List<UUID> uuids = new ArrayList<UUID>(count);
-        for (int index = 0; index < count; index++) {
-            uuids.add(UUID.randomUUID());
-        }
-        return uuids;
-    }
-
-    void verifyWorkWithIOExceptions(InterceptedTestOperations interceptedOperations, List<UUID> uuids) throws Exception {
-        final List<List<String>> writeStacks = new ArrayList<List<String>>();
-
-        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
-
-        final List<String> localFileNames = new ArrayList<String>();
-        final String recordingFile = fileName("record");
-        localFileNames.add(recordingFile);
-
-        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
-        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile, uuids, written);
-
-        try {
-            for (int index = 0; index < writeStacks.size(); index++) {
-                final List<String> stack = writeStacks.get(index);
-                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
-                final String localFileName = fileName("crash" + index);
-                localFileNames.add(localFileName);
-                try {
-                    interceptedOperations.performTestOperations(crashAt, localFileName, uuids, written);
-                } catch (Exception ioe) {
-                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
-                    try {
-                        int count = possiblyCorruptedFile.getNumRecords();
-                        for (String k : possiblyCorruptedFile.keys()) {
-                            // readRecordData has a CRC32 check where the payload must match the header
-                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
-                            count--;
-                        }
-                        assertThat(count, is(0));
-                    } catch (Exception e) {
-                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
-                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-                        throw new RuntimeException(msg, e);
-                    }
-                }
-            }
-        } finally {
-            removeFiles(localFileNames);
-        }
-    }
-
-    static interface InterceptedTestOperations2 {
-        void performTestOperations(WriteCallback wc,
-                                   String fileName) throws Exception;
-    }
-
-    void verifyWorkWithIOExceptions2(InterceptedTestOperations2 interceptedOperations) throws Exception {
-        final List<List<String>> writeStacks = new ArrayList<List<String>>();
-
-        WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
-
-        final List<String> localFileNames = new ArrayList<String>();
-        final String recordingFile = fileName("record");
-        localFileNames.add(recordingFile);
-
-        final AtomicReference<Set<Entry<String, String>>> written = new AtomicReference<>(new HashSet<>());
-        interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
-
-        try {
-            for (int index = 0; index < writeStacks.size(); index++) {
-                final List<String> stack = writeStacks.get(index);
-                final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
-                final String localFileName = fileName("crash" + index);
-                localFileNames.add(localFileName);
-                try {
-                    interceptedOperations.performTestOperations(crashAt, localFileName);
-                } catch (Exception ioe) {
-                    FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false);
-                    try {
-                        int count = possiblyCorruptedFile.getNumRecords();
-                        for (String k : possiblyCorruptedFile.keys()) {
-                            // readRecordData has a CRC32 check where the payload must match the header
-                            FileRecordStore.bytesToString(possiblyCorruptedFile.readRecordData(FileRecordStore.keyOf(k)));
-                            count--;
-                        }
-                        assertThat(count, is(0));
-                    } catch (Exception e) {
-                        FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
-                        final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-                        throw new RuntimeException(msg, e);
-                    }
-                }
-            }
-        } finally {
-            removeFiles(localFileNames);
-        }
+            // then
+            Assert.assertEquals(0, recordsFile.size());
+            Assert.assertEquals(false, recordsFile.recordExists(key1));
+        });
     }
 
     @Test
     public void tesSplitFirstWithIOExceptions() throws Exception {
+        val oneNarrow = Collections.nCopies(38, "1").stream().collect(Collectors.joining()).getBytes();
+        val oneWide = Collections.nCopies(1024, "1").stream().collect(Collectors.joining()).getBytes();
+        val twoNarrow = Collections.nCopies(38, "2").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
-        final String oneLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
-        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
 
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+            // when
+            recordsFile.insertRecord(key1, oneWide);
+            recordsFile.updateRecord(key1, oneNarrow);
+            recordsFile.insertRecord(key2, twoNarrow);
 
-                // when
-
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
-
-                recordsFile.updateRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
-
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
-
-                // then
-                Assert.assertEquals(2, recordsFile.size());
-            }
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, oneNarrow);
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, twoNarrow);
         });
     }
 
     @Test
     public void tesSplitLastWithIOExceptions() throws Exception {
+        val oneNarrow = Collections.nCopies(38, "1").stream().collect(Collectors.joining()).getBytes();
+        val twoNarrow = Collections.nCopies(38, "2").stream().collect(Collectors.joining()).getBytes();
+        val twoWide = Collections.nCopies(1024, "2").stream().collect(Collectors.joining()).getBytes();
+        val threeNarrow = Collections.nCopies(38, "3").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
-        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
-        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
-        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
+            val key3 = ByteSequence.of("key3".getBytes());
 
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+            // when
+            recordsFile.insertRecord(key1, oneNarrow);
+            recordsFile.insertRecord(key2, twoWide);
+            recordsFile.updateRecord(key2, twoNarrow);
+            recordsFile.insertRecord(key3, threeNarrow);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
-                recordsFile.updateRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
-
-                // then
-                Assert.assertEquals(3, recordsFile.size());
-            }
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, oneNarrow);
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, twoNarrow);
+            val put3 = recordsFile.readRecordData(key3);
+            Assert.assertArrayEquals(put3, threeNarrow);
         });
     }
 
     @Test
-    public void testUpdateLargeMiddleWithIOExceptions() throws Exception {
+    public void tesSplitMiddleWithIOExceptions() throws Exception {
+        val oneNarrow = Collections.nCopies(38, "1").stream().collect(Collectors.joining()).getBytes();
+        val twoWide = Collections.nCopies(1024, "2").stream().collect(Collectors.joining()).getBytes();
+        val twoNarrow = Collections.nCopies(38, "2").stream().collect(Collectors.joining()).getBytes();
+        val threeNarrow = Collections.nCopies(38, "3").stream().collect(Collectors.joining()).getBytes();
+        val fourNarrow = Collections.nCopies(38, "4").stream().collect(Collectors.joining()).getBytes();
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
-        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
-        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
-        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+            // given
+            val key1 = ByteSequence.of("key1".getBytes());
+            val key2 = ByteSequence.of("key2".getBytes());
+            val key3 = ByteSequence.of("key3".getBytes());
+            val key4 = ByteSequence.of("key4".getBytes());
 
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+            // when
+            recordsFile.insertRecord(key1, oneNarrow);
+            recordsFile.insertRecord(key2, twoWide);
+            recordsFile.insertRecord(key3, threeNarrow);
+            recordsFile.updateRecord(key2, twoNarrow);
+            recordsFile.insertRecord(key4, fourNarrow);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
-                recordsFile.updateRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
 
-                // then
-                Assert.assertEquals(3, recordsFile.size());
-            }
-        });
-    }
-
-    @Test
-    public void testUpdateExpandWithIOExceptions() throws Exception {
-
-        final String oneSmall = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
-        final String oneLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
-
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneSmall));
-
-                val length = recordsFile.getFileLength();
-
-                recordsFile.updateRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
-
-                // then
-                Assert.assertEquals(1, recordsFile.size());
-            }
+            // then
+            val put1 = recordsFile.readRecordData(key1);
+            Assert.assertArrayEquals(put1, oneNarrow);
+            val put2 = recordsFile.readRecordData(key2);
+            Assert.assertArrayEquals(put2, twoNarrow);
+            val put3 = recordsFile.readRecordData(key3);
+            Assert.assertArrayEquals(put3, threeNarrow);
+            val put4 = recordsFile.readRecordData(key4);
+            Assert.assertArrayEquals(put4, fourNarrow);
         });
     }
 
     @Test
     public void testFreeSpaceInIndexWithIOExceptions() throws Exception {
-        final String oneLarge = Collections.nCopies( 1024, "1" ).stream().collect( Collectors.joining() );
-        final String twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() );
-        final String threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
+        val oneLarge = Collections.nCopies( 1024, "1" ).stream().collect( Collectors.joining() ).getBytes();
+        val twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() ).getBytes();
+        val threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() ).getBytes();
 
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
+        verifyWorkWithIOExceptions((wc, fileName) -> {
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+            // when
+            recordsFile.insertRecord(stringToUtf8("one"), oneLarge);
+            recordsFile.insertRecord(stringToUtf8("two"), twoSmall);
+            val maxLen = recordsFile.getFileLength();
+            recordsFile.deleteRecord(stringToUtf8("one"));
+            recordsFile.insertRecord(stringToUtf8("three"), threeSmall);
 
-                // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(oneLarge));
-                logger.info("after insert one ------------------");
+            val finalLen = recordsFile.getFileLength();
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoSmall));
-                logger.info("after insert two ------------------");
+            // then
+            Assert.assertEquals(2, recordsFile.size());
+            assertEquals(maxLen, finalLen);
 
-                val maxLen = recordsFile.getFileLength();
-                logger.info("after getFileLength ------------------");
-
-                recordsFile.deleteRecord(FileRecordStore.keyOf("one"));
-                logger.info("after delete one ------------------");
-
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(threeSmall));
-                logger.info("after insert three ------------------");
-
-                val finalLen = recordsFile.getFileLength();
-
-                // then
-                Assert.assertEquals(2, recordsFile.size());
-                assertEquals(maxLen, finalLen);
-
-            }
         });
     }
 
     @Test
     public void testFreeSpaceInMiddleWithIOExceptions() throws Exception {
-        final String one = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() );
-        final String twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
-        final String three = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() );
-        final String four = Collections.nCopies( 38, "4" ).stream().collect( Collectors.joining() );
+        val one = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() ).getBytes();
+        val twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() ).getBytes();
+        val three = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() ).getBytes();
+        val four = Collections.nCopies( 38, "4" ).stream().collect( Collectors.joining() ).getBytes();
 
-        verifyWorkWithIOExceptions2(new InterceptedTestOperations2() {
-            @Override
-            public void performTestOperations(WriteCallback wc,
-                                              String fileName) throws Exception {
-                deleteFileIfExists(fileName);
+        verifyWorkWithIOExceptions((wc, fileName) -> {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(FileRecordStore.keyOf("one"), stringToBytes(one));
+                recordsFile.insertRecord(stringToUtf8("one"), (one));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("two"), stringToBytes(twoLarge));
+                recordsFile.insertRecord(stringToUtf8("two"), (twoLarge));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("three"), stringToBytes(three));
+                recordsFile.insertRecord(stringToUtf8("three"), (three));
 
                 val maxLen = recordsFile.getFileLength();
-                recordsFile.deleteRecord(FileRecordStore.keyOf("two"));
+                recordsFile.deleteRecord(stringToUtf8("two"));
 
-                recordsFile.insertRecord(FileRecordStore.keyOf("four"), stringToBytes(four));
+                recordsFile.insertRecord(stringToUtf8("four"), (four));
 
                 val finalLen = recordsFile.getFileLength();
 
                 // then
                 Assert.assertEquals(3, recordsFile.size());
                 assertEquals(maxLen, finalLen);
-            }
         });
     }
 
@@ -1341,13 +1011,13 @@ public class SimpleRecordStoreTest {
             recordsFile = new FileRecordStore(fileName, initialSize);
 
             // when
-            final String longestKey = Collections.nCopies( recordsFile.maxKeyLength, "1" ).stream().collect( Collectors.joining() );
-            writeString(longestKey);
+            val longestKey = Collections.nCopies( recordsFile.maxKeyLength, "1" ).stream().collect( Collectors.joining() ).getBytes();
+            recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
 
             // then
-            String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(longestKey)));
+            val put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
 
-            Assert.assertThat(put0, is(longestKey.toString()));
+            Assert.assertArrayEquals(put0, longestKey);
         } finally {
             System.setProperty(String.format("%s.%s",
                     FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
@@ -1378,12 +1048,10 @@ public class SimpleRecordStoreTest {
                 FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
                 Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
 
-        String longestKey = Collections.nCopies( FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1" ).stream().collect( Collectors.joining() );
+        val longestKey = Collections.nCopies( FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1" ).stream().collect( Collectors.joining() ).getBytes();
 
         try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)){
-            byte[] key = stringToBytes(longestKey);
-            byte[] value = stringToBytes(longestKey);
-            recordsFile.insertRecord(key, value);
+            recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
         }
 
         logger.info("post insert ---------");
@@ -1398,10 +1066,27 @@ public class SimpleRecordStoreTest {
                 Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
         recordsFile = new FileRecordStore(fileName, "r");
 
-        String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(FileRecordStore.keyOf(longestKey)));
+        val put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
 
-        Assert.assertThat(put0, is(longestKey));
+        Assert.assertArrayEquals(put0, longestKey);
 
     }
 
+
+    byte[] bytes(int b){
+        return new byte[]{(byte)b};
+    }
+    @Test
+    public void testByteStringAsMapKey() {
+        HashMap<ByteSequence, byte[]> kvs = new HashMap<>();
+        IntStream.range(Byte.MIN_VALUE, Byte.MAX_VALUE).forEach(b->{
+            byte[] key = {(byte)b};
+            byte[] value = {(byte)b};
+            kvs.put(ByteSequence.of(key), value);
+        });
+        Assert.assertEquals(255, kvs.size());
+        byte[] empty = {};
+        kvs.put(ByteSequence.of(empty), bytes(1));
+        Assert.assertArrayEquals(bytes(1), kvs.get(ByteSequence.of(empty)));
+    }
 }

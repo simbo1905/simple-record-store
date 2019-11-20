@@ -13,7 +13,7 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC1</version>
+	<version>1.0.0-RC2</version>
 </dependency>
 ```
 

@@ -1,7 +1,7 @@
 
 # Simple Record Store
 
-![](https://github.com/simbo1905/simple-record-store/workflows/.github/workflows/main.yml/badge.svg)
+![](https://github.com/simbo1905/simple-record-store/workflows/JavaCI/badge.svg)
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
 file. All of the keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 

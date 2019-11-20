@@ -13,11 +13,59 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC2</version>
+	<version>1.0.0-RC3</version>
 </dependency>
 ```
 
-See `SimpleRecordStoreApiTests.java` for examples of the public API which is minimal. 
+See `SimpleRecordStoreApiTests.java` for examples of the minimal public API. 
+
+The public API user a `ByteSequence` as the key so that we know exactly how the store the keys on disk: 
+
+```java
+    @Synchronized
+    public boolean recordExists(ByteSequence key)
+```
+
+A byte sequence is simply a byte array wrapped in an object that implements `equals` and `hashCode` so that it can be 
+used as the key to a map as discussed [here](https://stackoverflow.com/a/58923559/329496). There are approaches to  
+creating such a byte sequence:
+
+```java
+    /**
+     * This takes a defensive copy of the passed bytes. This should be used if the array can be recycled by the caller.
+     */
+    public static ByteSequence copyOf(byte[] bytes)
+
+    /**
+     * This does not take a defensive copy of the passed bytes. This should be used only if you know that the array cannot be recycled.
+     */
+    public static ByteSequence of(byte[] bytes) 
+```
+
+An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer as the 
+array data will be overwritten. Examples of where you can safely use `of` to wrap the array would be where you asked a 
+String to encode itself as a byte array using `getBytes`. A problem with using `getBytes` on a string is that the 
+platform string encoding might change if you move the file around. To avoid that there are a pair of methodes that turn 
+a string into an UTF8 encoded ByteSequence which is a compact form that can store any string: 
+
+```java
+    /**
+     * This encodes a string into a fresh UTF8 byte array wrapped as a ByteString. Note that this copies data.
+     * @param string A string
+     * @return ByteString wrapping a UTF8 byte array generated from the input string.
+     */
+    public static ByteSequence stringToUtf8(String string)
+
+    /**
+     * This decodes a UTF8 byte array wrapped in a ByteString into a string. Note that this copies data.
+     * @param utf8 A ByteString wrapping a UTF8 encoded string.
+     * @return A String that has decoded and copied the data into its internal state.
+     */
+    public static String utf8ToString(ByteSequence utf8)
+```
+
+Note that the comments state that the byte[] is copied in those methods which is because `String` always copies data so 
+that it is immutable. 
 
 ## Details
 

@@ -40,14 +40,14 @@ public class ByteSequence {
     }
 
     /**
-     * This takes a defensive copy of the passed bytes. This should be used if the bytes may be recycled by the caller.
+     * This takes a defensive copy of the passed bytes. This should be used if the array can be recycled by the caller.
      */
     public static ByteSequence copyOf(byte[] bytes) {
         return new ByteSequence(bytes.clone());
     }
 
     /**
-     * This does not take a defensive copy of the passed bytes. This should be used only if you know that the byte array cannot be recycled.
+     * This does not take a defensive copy of the passed bytes. This should be used only if you know that the array cannot be recycled.
      */
     public static ByteSequence of(byte[] bytes) {
         return new ByteSequence(bytes);

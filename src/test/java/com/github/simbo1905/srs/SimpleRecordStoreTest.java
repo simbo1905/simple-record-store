@@ -107,7 +107,7 @@ public class SimpleRecordStoreTest {
     }
 
     private String fileName(String base) {
-        String fileName = TMP + System.getProperty("path.separator")+base;
+        String fileName = TMP + System.getProperty("file.separator")+base;
         File file = new File(fileName);
         file.deleteOnExit();
         return fileName;
@@ -170,7 +170,7 @@ public class SimpleRecordStoreTest {
 
     public SimpleRecordStoreTest() {
         logger.setLevel(Level.ALL);
-        init(TMP + System.getProperty("path.separator")+"junit.records", 0);
+        init(TMP + System.getProperty("file.separator")+"junit.records", 0);
     }
 
     public void init(final String fileName, final int initialSize) {

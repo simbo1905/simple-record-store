@@ -406,9 +406,9 @@ public class FileRecordStore implements AutoCloseable {
         int crc32int = (int) (rh.crc32 & 0xFFFFFFFFL);
         buffer.putInt(crc32int);
         out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
-        if( this.getClass().desiredAssertionStatus())
-            logger.log(Level.FINEST, ">h fp:{0} idx:{4} len:{1} end:{3} bytes:{2}",
-                new Object[]{fp, array.length, print(array), fp+array.length, rh.indexPosition });
+
+        logger.log(Level.FINEST, () -> String.format(">h fp:%d idx:%d len:%d end:%d bytes:%s",
+                fp, rh.indexPosition, array.length, fp+array.length, print(array)));
     }
 
     protected static void read(RecordHeader rh, int index, RandomAccessFileInterface in) throws IOException {
@@ -416,9 +416,8 @@ public class FileRecordStore implements AutoCloseable {
         val fp = in.getFilePointer();
         in.readFully(header);
 
-        if( FileRecordStore.class.desiredAssertionStatus())
-            logger.log(Level.FINEST, "<h fp:{0} idx:{3} len:{1} bytes:{2}",
-                new Object[]{fp, header.length, print(header), index });
+        logger.log(Level.FINEST, () -> String.format("<h fp:%d idx:%d len:%d bytes:%s",
+            fp, index, header.length, print(header)));
 
         ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
         buffer.put(header);
@@ -472,7 +471,8 @@ public class FileRecordStore implements AutoCloseable {
 
     static void dumpFile(Level level, String filename, boolean disableCrc) throws IOException {
         final FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc);
-        logger.log(level, String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), recordFile.getFileLength(), recordFile.dataStartPtr));
+        val len = recordFile.getFileLength();
+        logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), len, recordFile.dataStartPtr));
         for (int index = 0; index < recordFile.getNumRecords(); index++) {
             final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
             val bk = recordFile.readKeyFromIndex(index);
@@ -489,7 +489,8 @@ public class FileRecordStore implements AutoCloseable {
             final byte[] data = recordFile.readRecordData(bk);
 
             String d = new String(data);
-            logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
+            int finalIndex = index;
+            logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex, data.length, d));
         }
     }
 
@@ -586,10 +587,9 @@ public class FileRecordStore implements AutoCloseable {
         file.seek(fpk);
         file.write(array, 0, writeLen);
 
-        if( this.getClass().desiredAssertionStatus())
-            FileRecordStore.logger.log(Level.FINEST,
-                ">k fp:{0} idx:{5} len:{1} end:{4} crc:{3} key:{6} bytes:{2}"
-                , new Object[]{fpk, len & 0xFF, print(key.bytes), crc32, fpk + (len & 0xFF), index, new String(key.bytes) });
+        FileRecordStore.logger.log(Level.FINEST, () ->
+            String.format(">k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
+            fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, new String(key.bytes), print(key.bytes) ) );
     }
 
     /*
@@ -617,10 +617,9 @@ public class FileRecordStore implements AutoCloseable {
         crc.update(key, 0, key.length );
         val crc32actual = crc.getValue();
 
-        if( this.getClass().desiredAssertionStatus())
-            FileRecordStore.logger.log(Level.FINEST,
-                "<k fp:{0} idx:{5} len:{1} end:{4} crc:{3} key:{6} bytes:{2}",
-                new Object[]{fp, len, print(key), crc32actual, fp+len, position, print(key)});
+        FileRecordStore.logger.log(Level.FINEST, () ->
+            String.format("<k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
+            fp, position, len, fp+len, crc32actual, new String(key), print(key)));
 
         if( crc32actual != crc32expected ){
             throw new IllegalStateException(
@@ -770,10 +769,9 @@ public class FileRecordStore implements AutoCloseable {
         file.readFully(lenBytes);
         int len = (new DataInputStream(new ByteArrayInputStream(lenBytes))).readInt();
 
-        if( this.getClass().desiredAssertionStatus())
-            logger.log(Level.FINEST,
-                "<d fp:{0} len:{1} bytes:{2} ",
-                new Object[]{header.dataPointer, len, print(lenBytes)});
+        logger.log(Level.FINEST, () ->
+            String.format("<d fp:{0} len:{1} bytes:{2} ",
+            header.dataPointer, len, print(lenBytes)));
 
         assert header.dataPointer + len < getFileLength():
                 String.format("attempting to read up to %d beyond length of file %d",
@@ -792,10 +790,9 @@ public class FileRecordStore implements AutoCloseable {
 
             long actualCrc = crc32.getValue();
 
-            if( this.getClass().desiredAssertionStatus())
-                logger.log(Level.FINEST,
-                    "<d fp:{0} len:{1} crc:{2} bytes:{3}",
-                    new Object[]{header.dataPointer+4, len, actualCrc, print(buf)});
+            logger.log(Level.FINEST, () ->
+                    String.format("<d fp:%d len:%d crc:%d bytes:%s",
+                header.dataPointer+4, len, actualCrc, print(buf)));
 
             if (actualCrc != expectedCrc) {
                 throw new IllegalStateException(String.format("CRC32 check failed expected %d got %d for data length %d with header %s",
@@ -835,13 +832,11 @@ public class FileRecordStore implements AutoCloseable {
         byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
         val end = header.dataPointer+payload.length;
 
-        if( this.getClass().desiredAssertionStatus())
-            logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{3} bytes:{2}",
-                new Object[]{header.dataPointer, payload.length, print(lenBytes), end });
+        logger.log(Level.FINEST, () -> String.format(">d fp:%d len:%d end:%d bytes:%s",
+            header.dataPointer, payload.length, end, print(lenBytes) ));
 
-        if( this.getClass().desiredAssertionStatus())
-            logger.log(Level.FINEST, ">d fp:{0} len:{1} end:{5} crc:{2} data:{3}",
-                new Object[]{header.dataPointer+4, payload.length, crc, print(data), end});
+        logger.log(Level.FINEST, () -> String.format(">d fp:%d len:%d end:%d crc:%d data:%s",
+            header.dataPointer+4, payload.length, end, crc, print(data)));
     }
 
     /*
@@ -910,13 +905,15 @@ public class FileRecordStore implements AutoCloseable {
         val oldDisableCdc32 = this.disableCrc32;
         try {
             this.disableCrc32 = disableCrc32;
-            logger.log(level, String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), getFileLength(), dataStartPtr));
+            val len = getFileLength();
+            logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), len, dataStartPtr));
             for (int index = 0; index < getNumRecords(); index++) {
                 final RecordHeader header = readRecordHeaderFromIndex(index);
                 val bk = readKeyFromIndex(index);
                 final String k = new String(bk.bytes);
-                logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
-                        index,
+                int finalIndex = index;
+                logger.log(level, () -> String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                        finalIndex,
                         k,
                         header.indexPosition,
                         header.getDataCapacity(),
@@ -927,7 +924,8 @@ public class FileRecordStore implements AutoCloseable {
                 final byte[] data = readRecordData(bk);
 
                 String d = new String(data);
-                logger.log(level, String.format("%d data  len=%d data=%s", index, data.length, d));
+                int finalIndex1 = index;
+                logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex1, data.length, d));
             }
         } finally {
             this.disableCrc32 = oldDisableCdc32;

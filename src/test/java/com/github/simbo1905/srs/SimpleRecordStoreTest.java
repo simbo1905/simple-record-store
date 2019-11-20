@@ -34,15 +34,10 @@ public class SimpleRecordStoreTest {
                 "%1$tT %4$s %2$s %5$s%6$s%n");
     }
 
-
     static {
-        // use this to set trace level logging
-        if ("Level.FINEST".equals((System.getProperty(FileRecordStore.class.getCanonicalName() + ".logLevel")))) {
-            Logger.getLogger("").setLevel(Level.FINEST);
-            Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
-        }
+        Logger.getLogger("").setLevel(Level.FINEST);
+        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
     }
-
 
     /**
      * A utility to recored how many times file write operations are called

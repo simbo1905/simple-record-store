@@ -157,6 +157,10 @@ public class SimpleRecordStoreTest {
 
     static final String TMP = System.getProperty("java.io.tmpdir");
 
+    static {
+        System.out.println(String.format("TMP:%s", TMP));
+    }
+
     private final static Logger logger = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
     String fileName;

@@ -2,8 +2,9 @@
 # Simple Record Store
 
 Simple Record Store is a persistent hash table with a predefined maximum key length. Records are written into a single 
-file. All of your keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 
-arranged so that any failures will not corrupt the state of the data on disk. The project has no runtime dependencies outside of the core JDK. 
+file. All of the keys must fit into heap but all values are offloaded onto disk. The order of writes are carefully 
+arranged so that crashes will not corrupt the state of the data on disk. The project has no runtime dependencies 
+outside of the core JDK. 
 
 ## Using
 
@@ -19,16 +20,15 @@ The latest release on maven central is:
 
 See `SimpleRecordStoreApiTests.java` for examples of the minimal public API. 
 
-The public API user a `ByteSequence` as the key so that we know exactly how the store the keys on disk: 
+The public API useS a `ByteSequence` as the key. This is a lightweight wrapper to a byte array hat implements `equals` 
+and `hashCode` . This means that we know exactly how the store the keys on disk and can use it as the key to a HashMap: 
 
 ```java
     @Synchronized
     public boolean recordExists(ByteSequence key)
 ```
 
-A byte sequence is simply a byte array wrapped in an object that implements `equals` and `hashCode` so that it can be 
-used as the key to a map as discussed [here](https://stackoverflow.com/a/58923559/329496). There are approaches to  
-creating such a byte sequence:
+This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can either wrap a byte array or copy it: 
 
 ```java
     /**
@@ -42,11 +42,14 @@ creating such a byte sequence:
     public static ByteSequence of(byte[] bytes) 
 ```
 
-An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer as the 
-array data will be overwritten. Examples of where you can safely use `of` to wrap the array would be where you asked a 
-String to encode itself as a byte array using `getBytes`. A problem with using `getBytes` on a string is that the 
-platform string encoding might change if you move the file around. To avoid that there are a pair of methodes that turn 
-a string into an UTF8 encoded ByteSequence which is a compact form that can store any string: 
+An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer where the 
+array will be recycled. Examples of where you can safely use `of` to wrap the array would be where you asked a 
+String to encode itself as a byte array using `getBytes`. Another example is wherre you run a customer serializer to 
+generate the byte array where you don't leak a reference to the array so it won't be mutated. 
+
+A problem with using `getBytes` on a string as a key is that the platform string encoding might change if you move the 
+file around. To avoid that there are a pair of methods that turn a string into an UTF8 encoded ByteSequence which is a 
+compact form that can store any string: 
 
 ```java
     /**
@@ -64,27 +67,36 @@ a string into an UTF8 encoded ByteSequence which is a compact form that can stor
     public static String utf8ToString(ByteSequence utf8)
 ```
 
-Note that the comments state that the byte[] is copied in those methods which is because `String` always copies data so 
-that it is immutable. 
+Note that the comments state that the `byte[]` is a copy which is because `String` always copies data so that it is 
+immutable. 
+
+There is `java.util.Logging` set to `Level.FINEST` that can be used to debug what is doing on. If you have a bug please 
+try to create a repeatable test with logging enabled and post the logging. 
 
 ## Details
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
-of writes. This code base has tests that uses brute force search to throw exceptions on every file operation to validate 
-the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are validated upon read from disk. If any IOException is thrown it does *not* mean that the write is known to have failed. It means that the write may have failed and that the in-memory state *might* be inconsistent with what is on disk. The way to fix to this is to close the store and open a fresh one to reload all the headers from disk. 
+of writes. This code base has tests that use a brute force search to throw exceptions on every file operation then 
+validate the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are 
+validated upon read from disk. **Note** If an IOException is thrown it does _not_ mean that the write is known to have 
+failed. It means that the write _may_ have failed and that the in-memory state *might* be inconsistent with what is on 
+disk. The way to fix to this is to close the store and open a fresh one to reload all the headers from disk. 
 
 This implementation: 
 
-1. Defaults to prioritising safety, over speed, over space. You can override some defaults if your workload has some 
-properties where you can safely set things to go faster or use less space. It is wise to use the defaults and only 
-change them if you have tests that prove safety and performance are not compromised. 
-1  Uses a `HashMap` to index record headers by key. It also uses a `TreeMap` to index record headers by the offset of the record datwa within the file. Records that have free space are held in a `ConcurrentSkipList` map sorted by the size of 
-the free space.  
-1. Supports a maximum key length of 247 bytes, a maximum file of byte length Long.MAX_VALUE, and a maximum of Integer.MAX_VALUE entries.
-1. Has no dependencies and uses JUL logging. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
+1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you are certain that you 
+ read and write patterns let you. It is wise to use the defaults and only change them if you have tests that prove 
+ safety and performance are not compromised. 
+1. Supports a maximum key length of 247 bytes. The default is 64 bytes. 
+1. Supports maximum file of byte length Long.MAX_VALUE.
+1. Supports a maximum of Integer.MAX_VALUE entries.
+1. The maximum size of keys is fixed for the life of the store and is written to the file upon creation. 
+1. Uses a `HashMap` to index record headers by key. 
+1. Uses a `TreeMap` to index record headers by the offset of the record data within the file. 
+1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
+1. Has no dependencies. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
 1. Is thread safe. It uses an internal lock to protected all public methods. 
-1. Records must have a unique key. The maximum size of keys is fixed for the life of the store.  
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.
 1. Stores the key with a single byte length header and a checksum footer. 
@@ -124,7 +136,7 @@ and decide how many times to attempt to reopen the store.
 
 Note that the source code using Lombok to be able to write cleaner and safer code. This is compile time only dependency. 
 
-## Details
+## Configuration
 
 The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
 
@@ -170,6 +182,9 @@ mvn release:prepare
 mvn release:perform
 ```
 
+## Alternatives
 
+* [MapDB](http://www.mapdb.org) "provides Java Maps, Sets, Lists, Queues and other collections backed by off-heap 
+or on-disk storage. It is a hybrid between java collection framework and embedded database engine." 
 
 

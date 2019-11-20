@@ -157,7 +157,6 @@ public class SimpleRecordStoreTest {
 
     static final String TMP = System.getProperty("java.io.tmpdir");
 
-
     private final static Logger logger = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
     static {
@@ -171,7 +170,7 @@ public class SimpleRecordStoreTest {
 
     public SimpleRecordStoreTest() {
         logger.setLevel(Level.ALL);
-        init(TMP + "junit.records", 0);
+        init(TMP + System.getProperty("path.separator")+"junit.records", 0);
     }
 
     public void init(final String fileName, final int initialSize) {

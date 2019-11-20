@@ -107,7 +107,7 @@ public class SimpleRecordStoreTest {
     }
 
     private String fileName(String base) {
-        String fileName = TMP + base;
+        String fileName = TMP + System.getProperty("path.separator")+base;
         File file = new File(fileName);
         file.deleteOnExit();
         return fileName;

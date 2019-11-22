@@ -956,7 +956,9 @@ public class SimpleRecordStoreTest {
         val threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() ).getBytes();
 
         verifyWorkWithIOExceptions((wc, fileName) -> {
-            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+            // set initial size equal to 2x header and 2x padded payload
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName,
+                    4 * FileRecordStore.DEFAULT_MAX_KEY_LENGTH, wc, false);
 
             // when
             recordsFile.insertRecord(stringToUtf8("one"), oneLarge);
@@ -1076,10 +1078,10 @@ public class SimpleRecordStoreTest {
 
     }
 
-
     byte[] bytes(int b){
         return new byte[]{(byte)b};
     }
+
     @Test
     public void testByteStringAsMapKey() {
         HashMap<ByteSequence, byte[]> kvs = new HashMap<>();

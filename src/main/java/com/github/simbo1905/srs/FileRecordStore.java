@@ -97,7 +97,7 @@ public class FileRecordStore implements AutoCloseable {
      * amount of space which is allocated for the index. The index can grow
      * dynamically, but the parameter is provide to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
+     * @param initialSize an optimisation to preallocate the file length in bytes.
      */
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
         this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false);
@@ -108,9 +108,9 @@ public class FileRecordStore implements AutoCloseable {
      * amount of space which is allocated for the index. The index can grow
      * dynamically, but the parameter is provide to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimisation to preallocate the header storage area expressed as number of records.
-     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
-     * will have a CRC check built in so you can safely disable here. =
+     * @param initialSize an optimisation to preallocate the file length in bytes.
+     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped it
+     * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
      */
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
         this.disableCrc32 = disableCrc32;
@@ -123,7 +123,7 @@ public class FileRecordStore implements AutoCloseable {
             throw new IllegalArgumentException("Database already exits: " + dbPath);
         }
         file = new DirectRandomAccessFile(new RandomAccessFile(f, "rw"));
-        dataStartPtr = indexPositionToKeyFp(initialSize); // set data region start index
+        dataStartPtr = initialSize; // set data region start index
         setFileLength(dataStartPtr);
         writeNumRecordsHeader(0);
         writeKeyLengthHeader();

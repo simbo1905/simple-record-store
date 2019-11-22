@@ -1095,4 +1095,11 @@ public class SimpleRecordStoreTest {
         kvs.put(ByteSequence.of(empty), bytes(1));
         Assert.assertArrayEquals(bytes(1), kvs.get(ByteSequence.of(empty)));
     }
+
+    @Test
+    public void testCanCallCloseTwice() throws IOException {
+        FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile.close();
+        recordsFile.close();
+    }
 }

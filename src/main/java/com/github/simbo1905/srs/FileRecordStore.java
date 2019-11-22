@@ -350,17 +350,17 @@ public class FileRecordStore implements AutoCloseable {
     public void close() throws IOException  {
         try {
             try {
-                file.fsync();
-                file.close();
+                if( file != null ) file.fsync();
+                if( file != null ) file.close();
             } finally {
                 file = null;
             }
         } finally {
-            memIndex.clear();
+            if( memIndex != null ) memIndex.clear();
             memIndex = null;
-            positionIndex.clear();
+            if( positionIndex != null ) positionIndex.clear();
             positionIndex = null;
-            freeMap.clear();
+            if( freeMap != null ) freeMap.clear();
             freeMap = null;
         }
     }

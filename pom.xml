@@ -32,12 +32,10 @@
 		<tag>1.0.0-RC4</tag>
 	</scm>
 
-
 	<properties>
 		<jdk.version>11</jdk.version>
-		<junit.version>4.10</junit.version>
-		<hamcrest.version>1.1</hamcrest.version>
-		<mockito.version>1.9.5</mockito.version>
+		<junit.version>4.11</junit.version>
+		<junit.version>4.11</junit.version>
 		<lombok.version>1.18.10</lombok.version>
 	</properties>
 
@@ -51,35 +49,10 @@
 		</dependency>
 
 		<dependency>
-			<groupId>org.mockito</groupId>
-			<artifactId>mockito-core</artifactId>
-			<version>${mockito.version}</version>
-		</dependency>
-
-		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<version>${junit.version}</version>
 			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<artifactId>hamcrest-core</artifactId>
-					<groupId>org.hamcrest</groupId>
-				</exclusion>
-			</exclusions>
-		</dependency>
-
-		<dependency>
-			<groupId>org.hamcrest</groupId>
-			<artifactId>hamcrest-all</artifactId>
-			<version>${hamcrest.version}</version>
-			<scope>test</scope>
-			<exclusions>
-				<exclusion>
-					<artifactId>hamcrest-core</artifactId>
-					<groupId>org.hamcrest</groupId>
-				</exclusion>
-			</exclusions>
 		</dependency>
 
 	</dependencies>
@@ -100,6 +73,7 @@
 					<source>${jdk.version}</source>
 					<target>${jdk.version}</target>
 					<encoding>UTF-8</encoding>
+					<release>11</release>
 					<annotationProcessorPaths>
 						<path>
 							<groupId>org.projectlombok</groupId>
@@ -167,24 +141,6 @@
 				</executions>
 			</plugin>
 
-<!--			<plugin>-->
-<!--				<groupId>org.projectlombok</groupId>-->
-<!--				<artifactId>lombok-maven-plugin</artifactId>-->
-<!--				<version>1.18.10.0</version>-->
-<!--				<executions>-->
-<!--					<execution>-->
-<!--						<phase>generate-sources</phase>-->
-<!--						<goals>-->
-<!--							<goal>delombok</goal>-->
-<!--						</goals>-->
-<!--						<configuration>-->
-<!--							<encoding>UTF-8</encoding>-->
-<!--							<addOutputDirectory>false</addOutputDirectory>-->
-<!--							<sourceDirectory>src/main/java</sourceDirectory>-->
-<!--						</configuration>-->
-<!--					</execution>-->
-<!--				</executions>-->
-<!--			</plugin>-->
 		</plugins>
 	</build>
 </project>

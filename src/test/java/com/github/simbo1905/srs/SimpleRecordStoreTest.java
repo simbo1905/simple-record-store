@@ -19,7 +19,6 @@ import java.util.zip.CRC32;
 
 import static com.github.simbo1905.srs.ByteSequence.stringToUtf8;
 import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
-import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
@@ -143,7 +142,7 @@ public class SimpleRecordStoreTest {
                             possiblyCorruptedFile.readRecordData(k);
                             count--;
                         }
-                        assertThat(count, is(0));
+                        assertEquals(count, 0);
                     } catch (Exception e) {
                         FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
                         final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));

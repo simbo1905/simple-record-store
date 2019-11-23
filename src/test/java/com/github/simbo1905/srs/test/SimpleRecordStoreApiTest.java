@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 import static com.github.simbo1905.srs.ByteSequence.utf8ToString;
 import static com.github.simbo1905.srs.ByteSequence.stringToUtf8;
 import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
-import static org.hamcrest.Matchers.is;
 
 public class SimpleRecordStoreApiTest {
     String fileName;
@@ -75,7 +74,7 @@ public class SimpleRecordStoreApiTest {
         this.recordsFile.fsync();
 
         val data = this.recordsFile.readRecordData(stringToUtf8(uuid));
-        Assert.assertThat(utf8ToString(data), is(uuid));
+        Assert.assertEquals(utf8ToString(data), uuid);
 
         this.recordsFile.updateRecord(stringToUtf8(uuid), "updated".getBytes());
 
@@ -86,7 +85,7 @@ public class SimpleRecordStoreApiTest {
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
         val updated = this.recordsFile.readRecordData(stringToUtf8(uuid));
-        Assert.assertThat(new String(updated), is("updated"));
+        Assert.assertEquals(new String(updated), "updated");
         Assert.assertEquals(1, recordsFile.size());
 
         Assert.assertEquals(recordsFile.keys().iterator().next(), key);
@@ -115,7 +114,7 @@ public class SimpleRecordStoreApiTest {
 
         String put0 = new String(recordsFile.readRecordData(stringToUtf8(longestKey)));
 
-        Assert.assertThat(put0, is(longestKey));
+        Assert.assertEquals(put0, longestKey);
 
     }
 }

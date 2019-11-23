@@ -1,4 +1,4 @@
-package com.github.simbo1905.srs;
+package com.github.trex_paxos.srs;
 
 import lombok.val;
 import org.junit.After;
@@ -17,8 +17,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.zip.CRC32;
 
-import static com.github.simbo1905.srs.ByteSequence.stringToUtf8;
-import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
+import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 
@@ -231,23 +230,23 @@ public class SimpleRecordStoreTest {
 
         logger.info("adding a record...");
         final Date date = new Date();
-        recordsFile.insertRecord(stringToUtf8("foo.lastAccessTime"), serializerDate.apply(date));
+        recordsFile.insertRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"), serializerDate.apply(date));
 
         logger.info("reading record...");
-        Date d = deserializerDate.apply(recordsFile.readRecordData(stringToUtf8("foo.lastAccessTime")));
+        Date d = deserializerDate.apply(recordsFile.readRecordData(ByteSequence.stringToUtf8("foo.lastAccessTime")));
 
         Assert.assertEquals(date, d);
 
         logger.info("updating record...");
-        recordsFile.updateRecord(stringToUtf8("foo.lastAccessTime"), serializerDate.apply(new Date()));
+        recordsFile.updateRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"), serializerDate.apply(new Date()));
 
         logger.info("reading record...");
-        d = deserializerDate.apply(recordsFile.readRecordData(stringToUtf8("foo.lastAccessTime")));
+        d = deserializerDate.apply(recordsFile.readRecordData(ByteSequence.stringToUtf8("foo.lastAccessTime")));
 
         logger.info("deleting record...");
-        recordsFile.deleteRecord(stringToUtf8("foo.lastAccessTime"));
+        recordsFile.deleteRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"));
 
-        if (recordsFile.recordExists(stringToUtf8("foo.lastAccessTime"))) {
+        if (recordsFile.recordExists(ByteSequence.stringToUtf8("foo.lastAccessTime"))) {
             throw new Exception("Record not deleted");
         } else {
             logger.info("record successfully deleted.");
@@ -852,8 +851,8 @@ public class SimpleRecordStoreTest {
             recordsFile.deleteRecord(key1);
 
             // then
-            Assert.assertEquals(0, recordsFile.size());
-            Assert.assertEquals(false, recordsFile.recordExists(key1));
+            assertEquals(0, recordsFile.size());
+            assertEquals(false, recordsFile.recordExists(key1));
         });
     }
 
@@ -960,17 +959,17 @@ public class SimpleRecordStoreTest {
                     4 * FileRecordStore.DEFAULT_MAX_KEY_LENGTH, wc, false);
 
             // when
-            recordsFile.insertRecord(stringToUtf8("one"), oneLarge);
-            recordsFile.insertRecord(stringToUtf8("two"), twoSmall);
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), oneLarge);
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), twoSmall);
             val maxLen = recordsFile.getFileLength();
-            recordsFile.deleteRecord(stringToUtf8("one"));
-            recordsFile.insertRecord(stringToUtf8("three"), threeSmall);
+            recordsFile.deleteRecord(ByteSequence.stringToUtf8("one"));
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), threeSmall);
 
             val finalLen = recordsFile.getFileLength();
 
             // then
-            Assert.assertEquals(2, recordsFile.size());
-            assertEquals(maxLen, finalLen);
+            assertEquals(2, recordsFile.size());
+            Assert.assertEquals(maxLen, finalLen);
 
         });
     }
@@ -986,22 +985,22 @@ public class SimpleRecordStoreTest {
                 recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
                 // when
-                recordsFile.insertRecord(stringToUtf8("one"), (one));
+                recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), (one));
 
-                recordsFile.insertRecord(stringToUtf8("two"), (twoLarge));
+                recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), (twoLarge));
 
-                recordsFile.insertRecord(stringToUtf8("three"), (three));
+                recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), (three));
 
                 val maxLen = recordsFile.getFileLength();
-                recordsFile.deleteRecord(stringToUtf8("two"));
+                recordsFile.deleteRecord(ByteSequence.stringToUtf8("two"));
 
-                recordsFile.insertRecord(stringToUtf8("four"), (four));
+                recordsFile.insertRecord(ByteSequence.stringToUtf8("four"), (four));
 
                 val finalLen = recordsFile.getFileLength();
 
                 // then
-                Assert.assertEquals(3, recordsFile.size());
-                assertEquals(maxLen, finalLen);
+                assertEquals(3, recordsFile.size());
+                Assert.assertEquals(maxLen, finalLen);
         });
     }
 

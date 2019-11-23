@@ -1,11 +1,9 @@
-package com.github.simbo1905.srs;
+package com.github.trex_paxos.srs;
 
 import java.io.FileDescriptor;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.channels.FileChannel;
-
-import com.github.simbo1905.srs.RandomAccessFileInterface;
 
 public final class InterceptedRandomAccessFile implements RandomAccessFileInterface {
 	final private RandomAccessFile file;

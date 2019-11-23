@@ -33,12 +33,12 @@ and `hashCode` . This means that we know exactly how the store the keys on disk 
 This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can either wrap a byte array or copy it: 
 
 ```java
-    /**
+    /*
      * This takes a defensive copy of the passed bytes. This should be used if the array can be recycled by the caller.
      */
     public static ByteSequence copyOf(byte[] bytes)
 
-    /**
+    /*
      * This does not take a defensive copy of the passed bytes. This should be used only if you know that the array cannot be recycled.
      */
     public static ByteSequence of(byte[] bytes) 
@@ -54,17 +54,13 @@ file around. To avoid that there are a pair of methods that turn a string into a
 compact form that can store any string: 
 
 ```java
-    /**
+    /*
      * This encodes a string into a fresh UTF8 byte array wrapped as a ByteString. Note that this copies data.
-     * @param string A string
-     * @return ByteString wrapping a UTF8 byte array generated from the input string.
      */
     public static ByteSequence stringToUtf8(String string)
 
-    /**
+    /*
      * This decodes a UTF8 byte array wrapped in a ByteString into a string. Note that this copies data.
-     * @param utf8 A ByteString wrapping a UTF8 encoded string.
-     * @return A String that has decoded and copied the data into its internal state.
      */
     public static String utf8ToString(ByteSequence utf8)
 ```
@@ -99,7 +95,7 @@ This implementation:
 1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
 1. Has no dependencies outside of the JDK and uses `java.logging` aka JUL for logging.  
 1. Is thread safe. It uses an internal lock to protected all public methods. 
-1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
+1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the  
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.
 1. Stores the key with a single byte length header and a checksum footer. 
 1. The records are held in a single `RandomAccessFile` comprising of: 

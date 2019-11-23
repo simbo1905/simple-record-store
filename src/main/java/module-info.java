@@ -1,5 +1,5 @@
-module com.github.simbo1905.srs {
+module com.github.trex_paxos.srs {
     requires java.logging;
     requires static lombok;
-    exports com.github.simbo1905.srs;
+    exports com.github.trex_paxos.srs;
 }

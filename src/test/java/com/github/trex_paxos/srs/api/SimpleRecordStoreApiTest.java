@@ -1,8 +1,8 @@
-package com.github.simbo1905.srs.test;
+package com.github.trex_paxos.srs.api;
 
-import com.github.simbo1905.srs.ByteSequence;
-import com.github.simbo1905.srs.FileRecordStore;
-import com.github.simbo1905.srs.SimpleRecordStoreTest;
+import com.github.trex_paxos.srs.ByteSequence;
+import com.github.trex_paxos.srs.FileRecordStore;
+import com.github.trex_paxos.srs.SimpleRecordStoreTest;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
@@ -15,9 +15,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static com.github.simbo1905.srs.ByteSequence.utf8ToString;
-import static com.github.simbo1905.srs.ByteSequence.stringToUtf8;
-import static com.github.simbo1905.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
+import static com.github.trex_paxos.srs.ByteSequence.utf8ToString;
+import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 
 public class SimpleRecordStoreApiTest {
     String fileName;
@@ -55,28 +54,28 @@ public class SimpleRecordStoreApiTest {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
         String uuid = UUID.randomUUID().toString();
-        val key = stringToUtf8(uuid);
+        val key = ByteSequence.stringToUtf8(uuid);
 
         // when
         this.recordsFile.insertRecord(key, uuid.getBytes());
-        if( recordsFile.recordExists(stringToUtf8(uuid))){
-            this.recordsFile.deleteRecord(stringToUtf8(uuid));
+        if( recordsFile.recordExists(ByteSequence.stringToUtf8(uuid))){
+            this.recordsFile.deleteRecord(ByteSequence.stringToUtf8(uuid));
         }
 
         Assert.assertTrue(this.recordsFile.isEmpty());
-        Assert.assertFalse(this.recordsFile.recordExists(stringToUtf8(uuid)));
+        Assert.assertFalse(this.recordsFile.recordExists(ByteSequence.stringToUtf8(uuid)));
 
-        this.recordsFile.insertRecord(stringToUtf8(uuid), uuid.getBytes());
+        this.recordsFile.insertRecord(ByteSequence.stringToUtf8(uuid), uuid.getBytes());
 
         Assert.assertFalse(this.recordsFile.isEmpty());
-        Assert.assertTrue(this.recordsFile.recordExists(stringToUtf8(uuid)));
+        Assert.assertTrue(this.recordsFile.recordExists(ByteSequence.stringToUtf8(uuid)));
 
         this.recordsFile.fsync();
 
-        val data = this.recordsFile.readRecordData(stringToUtf8(uuid));
+        val data = this.recordsFile.readRecordData(ByteSequence.stringToUtf8(uuid));
         Assert.assertEquals(utf8ToString(data), uuid);
 
-        this.recordsFile.updateRecord(stringToUtf8(uuid), "updated".getBytes());
+        this.recordsFile.updateRecord(ByteSequence.stringToUtf8(uuid), "updated".getBytes());
 
         this.recordsFile.fsync();
 
@@ -84,7 +83,7 @@ public class SimpleRecordStoreApiTest {
 
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
-        val updated = this.recordsFile.readRecordData(stringToUtf8(uuid));
+        val updated = this.recordsFile.readRecordData(ByteSequence.stringToUtf8(uuid));
         Assert.assertEquals(new String(updated), "updated");
         Assert.assertEquals(1, recordsFile.size());
 
@@ -102,7 +101,7 @@ public class SimpleRecordStoreApiTest {
         recordsFile = new FileRecordStore(fileName, initialSize);
 
         final String longestKey = Collections.nCopies( recordsFile.maxKeyLength - 5, "1" ).stream().collect( Collectors.joining() );
-        ByteSequence key = stringToUtf8(longestKey);
+        ByteSequence key = ByteSequence.stringToUtf8(longestKey);
         byte[] value = longestKey.getBytes();
         recordsFile.insertRecord(key, value);
 
@@ -112,7 +111,7 @@ public class SimpleRecordStoreApiTest {
                 Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
         recordsFile = new FileRecordStore(fileName, "r");
 
-        String put0 = new String(recordsFile.readRecordData(stringToUtf8(longestKey)));
+        String put0 = new String(recordsFile.readRecordData(ByteSequence.stringToUtf8(longestKey)));
 
         Assert.assertEquals(put0, longestKey);
 

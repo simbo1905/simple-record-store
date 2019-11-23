@@ -1,4 +1,4 @@
-package com.github.simbo1905.srs;
+package com.github.trex_paxos.srs;
 
 import lombok.SneakyThrows;
 import lombok.Synchronized;

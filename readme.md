@@ -16,7 +16,7 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC4</version>
+	<version>1.0.0-RC5</version>
 </dependency>
 ```
 
@@ -97,7 +97,7 @@ This implementation:
 1. Uses a `HashMap` to index record headers by key. 
 1. Uses a `TreeMap` to index record headers by the offset of the record data within the file. 
 1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
-1. Has no dependencies. It supports Java8 and will move to Java11 when GraalVM does AOT compilation of Java11. 
+1. Has no dependencies outside of the JDK and uses `java.logging` aka JUL for logging.  
 1. Is thread safe. It uses an internal lock to protected all public methods. 
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the the 
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.

@@ -18,10 +18,10 @@ import static java.util.Optional.of;
 
 public class FileRecordStore implements AutoCloseable {
 
-    final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
+    private final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
 
     // Number of bytes in the record header.
-    static final int RECORD_HEADER_LENGTH = 20;
+    private static final int RECORD_HEADER_LENGTH = 20;
 
     // File index to the num records header.
     private static final long NUM_RECORDS_HEADER_LOCATION = 1;
@@ -64,19 +64,19 @@ public class FileRecordStore implements AutoCloseable {
      * index is cached in memory. The hashtable wraps the byte[] key as a String
      * as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
      */
-    protected Map<ByteSequence, RecordHeader> memIndex;
+    private Map<ByteSequence, RecordHeader> memIndex;
 
 
     /**
      * TreeMap of headers by file index
      */
-    protected TreeMap<Long, RecordHeader> positionIndex;
+    private TreeMap<Long, RecordHeader> positionIndex;
 
 
     private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
         @Override
         public int compare(RecordHeader o1, RecordHeader o2) {
-            return (int) (o1.getFreeSpace(true) - o2.getFreeSpace(true));
+            return o1.getFreeSpace(true) - o2.getFreeSpace(true);
         }
     };
 
@@ -128,8 +128,8 @@ public class FileRecordStore implements AutoCloseable {
         writeNumRecordsHeader(0);
         writeKeyLengthHeader();
         writeDataStartPtrHeader(dataStartPtr);
-        memIndex = new HashMap<ByteSequence, RecordHeader>(initialSize);
-        positionIndex = new TreeMap<Long, RecordHeader>();
+        memIndex = new HashMap<>(initialSize);
+        positionIndex = new TreeMap<>();
     }
 
     /*
@@ -166,7 +166,7 @@ public class FileRecordStore implements AutoCloseable {
         dataStartPtr = readDataStartHeader();
         int numRecords = readNumRecordsHeader();
         memIndex = new HashMap<>(numRecords);
-        positionIndex = new TreeMap<Long, RecordHeader>();
+        positionIndex = new TreeMap<>();
 
         for (int i = 0; i < numRecords; i++) {
             val key = readKeyFromIndex(i);
@@ -195,7 +195,7 @@ public class FileRecordStore implements AutoCloseable {
         return Boolean.parseBoolean(keyLength);
     }
 
-    public static String print(byte[] bytes) {
+    private static String print(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         sb.append("[ ");
         for (byte b : bytes) {
@@ -206,7 +206,7 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     @SneakyThrows
-    public static String print(File f) {
+    static String print(File f) {
         RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r");
         val len = file.length();
         assert len < Integer.MAX_VALUE;
@@ -282,7 +282,7 @@ public class FileRecordStore implements AutoCloseable {
      * This method searches the free map for free space and then returns a
      * RecordHeader which uses the space.
      */
-	private RecordHeader allocateRecord(ByteSequence key, int dataLength)
+	private RecordHeader allocateRecord(int dataLength)
             throws IOException {
 
         // we needs space for the length int and the optional long crc32
@@ -390,7 +390,7 @@ public class FileRecordStore implements AutoCloseable {
         positionIndex.put(newRecord.dataPointer, newRecord);
     }
 
-    void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
+    private void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
         if( rh.dataCount < 0) {
             throw new IllegalStateException("dataCount has not been initialized "+this.toString());
         }
@@ -411,7 +411,7 @@ public class FileRecordStore implements AutoCloseable {
                 fp, rh.indexPosition, array.length, fp+array.length, print(array)));
     }
 
-    protected static void read(RecordHeader rh, int index, RandomAccessFileInterface in) throws IOException {
+    private static void read(RecordHeader rh, int index, RandomAccessFileInterface in) throws IOException {
         byte[] header = new byte[RECORD_HEADER_LENGTH];
         val fp = in.getFilePointer();
         in.readFully(header);
@@ -426,7 +426,7 @@ public class FileRecordStore implements AutoCloseable {
         rh.dataPointer = buffer.getLong();
         rh.dataCapacity = buffer.getInt();
         rh.dataCount = buffer.getInt();
-        rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;;
+        rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;
 
         val array = buffer.array();
         CRC32 crc = new CRC32();
@@ -462,9 +462,16 @@ public class FileRecordStore implements AutoCloseable {
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
             System.err.println("no file passed");
+            System.exit(1);
+        }
+        if (args.length < 2) {
+            System.err.println("no comamnd passed");
+            System.exit(2);
         }
         final String filename = args[0];
+        final String command = args[1];
         logger.info("Reading from " + filename);
+
         boolean disableCrc32 = false;
         dumpFile(Level.INFO, filename, disableCrc32);
     }
@@ -570,7 +577,7 @@ public class FileRecordStore implements AutoCloseable {
         val len = (byte) key.length();
         val writeLen = (int)key.length() + 1 + CRC32_LENGTH;
 
-        ByteBuffer buffer = ByteBuffer.allocate((int)writeLen);
+        ByteBuffer buffer = ByteBuffer.allocate(writeLen);
         buffer.put(len);
         buffer.put(key.bytes, 0, (int)key.length());
 
@@ -665,7 +672,7 @@ public class FileRecordStore implements AutoCloseable {
             throw new IllegalArgumentException("Key exists: " + key);
         }
         ensureIndexSpace(getNumRecords() + 1);
-        RecordHeader newRecord = allocateRecord(key, payloadLength(value.length));
+        RecordHeader newRecord = allocateRecord(payloadLength(value.length));
         writeRecordData(newRecord, value);
         addEntryToIndex(key, newRecord, getNumRecords());
 	}
@@ -721,7 +728,7 @@ public class FileRecordStore implements AutoCloseable {
         // perform a move. insert data to the end of the file then overwrite header.
         if (value.length > updateMeHeader.getDataCapacity()) {
             // allocate to next free space or expand the file
-            RecordHeader newRecord = allocateRecord(key, value.length);
+            RecordHeader newRecord = allocateRecord(value.length);
             // new record is expanded old record
             newRecord.dataCount = value.length;
             writeRecordData(newRecord, value);
@@ -770,7 +777,7 @@ public class FileRecordStore implements AutoCloseable {
         int len = (new DataInputStream(new ByteArrayInputStream(lenBytes))).readInt();
 
         logger.log(Level.FINEST, () ->
-            String.format("<d fp:{0} len:{1} bytes:{2} ",
+            String.format("<d fp:%d len:%d bytes:%s ",
             header.dataPointer, len, print(lenBytes)));
 
         assert header.dataPointer + len < getFileLength():

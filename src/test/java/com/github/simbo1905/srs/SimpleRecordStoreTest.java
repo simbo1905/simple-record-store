@@ -85,7 +85,7 @@ public class SimpleRecordStoreTest {
         }
     }
 
-    static interface InterceptedTestOperations {
+    interface InterceptedTestOperations {
         void performTestOperations(WriteCallback wc,
                                    String fileName) throws Exception;
     }
@@ -1059,12 +1059,6 @@ public class SimpleRecordStoreTest {
         try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)){
             recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
         }
-
-        logger.info("post insert ---------");
-
-        logger.info( FileRecordStore.print(new File(fileName)));
-
-        logger.info("post print ---------");
 
         // reset to the normal default
         System.setProperty(String.format("%s.%s",

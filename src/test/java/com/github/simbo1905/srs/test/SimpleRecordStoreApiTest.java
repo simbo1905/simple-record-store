@@ -56,9 +56,10 @@ public class SimpleRecordStoreApiTest {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
         String uuid = UUID.randomUUID().toString();
+        val key = stringToUtf8(uuid);
 
         // when
-        this.recordsFile.insertRecord(stringToUtf8(uuid), uuid.getBytes());
+        this.recordsFile.insertRecord(key, uuid.getBytes());
         if( recordsFile.recordExists(stringToUtf8(uuid))){
             this.recordsFile.deleteRecord(stringToUtf8(uuid));
         }
@@ -74,7 +75,7 @@ public class SimpleRecordStoreApiTest {
         this.recordsFile.fsync();
 
         val data = this.recordsFile.readRecordData(stringToUtf8(uuid));
-        Assert.assertThat(utf8ToString(data), is(uuid.toString()));
+        Assert.assertThat(utf8ToString(data), is(uuid));
 
         this.recordsFile.updateRecord(stringToUtf8(uuid), "updated".getBytes());
 
@@ -86,7 +87,9 @@ public class SimpleRecordStoreApiTest {
         recordsFile = new FileRecordStore(fileName, "r", false);
         val updated = this.recordsFile.readRecordData(stringToUtf8(uuid));
         Assert.assertThat(new String(updated), is("updated"));
+        Assert.assertEquals(1, recordsFile.size());
 
+        Assert.assertEquals(recordsFile.keys().iterator().next(), key);
     }
 
 

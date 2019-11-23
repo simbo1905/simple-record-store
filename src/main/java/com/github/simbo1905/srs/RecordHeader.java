@@ -2,15 +2,6 @@ package com.github.simbo1905.srs;
 
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
-import lombok.val;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.logging.Level;
-import java.util.zip.CRC32;
-
-import static com.github.simbo1905.srs.FileRecordStore.RECORD_HEADER_LENGTH;
-import static com.github.simbo1905.srs.FileRecordStore.print;
 
 @ToString
 @EqualsAndHashCode

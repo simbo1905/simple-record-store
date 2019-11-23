@@ -3,7 +3,7 @@
 
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC5</version>
+	<version>1.0.0-RC5-SNAPSHOT</version>
 
 	<name>Simple Record Store</name>
 	<description>simple single file key value storage</description>
@@ -89,7 +89,7 @@
 				<artifactId>maven-javadoc-plugin</artifactId>
 				<version>3.1.1</version>
 				<configuration>
-					<source>8</source>
+					<source>11</source>
 					<linksource>true</linksource>
 				</configuration>
 				<executions>

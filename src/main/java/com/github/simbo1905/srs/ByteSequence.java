@@ -1,16 +1,39 @@
 package com.github.simbo1905.srs;
 
-import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.ToString;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
+/**
+A ByteSequence is a wrapper to a byte array that adds equals and hashcode so that it can be used as the key in a map.
+As we intend for it to be used as the key in a map it should be immutable. This means you should construct it using
+ the static copyOf method. If you are sure the the byte array you are wrapping will never be mutated you can use the
+ static "of" method.
+ */
 @ToString
-@EqualsAndHashCode
 @RequiredArgsConstructor
 public class ByteSequence {
     final byte[] bytes;
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ByteSequence that = (ByteSequence) o;
+        return Arrays.equals(bytes, that.bytes);
+    }
+
+    // here we memoize the hashcode upon first use. when the map is resized the cached value will reused.
+    @Getter(lazy=true)
+    private final int hashCode = Arrays.hashCode(bytes);
+
+    @Override
+    public int hashCode() {
+        return this.getHashCode();
+    }
 
     /**
      * This encodes a string into a fresh UTF8 byte array wrapped as a ByteString. Note that this copies data.

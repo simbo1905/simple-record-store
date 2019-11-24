@@ -68,9 +68,9 @@ compact form that can store any string:
 Note that the comments state that the `byte[]` is a copy which is because `String` always copies data so that it is 
 immutable. 
 
-There is `java.util.Logging` set to `Level.FINE` that shows the keys and size of the data that is being inserted, 
+There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the data that is being inserted, 
 updated, or deleted. If you have a bug please try to create a repeatable test with fine logging enabled and post the 
-logging. There is additional logging at `Level.FINEST` that shows every byte that is written or read from file. 
+logging. There is additional logging at `Level.FINEST` that shows every byte that is written to, or read from, the file. 
 
 ## Details
 

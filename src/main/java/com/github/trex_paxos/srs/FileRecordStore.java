@@ -348,6 +348,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public void close() throws IOException  {
+        logger.log(Level.FINE, ()->String.format("closed called on %s", this));
         try {
             try {
                 if( file != null ) file.fsync();
@@ -503,6 +504,7 @@ public class FileRecordStore implements AutoCloseable {
 
     @Synchronized
     public void fsync() throws IOException {
+        logger.log(Level.FINE, ()->String.format("fsync called on %s", this));
         file.fsync();
     }
 
@@ -668,6 +670,7 @@ public class FileRecordStore implements AutoCloseable {
     @Synchronized
     public void insertRecord(ByteSequence key, byte[] value)
             throws IOException {
+        logger.log(Level.FINE, ()->String.format("insertRecord value.len:%d key:%s ", value.length, print(key.bytes)));
         if (recordExists(key)) {
             throw new IllegalArgumentException("Key exists: " + key);
         }
@@ -691,7 +694,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public void updateRecord(ByteSequence key, byte[] value) throws IOException {
-
+        logger.log(Level.FINE, ()->String.format("updateRecord value.len:%d key:%s", value.length, print(key.bytes)));
         val updateMeHeader = keyToRecordHeader(key);
         val capacity = updateMeHeader.getDataCapacity();
 
@@ -762,6 +765,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public byte[] readRecordData(ByteSequence key) throws IOException {
+        logger.log(Level.FINE, ()->String.format("updateRecord key:%s", print(key.bytes)));
         val header = keyToRecordHeader(key);
         return readRecordData(header);
     }
@@ -851,7 +855,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public void deleteRecord(ByteSequence key) throws IOException {
-
+        logger.log(Level.FINE, ()->String.format("deleteRecord key:%s", print(key.bytes)));
         RecordHeader delRec = keyToRecordHeader(key);
         int currentNumRecords = getNumRecords();
         deleteEntryFromIndex(key, delRec, currentNumRecords);

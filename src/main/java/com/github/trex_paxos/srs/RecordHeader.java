@@ -10,7 +10,7 @@ class RecordHeader {
 	/*
 	 * File pointer to the first byte of record data (8 bytes).
 	 */
-	protected long dataPointer;
+	long dataPointer;
 
 	/*
 	 * Actual number of bytes of data held in this record (4 bytes).
@@ -36,8 +36,6 @@ class RecordHeader {
 	protected int indexPosition;
 
 	long crc32 = -1;
-
-	protected RecordHeader(){}
 
 	protected RecordHeader(long dataPointer, int dataCapacity) {
 		this.dataPointer = dataPointer;

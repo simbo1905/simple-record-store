@@ -113,7 +113,7 @@ public class FileRecordStore implements AutoCloseable {
      * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
      */
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
-        logger.log(Level.INFO, ()->String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, Boolean.valueOf(disableCrc32), this));
+        logger.log(Level.FINE, ()->String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, Boolean.valueOf(disableCrc32), this));
         this.disableCrc32 = disableCrc32;
         this.maxKeyLength = maxKeyLength;
         this.indexEntryLength = maxKeyLength + Integer.BYTES
@@ -150,7 +150,7 @@ public class FileRecordStore implements AutoCloseable {
      * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
-        logger.log(Level.INFO, ()->String.format("opening %s, %s, %s, %s", dbPath, accessFlags, Boolean.valueOf(disableCrc32), this));
+        logger.log(Level.FINE, ()->String.format("opening %s, %s, %s, %s", dbPath, accessFlags, Boolean.valueOf(disableCrc32), this));
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new IllegalArgumentException("Database not found: " + dbPath);
@@ -330,8 +330,8 @@ public class FileRecordStore implements AutoCloseable {
      * specified location in the file is part of the record data of the
      * RecordHeader which is returned.
      */
-	private Optional<RecordHeader> getRecordAt(long targetFp) {
-	    val floor = positionIndex.floorEntry(targetFp);
+    private Optional<RecordHeader> getRecordAt(long targetFp) {
+        val floor = positionIndex.floorEntry(targetFp);
         Optional<Map.Entry<Long, RecordHeader>> before = (floor != null)? of(floor): Optional.empty();
         return before.map(entry ->{
             val rh = entry.getValue();
@@ -349,7 +349,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public void close() throws IOException  {
-        logger.log(Level.INFO, ()->String.format("closed called on %s", this));
+        logger.log(Level.FINE, ()->String.format("closed called on %s", this));
         try {
             try {
                 if( file != null ) file.fsync();
@@ -413,7 +413,7 @@ public class FileRecordStore implements AutoCloseable {
                 fp, rh.indexPosition, array.length, fp+array.length, print(array)));
     }
 
-    private static void read(RecordHeader rh, int index, RandomAccessFileInterface in) throws IOException {
+    private static RecordHeader read(int index, RandomAccessFileInterface in) throws IOException {
         byte[] header = new byte[RECORD_HEADER_LENGTH];
         val fp = in.getFilePointer();
         in.readFully(header);
@@ -425,8 +425,7 @@ public class FileRecordStore implements AutoCloseable {
         buffer.put(header);
         buffer.flip();
 
-        rh.dataPointer = buffer.getLong();
-        rh.dataCapacity = buffer.getInt();
+        RecordHeader rh = new RecordHeader(buffer.getLong(), buffer.getInt());
         rh.dataCount = buffer.getInt();
         rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;
 
@@ -437,13 +436,14 @@ public class FileRecordStore implements AutoCloseable {
         if( rh.crc32 != crc32expected) {
             throw new IllegalStateException(String.format("invalid header CRC32 expected %d for %s", crc32expected, rh));
         }
+        return rh;
     }
 
     /*
      * Removes the record from the index. Replaces the target with the entry at
      * the end of the index.
      */
-	private void deleteEntryFromIndex(ByteSequence key, RecordHeader header,
+	private void deleteEntryFromIndex(RecordHeader header,
                                       int currentNumRecords) throws IOException {
         if (header.indexPosition != currentNumRecords - 1) {
             val lastKey = readKeyFromIndex(currentNumRecords - 1);
@@ -456,9 +456,8 @@ public class FileRecordStore implements AutoCloseable {
             write(last, file);
         }
         writeNumRecordsHeader(currentNumRecords - 1);
-        RecordHeader deleted = memIndex.remove(key);
 	    positionIndex.remove(header.dataPointer);
-        assert header == deleted;
+	    freeMap.remove(header);
     }
 
     public static void main(String[] args) throws Exception {
@@ -651,9 +650,7 @@ public class FileRecordStore implements AutoCloseable {
      */
 	private RecordHeader readRecordHeaderFromIndex(int index) throws IOException {
         file.seek(indexPositionToRecordHeaderFp(index));
-        RecordHeader rh = new RecordHeader();
-        read(rh, index, file);
-        return rh;
+        return read(index, file);
     }
 
     /*
@@ -842,13 +839,12 @@ public class FileRecordStore implements AutoCloseable {
         file.seek(header.dataPointer);
         file.write(payload, 0, payload.length); // drop
         byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
-        val end = header.dataPointer+payload.length;
 
         logger.log(Level.FINEST, () -> String.format(">d fp:%d len:%d end:%d bytes:%s",
-            header.dataPointer, payload.length, end, print(lenBytes) ));
+            header.dataPointer, payload.length, header.dataPointer+payload.length, print(lenBytes) ));
 
         logger.log(Level.FINEST, () -> String.format(">d fp:%d len:%d end:%d crc:%d data:%s",
-            header.dataPointer+4, payload.length, end, crc, print(data)));
+            header.dataPointer+4, payload.length, header.dataPointer+payload.length, crc, print(data)));
     }
 
     /*
@@ -859,7 +855,9 @@ public class FileRecordStore implements AutoCloseable {
         logger.log(Level.FINE, ()->String.format("deleteRecord key:%s", print(key.bytes)));
         RecordHeader delRec = keyToRecordHeader(key);
         int currentNumRecords = getNumRecords();
-        deleteEntryFromIndex(key, delRec, currentNumRecords);
+        deleteEntryFromIndex(delRec, currentNumRecords);
+        RecordHeader deleted = memIndex.remove(key);
+        assert delRec == deleted;
 
         if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
             // shrink file since this is the last record in the file
@@ -895,9 +893,10 @@ public class FileRecordStore implements AutoCloseable {
         // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
             val firstOptional = getRecordAt(dataStartPtr);
-			assert firstOptional.isPresent();
-			val first = firstOptional.get();
-			byte[] data = readRecordData(first);
+            val first = firstOptional.get();
+            positionIndex.remove(first.dataPointer);
+            freeMap.remove(first);
+            byte[] data = readRecordData(first);
             long fileLen = getFileLength();
             first.dataPointer = fileLen;
             int dataLength = payloadLength(data.length);
@@ -906,7 +905,8 @@ public class FileRecordStore implements AutoCloseable {
             setFileLength(fileLen + dataLengthPadded);
             writeRecordData(first, data);
             writeRecordHeaderToIndex(first);
-            dataStartPtr += first.getDataCapacity();
+            positionIndex.put(first.dataPointer, first);
+            dataStartPtr = positionIndex.ceilingEntry(dataStartPtr).getValue().dataPointer;
             writeDataStartPtrHeader(dataStartPtr);
         }
     }

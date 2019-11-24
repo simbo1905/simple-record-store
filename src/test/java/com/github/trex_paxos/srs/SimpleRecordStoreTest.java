@@ -190,20 +190,20 @@ public class SimpleRecordStoreTest {
     public void deleteDb() throws Exception {
         File db = new File(this.fileName);
         if (db.exists()) {
-            db.delete();
+            if( !db.delete() ) throw new IllegalStateException("could not delete "+db);
         }
     }
 
     public static class ByteUtils {
         private static ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
 
-        public static byte[] longToBytes(long x) {
+        static byte[] longToBytes(long x) {
             buffer = ByteBuffer.allocate(Long.BYTES);
             buffer.putLong(0, x);
             return buffer.array();
         }
 
-        public static long bytesToLong(byte[] bytes) {
+        static long bytesToLong(byte[] bytes) {
             buffer.put(bytes, 0, bytes.length);
             buffer.flip();//need flip
             return buffer.getLong();
@@ -211,13 +211,9 @@ public class SimpleRecordStoreTest {
 
     }
 
-    Function<Date, byte[]> serializerDate = (date) -> {
-        return ByteUtils.longToBytes(date.getTime());
-    };
+    private Function<Date, byte[]> serializerDate = (date) -> ByteUtils.longToBytes(date.getTime());
 
-    Function<byte[], Date> deserializerDate = (bytes) -> {
-        return new Date(ByteUtils.bytesToLong(bytes));
-    };
+    private Function<byte[], Date> deserializerDate = (bytes) -> new Date(ByteUtils.bytesToLong(bytes));
 
     /**
      * Taken from http://www.javaworld.com/jw-01-1999/jw-01-step.html
@@ -255,6 +251,20 @@ public class SimpleRecordStoreTest {
         recordsFile = new FileRecordStore(fileName, "r", false);
 
         logger.info("test completed.");
+    }
+
+    @Test
+    public void testMoveUpdatesPositionMap() throws Exception {
+        val recordStore = new FileRecordStore(fileName, 100, 64, false);
+        final String value = Collections.nCopies(100, "x").stream().collect(Collectors.joining());
+        IntStream.range(0, 4).forEach(i->{
+            final String key = Collections.nCopies(64, ""+i).stream().collect(Collectors.joining());
+            try {
+                recordStore.insertRecord(ByteSequence.stringToUtf8(key), value.getBytes());
+            } catch (IOException e) {
+                throw new RuntimeException(e.getMessage(), e);
+            }
+        });
     }
 
     @Test

@@ -113,6 +113,7 @@ public class FileRecordStore implements AutoCloseable {
      * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
      */
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
+        logger.log(Level.INFO, ()->String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, Boolean.valueOf(disableCrc32), this));
         this.disableCrc32 = disableCrc32;
         this.maxKeyLength = maxKeyLength;
         this.indexEntryLength = maxKeyLength + Integer.BYTES
@@ -149,7 +150,7 @@ public class FileRecordStore implements AutoCloseable {
      * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
-
+        logger.log(Level.INFO, ()->String.format("opening %s, %s, %s, %s", dbPath, accessFlags, Boolean.valueOf(disableCrc32), this));
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new IllegalArgumentException("Database not found: " + dbPath);
@@ -348,7 +349,7 @@ public class FileRecordStore implements AutoCloseable {
      */
     @Synchronized
     public void close() throws IOException  {
-        logger.log(Level.FINE, ()->String.format("closed called on %s", this));
+        logger.log(Level.INFO, ()->String.format("closed called on %s", this));
         try {
             try {
                 if( file != null ) file.fsync();

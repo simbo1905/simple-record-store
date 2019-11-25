@@ -178,7 +178,8 @@ public class FileRecordStore implements AutoCloseable {
             // duplicates are due to crashes where the later write can replace the earlier one
             if (duplicate != null) positionIndex.remove(duplicate.dataPointer);
             positionIndex.put(header.dataPointer, header);
-            assert memIndex.size() == positionIndex.size() : String.format("memIndex:%d positionIndex:%d", memIndex.size(), positionIndex.size());
+            assert memIndex.size() == positionIndex.size() :
+                    String.format("memIndex:%d positionIndex:%d", memIndex.size(), positionIndex.size());
         }
     }
 
@@ -306,6 +307,8 @@ public class FileRecordStore implements AutoCloseable {
 
         if (dataLengthPadded <= available) {
             newRecord = new RecordHeader(dataStart - dataLengthPadded, dataLengthPadded);
+            dataStartPtr = dataStart - dataLengthPadded;
+            writeDataStartPtrHeader(dataStartPtr);
             return newRecord;
         }
 
@@ -392,9 +395,17 @@ public class FileRecordStore implements AutoCloseable {
         write(newRecord, file);
         newRecord.setIndexPosition(currentNumRecords);
         writeNumRecordsHeader(currentNumRecords + 1);
-        memIndex.put(key, newRecord);
+
+        logger.log(Level.FINEST, ()->String.format("before maps: %s | %s", memIndex.toString(), positionIndex.toString()));
+
+        val duplicate = memIndex.put(key, newRecord);
+        if( duplicate != null) positionIndex.remove(duplicate.dataPointer);
         positionIndex.put(newRecord.dataPointer, newRecord);
-        assert memIndex.size() == positionIndex.size();
+
+        logger.log(Level.FINEST, ()->String.format("after maps: %s | %s", memIndex.toString(), positionIndex.toString()));
+
+        assert memIndex.size() == positionIndex.size() :
+                String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
     }
 
     private void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
@@ -740,7 +751,8 @@ public class FileRecordStore implements AutoCloseable {
             memIndex.put(key, newRecord);
             positionIndex.remove(updateMeHeader.dataPointer);
             positionIndex.put(newRecord.dataPointer, newRecord);
-            assert memIndex.size() == positionIndex.size();
+            assert memIndex.size() == positionIndex.size() :
+                    String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
             // if there is a previous record add space to it
             val previousIndex = updateMeHeader.dataPointer - 1;
@@ -864,7 +876,8 @@ public class FileRecordStore implements AutoCloseable {
         assert delRec == memDeleted;
         val posDeleted = positionIndex.remove(delRec.dataPointer);
         assert delRec == posDeleted;
-        assert memIndex.size() == positionIndex.size();
+        assert memIndex.size() == positionIndex.size() :
+                String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
         freeMap.remove(delRec);
 
         if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {

@@ -105,7 +105,7 @@ public class SimpleRecordStoreTest {
     }
 
     private String fileName(String base) {
-        String fileName = TMP + System.getProperty("file.separator")+base;
+        String fileName = TMP + System.getProperty("file.separator") + base;
         File file = new File(fileName);
         file.deleteOnExit();
         return fileName;
@@ -171,7 +171,7 @@ public class SimpleRecordStoreTest {
 
     public SimpleRecordStoreTest() {
         logger.setLevel(Level.ALL);
-        init(TMP + System.getProperty("file.separator")+"junit.records", 0);
+        init(TMP + System.getProperty("file.separator") + "junit.records", 0);
     }
 
     public void init(final String fileName, final int initialSize) {
@@ -190,7 +190,7 @@ public class SimpleRecordStoreTest {
     public void deleteDb() throws Exception {
         File db = new File(this.fileName);
         if (db.exists()) {
-            if( !db.delete() ) throw new IllegalStateException("could not delete "+db);
+            if (!db.delete()) throw new IllegalStateException("could not delete " + db);
         }
     }
 
@@ -257,14 +257,24 @@ public class SimpleRecordStoreTest {
     public void testMoveUpdatesPositionMap() throws Exception {
         val recordStore = new FileRecordStore(fileName, 100, 64, false);
         final String value = Collections.nCopies(100, "x").stream().collect(Collectors.joining());
-        IntStream.range(0, 4).forEach(i->{
-            final String key = Collections.nCopies(64, ""+i).stream().collect(Collectors.joining());
+        IntStream.range(0, 4).forEach(i -> {
+            final String key = Collections.nCopies(64, "" + i).stream().collect(Collectors.joining());
             try {
                 recordStore.insertRecord(ByteSequence.stringToUtf8(key), value.getBytes());
             } catch (IOException e) {
                 throw new RuntimeException(e.getMessage(), e);
             }
         });
+    }
+
+    @Test
+    public void testDoubleInsertIntoLargeFile() throws Exception {
+        val recordStore = new FileRecordStore(fileName, 1000, 64, false);
+        final String value = Collections.nCopies(100, "x").stream().collect(Collectors.joining());
+        final val key1 = ByteSequence.stringToUtf8(Collections.nCopies(4, "1").stream().collect(Collectors.joining()));
+        final val key2 = ByteSequence.stringToUtf8(Collections.nCopies(4, "2").stream().collect(Collectors.joining()));
+        recordStore.insertRecord(key1, value.getBytes());
+        recordStore.insertRecord(key2, value.getBytes());
     }
 
     @Test
@@ -959,9 +969,9 @@ public class SimpleRecordStoreTest {
 
     @Test
     public void testFreeSpaceInIndexWithIOExceptions() throws Exception {
-        val oneLarge = Collections.nCopies( 1024, "1" ).stream().collect( Collectors.joining() ).getBytes();
-        val twoSmall = Collections.nCopies( 38, "2" ).stream().collect( Collectors.joining() ).getBytes();
-        val threeSmall = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() ).getBytes();
+        val oneLarge = Collections.nCopies(1024, "1").stream().collect(Collectors.joining()).getBytes();
+        val twoSmall = Collections.nCopies(38, "2").stream().collect(Collectors.joining()).getBytes();
+        val threeSmall = Collections.nCopies(38, "3").stream().collect(Collectors.joining()).getBytes();
 
         verifyWorkWithIOExceptions((wc, fileName) -> {
             // set initial size equal to 2x header and 2x padded payload
@@ -986,37 +996,37 @@ public class SimpleRecordStoreTest {
 
     @Test
     public void testFreeSpaceInMiddleWithIOExceptions() throws Exception {
-        val one = Collections.nCopies( 38, "1" ).stream().collect( Collectors.joining() ).getBytes();
-        val twoLarge = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() ).getBytes();
-        val three = Collections.nCopies( 38, "3" ).stream().collect( Collectors.joining() ).getBytes();
-        val four = Collections.nCopies( 38, "4" ).stream().collect( Collectors.joining() ).getBytes();
+        val one = Collections.nCopies(38, "1").stream().collect(Collectors.joining()).getBytes();
+        val twoLarge = Collections.nCopies(1024, "2").stream().collect(Collectors.joining()).getBytes();
+        val three = Collections.nCopies(38, "3").stream().collect(Collectors.joining()).getBytes();
+        val four = Collections.nCopies(38, "4").stream().collect(Collectors.joining()).getBytes();
 
         verifyWorkWithIOExceptions((wc, fileName) -> {
-                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+            recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
-                // when
-                recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), (one));
+            // when
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), (one));
 
-                recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), (twoLarge));
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), (twoLarge));
 
-                recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), (three));
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), (three));
 
-                val maxLen = recordsFile.getFileLength();
-                recordsFile.deleteRecord(ByteSequence.stringToUtf8("two"));
+            val maxLen = recordsFile.getFileLength();
+            recordsFile.deleteRecord(ByteSequence.stringToUtf8("two"));
 
-                recordsFile.insertRecord(ByteSequence.stringToUtf8("four"), (four));
+            recordsFile.insertRecord(ByteSequence.stringToUtf8("four"), (four));
 
-                val finalLen = recordsFile.getFileLength();
+            val finalLen = recordsFile.getFileLength();
 
-                // then
-                assertEquals(3, recordsFile.size());
-                Assert.assertEquals(maxLen, finalLen);
+            // then
+            assertEquals(3, recordsFile.size());
+            Assert.assertEquals(maxLen, finalLen);
         });
     }
 
     @Test
     public void testMaxKeySize() throws IOException {
-        try{
+        try {
             System.setProperty(String.format("%s.%s",
                     FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
                     Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
@@ -1025,7 +1035,7 @@ public class SimpleRecordStoreTest {
             recordsFile = new FileRecordStore(fileName, initialSize);
 
             // when
-            val longestKey = Collections.nCopies( recordsFile.maxKeyLength, "1" ).stream().collect( Collectors.joining() ).getBytes();
+            val longestKey = Collections.nCopies(recordsFile.maxKeyLength, "1").stream().collect(Collectors.joining()).getBytes();
             recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
 
             // then
@@ -1041,7 +1051,7 @@ public class SimpleRecordStoreTest {
 
     @Test
     public void testCrc32asUnsignedInteger() {
-        final String data = Collections.nCopies( 1024, "2" ).stream().collect( Collectors.joining() );
+        final String data = Collections.nCopies(1024, "2").stream().collect(Collectors.joining());
         val crc32 = new CRC32();
         crc32.update(data.getBytes(), 0, 1024);
         long crcLong = crc32.getValue();
@@ -1062,9 +1072,9 @@ public class SimpleRecordStoreTest {
                 FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
                 Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
 
-        val longestKey = Collections.nCopies( FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1" ).stream().collect( Collectors.joining() ).getBytes();
+        val longestKey = Collections.nCopies(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1").stream().collect(Collectors.joining()).getBytes();
 
-        try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)){
+        try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)) {
             recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
         }
 
@@ -1080,16 +1090,16 @@ public class SimpleRecordStoreTest {
 
     }
 
-    byte[] bytes(int b){
-        return new byte[]{(byte)b};
+    byte[] bytes(int b) {
+        return new byte[]{(byte) b};
     }
 
     @Test
     public void testByteStringAsMapKey() {
         HashMap<ByteSequence, byte[]> kvs = new HashMap<>();
-        IntStream.range(Byte.MIN_VALUE, Byte.MAX_VALUE).forEach(b->{
-            byte[] key = {(byte)b};
-            byte[] value = {(byte)b};
+        IntStream.range(Byte.MIN_VALUE, Byte.MAX_VALUE).forEach(b -> {
+            byte[] key = {(byte) b};
+            byte[] value = {(byte) b};
             kvs.put(ByteSequence.of(key), value);
         });
         Assert.assertEquals(255, kvs.size());

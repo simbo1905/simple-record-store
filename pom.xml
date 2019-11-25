@@ -3,7 +3,7 @@
 
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC6-SNAPHOT</version>
+	<version>1.0.0-RC6-SNAPSHOT</version>
 
 	<name>Simple Record Store</name>
 	<description>simple single file key value storage</description>

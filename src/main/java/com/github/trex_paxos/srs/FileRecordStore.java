@@ -677,7 +677,11 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     /*
-     *
+     * Inserts a new record. It tries to insert into free space at the end of the index space, or free space between
+     * records, then finally extends the file. If the file has been set to a large initial file it will initially all
+     * be considered space at the end of the index space such that inserts will be prepended into the back of the
+     * file. When there is no more space in the index area the file will be expanded and record(s) will be into the new
+     * space to make space for heders.
      */
     @Synchronized
     public void insertRecord(ByteSequence key, byte[] value)
@@ -701,8 +705,8 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     /*
-     * Updates an existing record. If the new contents do not fit in the
-     * original record, then the update is handled by inserting the data
+     * Updates an existing record. If the new contents do not fit in the original record then the update is handled
+     * like an insert.
      */
     @Synchronized
     public void updateRecord(ByteSequence key, byte[] value) throws IOException {

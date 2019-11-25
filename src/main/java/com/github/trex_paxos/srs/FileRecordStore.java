@@ -174,7 +174,9 @@ public class FileRecordStore implements AutoCloseable {
             RecordHeader header = readRecordHeaderFromIndex(i);
             header.setIndexPosition(i);
             memIndex.put(key, header);
+            logger.log(Level.FINEST, ()->String.format("header:%s, key:%s", header.toString(), print(key.bytes)));
             positionIndex.put(header.dataPointer, header);
+            assert memIndex.size() == positionIndex.size();
         }
     }
 
@@ -390,6 +392,7 @@ public class FileRecordStore implements AutoCloseable {
         writeNumRecordsHeader(currentNumRecords + 1);
         memIndex.put(key, newRecord);
         positionIndex.put(newRecord.dataPointer, newRecord);
+        assert memIndex.size() == positionIndex.size();
     }
 
     private void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
@@ -456,8 +459,6 @@ public class FileRecordStore implements AutoCloseable {
             write(last, file);
         }
         writeNumRecordsHeader(currentNumRecords - 1);
-	    positionIndex.remove(header.dataPointer);
-	    freeMap.remove(header);
     }
 
     public static void main(String[] args) throws Exception {
@@ -737,6 +738,7 @@ public class FileRecordStore implements AutoCloseable {
             memIndex.put(key, newRecord);
             positionIndex.remove(updateMeHeader.dataPointer);
             positionIndex.put(newRecord.dataPointer, newRecord);
+            assert memIndex.size() == positionIndex.size();
 
             // if there is a previous record add space to it
             val previousIndex = updateMeHeader.dataPointer - 1;
@@ -856,8 +858,12 @@ public class FileRecordStore implements AutoCloseable {
         RecordHeader delRec = keyToRecordHeader(key);
         int currentNumRecords = getNumRecords();
         deleteEntryFromIndex(delRec, currentNumRecords);
-        RecordHeader deleted = memIndex.remove(key);
-        assert delRec == deleted;
+        val memDeleted = memIndex.remove(key);
+        assert delRec == memDeleted;
+        val posDeleted = positionIndex.remove(delRec.dataPointer);
+        assert delRec == posDeleted;
+        assert memIndex.size() == positionIndex.size();
+        freeMap.remove(delRec);
 
         if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
             // shrink file since this is the last record in the file

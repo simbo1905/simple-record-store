@@ -183,7 +183,20 @@ mvn release:perform
 
 ## Alternatives
 
+Some notable pure Java alternatives that don't compromise on crash saftey are:
+
 * [MapDB](http://www.mapdb.org) "provides Java Maps, Sets, Lists, Queues and other collections backed by off-heap 
 or on-disk storage. It is a hybrid between java collection framework and embedded database engine." 
+* [Xodus](https://github.com/JetBrains/xodus) "JetBrains Xodus is a transactional schema-less embedded database used by JetBrains YouTrack and JetBrains Hub."
+* [MVStore](https://www.h2database.com/html/mvstore.html) "The MVStore is a persistent, log structured key-value store. It is used as default storage subsystem of H2, but it can also be used directly within an application, without using JDBC or SQL." 
 
+Their jar files are an order of magnitude bigger:
 
+| Alternative  | Jar Size | Transient Deps |
+| ------------- | ------------- | ------------- |
+| simple-record-store 1.0.0-RC6  | 23 kB  | -  |
+| mapdb 3.0.7  | 730 kB | 16 jars  |
+| xodus-environment 1.3.124  | 502 kB | 3 jars  |
+| h2-mvstore 1.4.200 | 301 kB | -  |
+
+ They likely have a lot more than an order of magnitude more development effort put into them. As a result they are embedded database engines that work with variable length keys that don't fit in memory and that optimise the write path. 

@@ -16,7 +16,7 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC5</version>
+	<version>1.0.0-RC6</version>
 </dependency>
 ```
 

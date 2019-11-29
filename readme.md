@@ -84,7 +84,7 @@ disk. The way to fix to this is to close the store and open a fresh one to reloa
 This implementation: 
 
 1. Is simple. It doesn't use or create background threads. It doesn't use multiple files. As as result it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower due to the fact it does not batch writes to disk as append only writes. Rather it does multiple writes to disk per operation.  
-1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you are certain that you 
+1. Defaults to prioritising safety, over space, over speed. You can override some defaults if you are certain that you 
  read and write patterns let you. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
 1. Supports a maximum key length of 247 bytes. The default is 64 bytes. 

@@ -118,7 +118,7 @@ offset, data and checksum. This makes locating a record by key is an `O(1)` look
    1. Any free space created by a move follows the same rules as for deletion below. 
 1. A delete:
    1. May shrink the file if it is the last record. 
-   1. Else move the second record backwards if it is the first record (issue [#12](https://github.com/simbo1905/simple-record-store/issues/12)). 
+   1. Else move the second record backwards if it is the first record (issue.
    1. Else will create some free space in the middle of the file which is up update to the header of the previous record. 
    1. Will overwrite the deleted header by moving the last header over it then decrementing the headers count creating 
    free space at the end of the index space.    

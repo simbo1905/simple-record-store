@@ -83,6 +83,7 @@ disk. The way to fix to this is to close the store and open a fresh one to reloa
 
 This implementation: 
 
+1. Is simple. It doesn't use or create background threads. It doesn't use multiple files. As as result it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower due to the fact it does not batch writes to disk as append only writes. Rather it does multiple writes to disk per operation.  
 1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you are certain that you 
  read and write patterns let you. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
@@ -189,6 +190,8 @@ or on-disk storage. It is a hybrid between java collection framework and embedde
 * [Xodus](https://github.com/JetBrains/xodus) "JetBrains Xodus is a transactional schema-less embedded database used by JetBrains YouTrack and JetBrains Hub."
 * [MVStore](https://www.h2database.com/html/mvstore.html) "The MVStore is a persistent, log structured key-value store. It is used as default storage subsystem of H2, but it can also be used directly within an application, without using JDBC or SQL." 
 
+As at Dec 2019 there are comments in the code of one of those projects that they need to add automated crash tests. This project has such tests. 
+
 Their jar files are an order of magnitude bigger:
 
 | Alternative  | Jar Size | Transient Deps |
@@ -198,4 +201,4 @@ Their jar files are an order of magnitude bigger:
 | xodus-environment 1.3.124  | 502 kB | 3 jars  |
 | h2-mvstore 1.4.200 | 301 kB | -  |
 
- They likely have a lot more than an order of magnitude more development effort put into them. As a result they are embedded database engines that work with variable length keys that don't fit in memory and that optimise the write path. 
+ They likely have a lot more than an order of magnitude more development effort put into them. As a result they are embedded database engines that work with variable length keys that don't fit in memory and that optimise the write path. That makes them very fast. 

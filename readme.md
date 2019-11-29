@@ -22,8 +22,8 @@ The latest release on maven central is:
 
 See `SimpleRecordStoreApiTests.java` for examples of the minimal public API. 
 
-The public API useS a `ByteSequence` as the key. This is a lightweight wrapper to a byte array hat implements `equals` 
-and `hashCode` . This means that we know exactly how the store the keys on disk and can use it as the key to a HashMap: 
+The public API useS a `ByteSequence` as the key. This is a lightweight well to a byte array that implements `equals` 
+and `hashCode` . This means that we know exactly how the store the keys on disk and can use it as the key of a Map: 
 
 ```java
     @Synchronized
@@ -46,12 +46,12 @@ This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can e
 
 An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer where the 
 array will be recycled. Examples of where you can safely use `of` to wrap the array would be where you asked a 
-String to encode itself as a byte array using `getBytes`. Another example is wherre you run a customer serializer to 
-generate the byte array where you don't leak a reference to the array so it won't be mutated. 
+String to encode itself as a byte array using `getBytes` which is always a fresh copy. Another example is where you serialize to 
+generate a byte array where you don't leak a reference to the array so it won't be mutated. 
 
 A problem with using `getBytes` on a string as a key is that the platform string encoding might change if you move the 
 file around. To avoid that there are a pair of methods that turn a string into an UTF8 encoded ByteSequence which is a 
-compact form that can store any string: 
+compact representation suitable for long term disk storage:
 
 ```java
     /*
@@ -65,8 +65,7 @@ compact form that can store any string:
     public static String utf8ToString(ByteSequence utf8)
 ```
 
-Note that the comments state that the `byte[]` is a copy which is because `String` always copies data so that it is 
-immutable. 
+Note that the comments state that the `byte[]` is a copy which is because `String` always copies data to be immutable.
 
 There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the data that is being inserted, 
 updated, or deleted. If you have a bug please try to create a repeatable test with fine logging enabled and post the 

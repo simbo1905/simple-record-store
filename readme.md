@@ -139,20 +139,14 @@ Note that the source code using Lombok to be able to write cleaner and safer cod
 
 The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
 
-You can set the following properties with either an environment variable or a -D flag. The -D flag takes precedence:
+You can set the following properties with either an environment variable or a `-D` flag. The `-D` flag takes precedence:
 
 | Property                                                | Default | Comment                 |
 |---------------------------------------------------------|---------|-------------------------|
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
 | com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
 
-Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key 
-size to 36 then each record header will be 68 characters. 
-
-If you preallocate the store to be a size equal to or greater than the number of records you will store
-you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
-can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
-RECORD_HEADER_LENGTH worth of records to the back fo the file. 
+Note that the actual record header length is MAX_KEY_LENGTH + RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key size to 36 then each record header will be 68 characters. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write applification effect when growing the index region. If your values are 8 byte longs keyed by UUID string keys to grow the index region to hold one more header would mean moving 9 values to the back of file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file the index space shrinks rather than grows so there is write amplification and you can disable padding to save space. 
 
 ## Build
 

@@ -16,14 +16,14 @@ The latest release on maven central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC5</version>
+	<version>1.0.0-RC6</version>
 </dependency>
 ```
 
 See `SimpleRecordStoreApiTests.java` for examples of the minimal public API. 
 
-The public API useS a `ByteSequence` as the key. This is a lightweight wrapper to a byte array hat implements `equals` 
-and `hashCode` . This means that we know exactly how the store the keys on disk and can use it as the key to a HashMap: 
+The public API useS a `ByteSequence` as the key. This is a lightweight well to a byte array that implements `equals` 
+and `hashCode` . This means that we know exactly how the store the keys on disk and can use it as the key of a Map: 
 
 ```java
     @Synchronized
@@ -46,12 +46,12 @@ This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can e
 
 An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer where the 
 array will be recycled. Examples of where you can safely use `of` to wrap the array would be where you asked a 
-String to encode itself as a byte array using `getBytes`. Another example is wherre you run a customer serializer to 
-generate the byte array where you don't leak a reference to the array so it won't be mutated. 
+String to encode itself as a byte array using `getBytes` which is always a fresh copy. Another example is where you serialize to 
+generate a byte array where you don't leak a reference to the array so it won't be mutated. 
 
 A problem with using `getBytes` on a string as a key is that the platform string encoding might change if you move the 
 file around. To avoid that there are a pair of methods that turn a string into an UTF8 encoded ByteSequence which is a 
-compact form that can store any string: 
+compact representation suitable for long term disk storage:
 
 ```java
     /*
@@ -65,8 +65,7 @@ compact form that can store any string:
     public static String utf8ToString(ByteSequence utf8)
 ```
 
-Note that the comments state that the `byte[]` is a copy which is because `String` always copies data so that it is 
-immutable. 
+Note that the comments state that the `byte[]` is a copy which is because `String` always copies data to be immutable.
 
 There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the data that is being inserted, 
 updated, or deleted. If you have a bug please try to create a repeatable test with fine logging enabled and post the 
@@ -84,7 +83,8 @@ disk. The way to fix to this is to close the store and open a fresh one to reloa
 
 This implementation: 
 
-1. Defaults to prioritising safety, over speed, over space. You can override some defaults if you are certain that you 
+1. Is simple. It doesn't use or create background threads. It doesn't use multiple files. As as result it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower due to the fact it does not batch writes to disk as append only writes. Rather it does multiple writes to disk per operation.  
+1. Defaults to prioritising safety, over space, over speed. You can override some defaults if you are certain that you 
  read and write patterns let you. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
 1. Supports a maximum key length of 247 bytes. The default is 64 bytes. 
@@ -118,7 +118,7 @@ offset, data and checksum. This makes locating a record by key is an `O(1)` look
    1. Any free space created by a move follows the same rules as for deletion below. 
 1. A delete:
    1. May shrink the file if it is the last record. 
-   1. Else move the second record backwards if it is the first record (issue [#12](https://github.com/simbo1905/simple-record-store/issues/12)). 
+   1. Else move the second record backwards if it is the first record (issue.
    1. Else will create some free space in the middle of the file which is up update to the header of the previous record. 
    1. Will overwrite the deleted header by moving the last header over it then decrementing the headers count creating 
    free space at the end of the index space.    
@@ -139,20 +139,14 @@ Note that the source code using Lombok to be able to write cleaner and safer cod
 
 The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
 
-You can set the following properties with either an environment variable or a -D flag. The -D flag takes precedence:
+You can set the following properties with either an environment variable or a `-D` flag. The `-D` flag takes precedence:
 
 | Property                                                | Default | Comment                 |
 |---------------------------------------------------------|---------|-------------------------|
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
 | com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
 
-Note that RECORD_HEADER_LENGTH is MAX_KEY_LENGTH+RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key 
-size to 36 then each record header will be 68 characters. 
-
-If you preallocate the store to be a size equal to or greater than the number of records you will store
-you can skip PAD_DATA_TO_KEY_LENGTH. If you want to store small values that are rarely inserted then you 
-can turn it off to safe space but be aware that expanding the size of the index area means a loop moving 
-RECORD_HEADER_LENGTH worth of records to the back fo the file. 
+Note that the actual record header length is MAX_KEY_LENGTH + RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key size to 36 then each record header will be 68 characters. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write applification effect when growing the index region. If your values are 8 byte longs keyed by UUID string keys to grow the index region to hold one more header would mean moving 9 values to the back of file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file the index space shrinks rather than grows so there is write amplification and you can disable padding to save space. 
 
 ## Build
 
@@ -183,7 +177,26 @@ mvn release:perform
 
 ## Alternatives
 
+Some notable pure Java alternatives that don't compromise on crash saftey are:
+
 * [MapDB](http://www.mapdb.org) "provides Java Maps, Sets, Lists, Queues and other collections backed by off-heap 
 or on-disk storage. It is a hybrid between java collection framework and embedded database engine." 
+* [Xodus](https://github.com/JetBrains/xodus) "JetBrains Xodus is a transactional schema-less embedded database used by JetBrains YouTrack and JetBrains Hub."
+* [MVStore](https://www.h2database.com/html/mvstore.html) "The MVStore is a persistent, log structured key-value store. It is used as default storage subsystem of H2, but it can also be used directly within an application, without using JDBC or SQL." 
 
+As at Dec 2019 there are comments in the code of one of those projects that they need to add automated crash tests. This project has such tests. 
 
+Their jar files are an order of magnitude bigger:
+
+| Alternative  | Jar Size | Transient Deps |
+| ------------- | ------------- | ------------- |
+| simple-record-store 1.0.0-RC6  | 23 kB  | -  |
+| mapdb 3.0.7  | 730 kB | 16 jars  |
+| xodus-environment 1.3.124  | 502 kB | 3 jars  |
+| h2-mvstore 1.4.200 | 301 kB | -  |
+
+ They likely have a lot more than an order of magnitude more development effort put into them. As a result they are embedded database engines that work with variable length keys that don't fit in memory and that optimise the write path. That makes them very fast. 
+
+## Performance
+
+This [video](https://youtu.be/e1wbQPbFZdk) has a section that explains that you have to compromise between read speed, update speed, and memory. This implimentation uses a standard `java.util.HashMap` for all reads. That means that keys must fit in memory but that reads are at the standard in-memory cost. In terms of memory other than the `HashMap` there is a `TreeMap` recording where records are in the file. The key to the `TreeMap` is a long and values are the keys to the `HashMap`. This means that memory usage should be low compared to the techniques in the video. Where this implimentation takes a hit is in write performance. It does update in place with additional writes to ensure consistency during crashes. Running [simple-record-store-benchmarks](https://github.com/simbo1905/simple-record-store-benchmarks) shows that the alternatives named above are about 10x faster at writes. This implimentation is also trying to be simple which means a small jar but none of the sophistication needed to optimise the read path. 

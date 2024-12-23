@@ -9,11 +9,11 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
+import java.nio.file.FileSystems;
 import java.util.Collections;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
 
 import static com.github.trex_paxos.srs.ByteSequence.utf8ToString;
 import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
@@ -22,9 +22,9 @@ public class SimpleRecordStoreApiTest {
     String fileName;
     FileRecordStore recordsFile = null;
     int initialSize;
-    static final String TMP = System.getProperty("java.io.tmpdir")+System.getProperty("file.separator");
+    static final String TMP = System.getProperty("java.io.tmpdir")+ FileSystems.getDefault().getSeparator();
 
-    private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreTest.class.getName());
+    private final static Logger LOGGER = Logger.getLogger(SimpleRecordStoreApiTest.class.getName());
 
     public SimpleRecordStoreApiTest() {
         LOGGER.setLevel(Level.ALL);
@@ -36,16 +36,20 @@ public class SimpleRecordStoreApiTest {
         this.initialSize = initialSize;
         File db = new File(this.fileName);
         if (db.exists()) {
-            db.delete();
+            if( !db.delete() ) {
+                throw new IllegalStateException("Failed to delete " + db);
+            }
         }
         db.deleteOnExit();
     }
 
     @After
-    public void deleteDb() throws Exception {
+    public void deleteDb() {
         File db = new File(this.fileName);
         if (db.exists()) {
-            db.delete();
+            if( ! db.delete() ) {
+              throw new IllegalStateException("Failed to delete " + db);
+            }
         }
     }
 
@@ -84,7 +88,7 @@ public class SimpleRecordStoreApiTest {
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
         val updated = this.recordsFile.readRecordData(ByteSequence.stringToUtf8(uuid));
-        Assert.assertEquals(new String(updated), "updated");
+        Assert.assertEquals("updated", new String(updated));
         Assert.assertEquals(1, recordsFile.size());
 
         Assert.assertEquals(recordsFile.keys().iterator().next(), key);
@@ -100,7 +104,8 @@ public class SimpleRecordStoreApiTest {
         // create a store with this key
         recordsFile = new FileRecordStore(fileName, initialSize);
 
-        final String longestKey = Collections.nCopies( recordsFile.maxKeyLength - 5, "1" ).stream().collect( Collectors.joining() );
+        final String longestKey = String.join("", Collections
+            .nCopies(recordsFile.maxKeyLength - 5, "1"));
         ByteSequence key = ByteSequence.stringToUtf8(longestKey);
         byte[] value = longestKey.getBytes();
         recordsFile.insertRecord(key, value);

@@ -3,6 +3,7 @@ package com.github.trex_paxos.srs.api;
 import com.github.trex_paxos.srs.ByteSequence;
 import com.github.trex_paxos.srs.FileRecordStore;
 import com.github.trex_paxos.srs.JulLoggingConfig;
+import com.github.trex_paxos.srs.UUIDGenerator;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
@@ -11,7 +12,6 @@ import org.junit.Test;
 import java.io.File;
 import java.nio.file.FileSystems;
 import java.util.Collections;
-import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -57,7 +57,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
-        String uuid = UUID.randomUUID().toString();
+        String uuid = UUIDGenerator.generateUUID().toString();
         val key = ByteSequence.stringToUtf8(uuid);
 
         // when

@@ -3,27 +3,18 @@
 package com.github.trex_paxos.srs;
 
 import org.junit.Assert;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.HashSet;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.IntStream;
 
-public class UUIDGeneratorTest {
+public class UUIDGeneratorTest extends JulLoggingConfig {
 
     private static final Logger LOGGER = Logger.getLogger(UUIDGeneratorTest.class.getName());
-
-    @BeforeClass
-    public static void enableJulDebug() {
-        Logger.getLogger("").setLevel(Level.FINEST);
-        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
-    }
 
     @Test
     public void testGenerateUUIDsAreUnique() {

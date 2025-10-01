@@ -100,10 +100,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     logger.info("test completed.");
   }
 
-  @Test
-  public void testMoveUpdatesPositionMap() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 100, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
+@Test
+public void testMoveUpdatesPositionMap() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  try (val recordStore = new FileRecordStore(fileName, 100, 64, false)) {
     IntStream.range(0, 4).forEach(i -> {
       final String key = String.join("", Collections.nCopies(64, "" + i));
       try {
@@ -113,16 +113,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       }
     });
   }
+}
 
-  @Test
-  public void testDoubleInsertIntoLargeFile() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 1000, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
-    val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
-    val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+@Test
+public void testDoubleInsertIntoLargeFile() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
+  val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+
+  try (val recordStore = new FileRecordStore(fileName, 1000, 64, false)) {
     recordStore.insertRecord(key1, value.getBytes());
     recordStore.insertRecord(key2, value.getBytes());
   }
+}
 
   @Test
   public void testInsertOneRecordWithIOExceptions() throws Exception {
@@ -424,73 +427,6 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new FileRecordStore(fileName, "r", false);
     });
   }
-//        List<UUID> uuids = createUuid(3);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid2);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
-//    @Test
-//    public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
-//        List<UUID> uuids = createUuid(4);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                deleteFileIfExists(fileName);
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//                UUID uuid3 = uuids.get(3);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                writeUuid(uuid2);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid3);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid3.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                Assert.assertThat(put3, is(uuid3.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
 
   @Test
   public void testUpdateExpandFirstRecord() throws Exception {

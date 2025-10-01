@@ -168,13 +168,8 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         } catch (Exception ioe) {
           recordsFile.close();
           try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
-            int count = possiblyCorruptedFile.getNumRecords();
-            for (val k : possiblyCorruptedFile.keys()) {
-              // readRecordData has a CRC32 check where the payload must match the header
-              possiblyCorruptedFile.readRecordData(k);
-              count--;
-            }
-            assertEquals(0, count);
+            // Use snapshotRecords() for proper structural validation
+            validateFileStructure(possiblyCorruptedFile, index);
           } catch (Exception e) {
             FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
             final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
@@ -1023,6 +1018,75 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize);
     recordsFile.close();
     recordsFile.close();
+  }
+
+  /// Validates file structure after a simulated crash
+  static void validateFileStructure(FileRecordStore store, int crashIndex) throws IOException {
+    // 1. Get structural snapshot
+    List<RecordSnapshot> actualStructure = store.snapshotRecords();
+
+    // 2. Validate structural invariants
+    validateStructuralInvariants(actualStructure, crashIndex, store.getFileLength());
+
+    // 3. Validate data integrity - all records can be read with CRC32 validation
+    validateDataIntegrity(store, actualStructure);
+  }
+
+  private static void validateStructuralInvariants(List<RecordSnapshot> structure, int crashIndex, long fileLength) {
+    // Check index positions are unique (not necessarily sequential due to deletes)
+    Set<Integer> indexPositions = new HashSet<>();
+    for (RecordSnapshot snapshot : structure) {
+      if (!indexPositions.add(snapshot.indexPosition())) {
+        throw new RuntimeException("Duplicate index position: " + snapshot.indexPosition() + " at crash index " + crashIndex);
+      }
+    }
+
+    // Verify all records are within file bounds
+    structure.forEach(snapshot -> {
+      long recordEnd = snapshot.dataPointer() + snapshot.dataCapacity();
+      if (recordEnd > fileLength) {
+        throw new RuntimeException("Record extends beyond file length: recordEnd=" + recordEnd + ", fileLength=" + fileLength);
+      }
+      if (snapshot.dataPointer() < 0) {
+        throw new RuntimeException("Invalid negative data pointer: " + snapshot.dataPointer());
+      }
+    });
+
+    // Check that actual data regions don't overlap (capacity regions may overlap after crashes)
+    // This validates that the live data in memIndex doesn't have corrupted pointers
+    validateNoOverlappingData(structure, crashIndex);
+  }
+
+  private static void validateNoOverlappingData(List<RecordSnapshot> structure, int crashIndex) {
+    List<RecordSnapshot> byPosition = structure.stream()
+            .sorted(Comparator.comparingLong(RecordSnapshot::dataPointer))
+            .toList();
+
+    IntStream.range(0, byPosition.size() - 1).forEach(i -> {
+      RecordSnapshot current = byPosition.get(i);
+      RecordSnapshot next = byPosition.get(i + 1);
+
+      // Check if actual data overlaps (not capacity)
+      // Data format: 4-byte length prefix + data + 8-byte CRC32 (if enabled)
+      // We conservatively estimate overhead as 4 + 8 = 12 bytes
+      long currentDataEnd = current.dataPointer() + current.dataCount() + 12;
+      if (currentDataEnd > next.dataPointer()) {
+        String msg = String.format("Overlapping data at crash index %d: record key=%s dataPointer=%d dataCount=%d ends at %d, next key=%s starts at %d",
+                crashIndex, new String(current.key().bytes), current.dataPointer(), current.dataCount(), currentDataEnd,
+                new String(next.key().bytes), next.dataPointer());
+        throw new RuntimeException(msg);
+      }
+    });
+  }
+
+  private static void validateDataIntegrity(FileRecordStore store,
+                                                   List<RecordSnapshot> structure) throws IOException {
+    // For each record in the structure, verify it can be read
+    // readRecordData has a CRC32 check where the payload must match the header
+    for (RecordSnapshot snapshot : structure) {
+      ByteSequence key = snapshot.key();
+      store.readRecordData(key);
+    }
   }
 
   interface InterceptedTestOperations {

@@ -230,6 +230,25 @@ public class FileRecordStore implements AutoCloseable {
         return snapshot.stream().map(ByteSequence::copy).collect(Collectors.toSet());
     }
 
+    /// Captures the on-disk index ordering so crash tests can validate
+    /// structural invariants without exposing mutable headers.
+    @Synchronized
+    List<RecordSnapshot> snapshotRecords() {
+        List<RecordSnapshot> snapshots = new ArrayList<>(getNumRecords());
+        for (Map.Entry<ByteSequence, RecordHeader> entry : memIndex.entrySet()) {
+            RecordHeader header = entry.getValue();
+            ByteSequence key = entry.getKey();
+            snapshots.add(new RecordSnapshot(
+                    header.indexPosition,
+                    key.copy(),
+                    header.dataPointer,
+                    header.getDataCapacity(),
+                    header.dataCount,
+                    header.crc32));
+        }
+        return snapshots;
+    }
+
     /*
      * Returns the current number of records in the database.
      */

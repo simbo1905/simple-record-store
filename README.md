@@ -1,12 +1,10 @@
 
 # Simple Record Store
 
-[<img src="https://github.com/simbo1905/simple-record-store/workflows/JavaCI/badge.svg">](https://github.com/simbo1905/simple-record-store/actions)
-
 Simple Record Store is a pure Java persistent hash table with a predefined maximum key length. Records are written into 
-a single file. All of the keys must fit into heap but all values are offloaded onto disk. The order of writes are 
+a single file. All keys must fit into heap but all values are offloaded onto disk. The order of writes are 
 carefully arranged so that crashes will not corrupt the state of the data on disk. The project has no runtime 
-dependencies outside of the core JDK. 
+dependencies beyond the java base module.  
 
 ## Using
 
@@ -27,7 +25,7 @@ and `hashCode` . This means that we know exactly how the store the keys on disk 
 
 ```java
     @Synchronized
-    public boolean recordExists(ByteSequence key)
+    public boolean recordExists(ByteSequence key){}
 ```
 
 This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can either wrap a byte array or copy it: 
@@ -36,12 +34,12 @@ This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can e
     /*
      * This takes a defensive copy of the passed bytes. This should be used if the array can be recycled by the caller.
      */
-    public static ByteSequence copyOf(byte[] bytes)
+    public static ByteSequence copyOf(byte[] bytes){}
 
     /*
      * This does not take a defensive copy of the passed bytes. This should be used only if you know that the array cannot be recycled.
      */
-    public static ByteSequence of(byte[] bytes) 
+    public static ByteSequence of(byte[] bytes){}
 ```
 
 An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer where the 
@@ -57,12 +55,12 @@ compact representation suitable for long term disk storage:
     /*
      * This encodes a string into a fresh UTF8 byte array wrapped as a ByteString. Note that this copies data.
      */
-    public static ByteSequence stringToUtf8(String string)
+    public static ByteSequence stringToUtf8(String string){}
 
     /*
      * This decodes a UTF8 byte array wrapped in a ByteString into a string. Note that this copies data.
      */
-    public static String utf8ToString(ByteSequence utf8)
+    public static String utf8ToString(ByteSequence utf8){}
 ```
 
 Note that the comments state that the `byte[]` is a copy which is because `String` always copies data to be immutable.
@@ -74,7 +72,7 @@ logging. There is additional logging at `Level.FINEST` that shows every byte tha
 ## Details
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-which shows how to creates a simple key value storage file. That code isn't safe to crashes due to the ordering 
+which shows how to create a simple key value storage file. That code isn't safe to crashes due to the ordering 
 of writes. This code base has tests that use a brute force search to throw exceptions on every file operation then 
 validate the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are 
 validated upon read from disk. **Note** If an IOException is thrown it does _not_ mean that the write is known to have 
@@ -83,8 +81,8 @@ disk. The way to fix to this is to close the store and open a fresh one to reloa
 
 This implementation: 
 
-1. Is simple. It doesn't use or create background threads. It doesn't use multiple files. As as result it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower due to the fact it does not batch writes to disk as append only writes. Rather it does multiple writes to disk per operation.  
-1. Defaults to prioritising safety, over space, over speed. You can override some defaults if you are certain that you 
+1. Is simple. It doesn't use or create background threads. It doesn't use multiple files. As a result it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower due to the fact it does not batch writes to disk as append only writes. Rather it does multiple writes to disk per operation.  
+1. Defaults to prioritizing safety, over space, over speed. You can override some defaults if you are certain that you 
  read and write patterns let you. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
 1. Supports a maximum key length of 247 bytes. The default is 64 bytes. 
@@ -94,15 +92,15 @@ This implementation:
 1. Uses a `HashMap` to index record headers by key. 
 1. Uses a `TreeMap` to index record headers by the offset of the record data within the file. 
 1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
-1. Has no dependencies outside of the JDK and uses `java.logging` aka JUL for logging.  
-1. Is thread safe. It uses an internal lock to protected all public methods. 
+1. Has no dependencies outside the JDK and uses `java.logging` aka JUL for logging.  
+1. Is thread safe. It uses an internal lock to protect all public methods. 
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata such as the  
 offset, data and checksum. This makes locating a record by key is an `O(1)` lookup.
 1. Stores the key with a single byte length header and a checksum footer. 
-1. The records are held in a single `RandomAccessFile` comprising of: 
+1. The records are held in a single `RandomAccessFile` comprising: 
    1. A four byte header which is the number of records. 
    2. An index region which is all the headers with possibly some free space at the end. The index region can be 
-   preallocated when the store is first created. Once the index is filled up fresh inserts will expand this region 
+   pre-allocated when the store is first created. Once the index is filled up fresh inserts will expand this region 
    by moving the records beyond it.  
    3. The data region. Past deletes or updates may have created free space between records. Record inserts or moves will 
    attempt to fill free space. If none is available the length of the file will be expand. 
@@ -123,7 +121,7 @@ offset, data and checksum. This makes locating a record by key is an `O(1)` look
    1. Will overwrite the deleted header by moving the last header over it then decrementing the headers count creating 
    free space at the end of the index space.    
 1. Record headers contain a CRC32 checksum which is checked when the data is loaded load. If you write zip data that has a 
-built in CRC32 you can disable this in the constructor. Note that disabling CRC32 checks will prevent updates in situ when 
+built-in CRC32 you can disable this in the constructor. Note that disabling CRC32 checks will prevent updates in situ when 
 records shrink. In which case the update with less data will write to a free location creating.  
 1. The order of writes to the records is designed so that if there is a crash there isn't any corruption. This is confirmed 
 by the unit tests that for every functional test records every file operations. The test then performs a brute force 
@@ -133,7 +131,7 @@ Given that the disk may be unavailable or full the
 and reloading all the headers is expensive this code throws an error and expects the application to log what is going on 
 and decide how many times to attempt to reopen the store. 
 
-Note that the source code using Lombok to be able to write cleaner and safer code. This is compile time only dependency. 
+Note that the source code using Lombok to be able to write cleaner and safer code. This is compile-time only dependency. 
 
 ## Crash-Safety Testing
 
@@ -147,7 +145,7 @@ Crash resilience is enforced by a replay harness that wraps every functional sce
 
 ## Configuration
 
-The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 
+The file byte position is 64 bits so thousands of peta bytes. The max number of records value size is 32 bits so a maximum of 2.14 G. 
 
 You can set the following properties with either an environment variable or a `-D` flag. The `-D` flag takes precedence:
 
@@ -156,7 +154,7 @@ You can set the following properties with either an environment variable or a `-
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
 | com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
 
-Note that the actual record header length is MAX_KEY_LENGTH + RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key size to 36 then each record header will be 68 characters. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write applification effect when growing the index region. If your values are 8 byte longs keyed by UUID string keys to grow the index region to hold one more header would mean moving 9 values to the back of file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file the index space shrinks rather than grows so there is write amplification and you can disable padding to save space. 
+Note that the actual record header length is MAX_KEY_LENGTH + RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key size to 36 then each record header will be 68 characters. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write amplification effect when growing the index region. If your values are 8 byte longs keyed by UUID string keys to grow the index region to hold one more header would mean moving 9 values to the back of file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file the index space shrinks rather than grows so there is write amplification and you can disable padding to save space. 
 
 ## Build
 
@@ -209,4 +207,4 @@ Their jar files are an order of magnitude bigger:
 
 ## Performance
 
-This [video](https://youtu.be/e1wbQPbFZdk) has a section that explains that you have to compromise between read speed, update speed, and memory. This implimentation uses a standard `java.util.HashMap` for all reads. That means that keys must fit in memory but that reads are at the standard in-memory cost. In terms of memory other than the `HashMap` there is a `TreeMap` recording where records are in the file. The key to the `TreeMap` is a long and values are the keys to the `HashMap`. This means that memory usage should be low compared to the techniques in the video. Where this implimentation takes a hit is in write performance. It does update in place with additional writes to ensure consistency during crashes. Running [simple-record-store-benchmarks](https://github.com/simbo1905/simple-record-store-benchmarks) shows that the alternatives named above are about 10x faster at writes. This implimentation is also trying to be simple which means a small jar but none of the sophistication needed to optimise the read path. 
+This [video](https://youtu.be/e1wbQPbFZdk) has a section that explains that you have to compromise between read speed, update speed, and memory. This implementation uses a standard `java.util.HashMap` for all reads. That means that keys must fit in memory but that reads are at the standard in-memory cost. In terms of memory other than the `HashMap` there is a `TreeMap` recording where records are in the file. The key to the `TreeMap` is a long and values are the keys to the `HashMap`. This means that memory usage should be low compared to the techniques in the video. Where this implementation takes a hit is in write performance. It does update in place with additional writes to ensure consistency during crashes. Running [simple-record-store-benchmarks](https://github.com/simbo1905/simple-record-store-benchmarks) shows that the alternatives named above are about 10x faster at writes. This implimentation is also trying to be simple which means a small jar but none of the sophistication needed to optimise the read path. 

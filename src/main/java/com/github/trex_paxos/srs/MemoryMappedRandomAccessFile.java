@@ -219,6 +219,18 @@ class MemoryMappedRandomAccessFile implements RandomAccessFileInterface {
             return;
         }
         
+        // If shrinking or growing within current mapping, just update the logical size
+        if (newLength <= mappedSize) {
+            // Shrinking - just update file length, keep mapping
+            randomAccessFile.setLength(newLength);
+            mappedSize = newLength;
+            if (position > newLength) {
+                position = newLength;
+            }
+            return;
+        }
+        
+        // Growing beyond current mapping - need to remap
         // Force all changes to disk before unmapping
         for (MappedByteBuffer buffer : mappedBuffers) {
             buffer.force();

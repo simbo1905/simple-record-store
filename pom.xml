@@ -35,7 +35,7 @@
 	<properties>
 		<jdk.version>21</jdk.version>
 		<junit.version>4.13.1</junit.version>
-		<lombok.version>1.18.36</lombok.version>
+		<lombok.version>1.18.42</lombok.version>
 	</properties>
 
 	<dependencies>

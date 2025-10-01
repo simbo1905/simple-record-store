@@ -58,9 +58,7 @@ public class UUIDGeneratorTest extends JulLoggingConfig {
         final var uuids = new HashSet<UUID>();
         
         final var startTime = System.currentTimeMillis();
-        IntStream.range(0, 100000).forEach(i -> {
-            uuids.add(UUIDGenerator.generateUUID());
-        });
+        IntStream.range(0, 100000).forEach(i -> uuids.add(UUIDGenerator.generateUUID()));
         final var endTime = System.currentTimeMillis();
         
         // All UUIDs should be unique

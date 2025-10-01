@@ -2,15 +2,10 @@ package com.github.trex_paxos.srs;
 
 import java.io.IOException;
 
-/*
- * easier to mock final native class by wrapping it in an interface
- */
+/// Easier to mock final native class by wrapping it in an interface.
 interface RandomAccessFileInterface {
 
-	/**
-	 * Forces the file data to be flushed. This won't use flags to flush file meta-data.
-	 * @throws IOException
-	 */
+	/// Forces the file data to be flushed. This won't use flags to flush file meta-data.
 	void fsync() throws IOException;
 
 	long getFilePointer() throws IOException;
@@ -21,12 +16,14 @@ interface RandomAccessFileInterface {
 
 	String toString();
 
-	int read(byte[] b) throws IOException;
+	@SuppressWarnings("UnusedReturnValue")
+  int read(byte[] b) throws IOException;
 
 	void readFully(byte[] b) throws IOException;
 
 	void write(int b) throws IOException;
 
+  @SuppressWarnings("unused")
 	void write(byte[] b) throws IOException;
 
 	void write(byte[] b, int off, int len) throws IOException;

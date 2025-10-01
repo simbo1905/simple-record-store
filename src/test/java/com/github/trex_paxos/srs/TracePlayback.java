@@ -13,7 +13,6 @@ import java.util.regex.Pattern;
 public class TracePlayback {
     static final String TMP = System.getProperty("java.io.tmpdir")+ FileSystems.getDefault().getSeparator();
 
-    //static Pattern insertPattern = Pattern.compile("value.len:([0-9]+) key:\\[ ([x0-9A-F ]+) \\]");
     static Pattern keyPattern = Pattern.compile("key:\\[ ([x0-9A-F ]+) ]");
     static Pattern lenPattern = Pattern.compile("value.len:([0-9]+)");
 

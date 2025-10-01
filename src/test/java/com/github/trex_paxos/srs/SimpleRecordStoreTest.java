@@ -38,6 +38,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   String fileName;
   int initialSize;
   FileRecordStore recordsFile = null;
+  private final CrashValidationTracker crashValidator = new CrashValidationTracker();
 
   public SimpleRecordStoreTest() {
     logger.setLevel(Level.ALL);
@@ -132,11 +133,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   public void insertOneRecordWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       val key = ByteSequence.of("key".getBytes());
       val data = (dataPadding + "data").getBytes();
-      recordsFile.insertRecord(key, data);
+      insertRecordWithTracking(key, data);
 
       // then
       val put0 = recordsFile.readRecordData(key);
@@ -144,6 +145,56 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
       recordsFile = new FileRecordStore(fileName, "r", false);
     });
+  }
+
+  private RecordsFileSimulatesDiskFailures openTrackedStore(String fileName, WriteCallback callback) throws IOException {
+    return openTrackedStore(fileName, this.initialSize, callback);
+  }
+
+  private RecordsFileSimulatesDiskFailures openTrackedStore(String fileName,
+                                                            int initialSizeOverride,
+                                                            WriteCallback callback) throws IOException {
+    try {
+      RecordsFileSimulatesDiskFailures store = new RecordsFileSimulatesDiskFailures(fileName, initialSizeOverride, callback, false);
+      crashValidator.bootstrap(store);
+      return store;
+    } catch (Exception e) {
+      crashValidator.flagInitializationFailure(e);
+      throw e;
+    }
+  }
+
+  private void insertRecordWithTracking(ByteSequence key, byte[] data) throws IOException {
+    crashValidator.beginOperation(CrashValidationTracker.OperationType.INSERT, key, data, recordsFile);
+    try {
+      recordsFile.insertRecord(key, data);
+      crashValidator.operationCommitted(recordsFile);
+    } catch (IOException | RuntimeException e) {
+      crashValidator.operationFailed(e);
+      throw e;
+    }
+  }
+
+  private void updateRecordWithTracking(ByteSequence key, byte[] data) throws IOException {
+    crashValidator.beginOperation(CrashValidationTracker.OperationType.UPDATE, key, data, recordsFile);
+    try {
+      recordsFile.updateRecord(key, data);
+      crashValidator.operationCommitted(recordsFile);
+    } catch (IOException | RuntimeException e) {
+      crashValidator.operationFailed(e);
+      throw e;
+    }
+  }
+
+  private void deleteRecordWithTracking(ByteSequence key) throws IOException {
+    crashValidator.beginOperation(CrashValidationTracker.OperationType.DELETE, key, null, recordsFile);
+    try {
+      recordsFile.deleteRecord(key);
+      crashValidator.operationCommitted(recordsFile);
+    } catch (IOException | RuntimeException e) {
+      crashValidator.operationFailed(e);
+      throw e;
+    }
   }
 
   void verifyWorkWithIOExceptions(InterceptedTestOperations interceptedOperations) throws Exception {
@@ -155,31 +206,33 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     final String recordingFile = fileName("record");
     localFileNames.add(recordingFile);
 
+    crashValidator.reset();
     interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
+    closeQuietly();
+    crashValidator.reset();
 
     try {
       for (int index = 0; index < writeStacks.size(); index++) {
         final List<String> stack = writeStacks.get(index);
+        crashValidator.prepareForCrashScenario(index, stack);
         final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
         final String localFileName = fileName("crash" + index);
         localFileNames.add(localFileName);
         try {
           interceptedOperations.performTestOperations(crashAt, localFileName);
         } catch (Exception ioe) {
-          recordsFile.close();
+          closeQuietly();
           try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
-            int count = possiblyCorruptedFile.getNumRecords();
-            for (val k : possiblyCorruptedFile.keys()) {
-              // readRecordData has a CRC32 check where the payload must match the header
-              possiblyCorruptedFile.readRecordData(k);
-              count--;
-            }
-            assertEquals(0, count);
+            crashValidator.assertPostCrashState(possiblyCorruptedFile);
+          } catch (AssertionError ae) {
+            FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
+            throw ae;
           } catch (Exception e) {
             FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
-            final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-            throw new RuntimeException(msg, e);
+            throw crashValidator.wrapAsCorruption(e);
           }
+        } finally {
+          closeQuietly();
         }
       }
     } finally {
@@ -194,13 +247,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     return fileName;
   }
 
-  private String stackToString(List<String> stack) {
-    StringBuilder sb = new StringBuilder();
-    for (String s : stack) {
-      sb.append("\\n\\t");
-      sb.append(s);
+  private void closeQuietly() {
+    if (recordsFile != null) {
+      try {
+        recordsFile.close();
+      } catch (Exception ignored) {
+        // ignore close failures during crash replay assertions
+      } finally {
+        recordsFile = null;
+      }
     }
-    return sb.toString();
   }
 
   private void removeFiles(List<String> localFileNames) {
@@ -219,15 +275,15 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   public void insertTwoRecordWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
       val key2 = ByteSequence.of("key2".getBytes());
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      insertRecordWithTracking(key2, data2);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -248,13 +304,13 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   public void insertThenDeleteRecordWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
-      recordsFile.deleteRecord(key1);
+      insertRecordWithTracking(key1, data1);
+      deleteRecordWithTracking(key1);
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -273,19 +329,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   public void insertTwoThenDeleteTwoRecordsWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       val key2 = ByteSequence.of("key2".getBytes());
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      insertRecordWithTracking(key2, data2);
 
-      recordsFile.deleteRecord(key1);
-      recordsFile.deleteRecord(key2);
+      deleteRecordWithTracking(key1);
+      deleteRecordWithTracking(key2);
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -308,22 +364,22 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   public void insertTwoDeleteFirstInsertOneWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       val key2 = ByteSequence.of("key2".getBytes());
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      insertRecordWithTracking(key2, data2);
 
-      recordsFile.deleteRecord(key1);
+      deleteRecordWithTracking(key1);
 
       val key3 = ByteSequence.of("key3".getBytes());
       val data3 = (dataPadding + "data3").getBytes();
-      recordsFile.insertRecord(key3, data3);
+      insertRecordWithTracking(key3, data3);
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -347,22 +403,22 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   void insertTwoDeleteSecondInsertOneWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       val key2 = ByteSequence.of("key2".getBytes());
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      insertRecordWithTracking(key2, data2);
 
-      recordsFile.deleteRecord(key1);
+      deleteRecordWithTracking(key1);
 
       val key3 = ByteSequence.of("key3".getBytes());
       val data3 = (dataPadding + "data3").getBytes();
-      recordsFile.insertRecord(key3, data3);
+      insertRecordWithTracking(key3, data3);
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -386,15 +442,15 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   void updateOneRecordWithIOExceptions(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.updateRecord(key1, data2);
+      updateRecordWithTracking(key1, data2);
 
       val put1 = recordsFile.readRecordData(key1);
 
@@ -412,16 +468,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   void updateExpandLastRecord(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       @SuppressWarnings("SpellCheckingInspection")
       val data2 = (dataPadding + "data2xxxxxxxxxxxxxxxx").getBytes();
-      recordsFile.updateRecord(key1, data2);
+      updateRecordWithTracking(key1, data2);
 
       val put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data2);
@@ -437,7 +493,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 //                                              List<UUID> uuids,
 //                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
 //                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+//                recordsFile = openTrackedStore(fileName, wc);
 //                UUID uuid0 = uuids.get(0);
 //                UUID uuid1 = uuids.get(1);
 //                UUID uuid2 = uuids.get(2);
@@ -470,7 +526,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 //                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
 //                deleteFileIfExists(fileName);
 //                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+//                recordsFile = openTrackedStore(fileName, wc);
 //                UUID uuid0 = uuids.get(0);
 //                UUID uuid1 = uuids.get(1);
 //                UUID uuid2 = uuids.get(2);
@@ -505,19 +561,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   void updateExpandFirstRecord(String dataPadding) throws Exception {
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
+      recordsFile = openTrackedStore(fileName, wc);
 
       // when
       val key1 = ByteSequence.of("key1".getBytes());
       val data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      insertRecordWithTracking(key1, data1);
 
       val key2 = ByteSequence.of("key2".getBytes());
       val data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      insertRecordWithTracking(key2, data2);
 
       val data1large = (dataPadding + "data1" + dataPadding).getBytes();
-      recordsFile.updateRecord(key1, data1large);
+      updateRecordWithTracking(key1, data1large);
 
       val put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data1large);
@@ -532,18 +588,18 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val two = String.join("", Collections.nCopies(512, "1")).getBytes();
     val three = String.join("", Collections.nCopies(256, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
       val key3 = ByteSequence.of("key3".getBytes());
-      recordsFile.insertRecord(key1, one);
-      recordsFile.insertRecord(key2, one); // 256
-      recordsFile.insertRecord(key3, three);
+      insertRecordWithTracking(key1, one);
+      insertRecordWithTracking(key2, one); // 256
+      insertRecordWithTracking(key3, three);
 
       //when
-      recordsFile.updateRecord(key2, two); // 512
+      updateRecordWithTracking(key2, two); // 512
 
       val put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, one);
@@ -561,14 +617,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val one = String.join("", Collections.nCopies(256, "1")).getBytes();
     val two = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
-      recordsFile.insertRecord(key1, one);
+      insertRecordWithTracking(key1, one);
 
       // when
-      recordsFile.updateRecord(key1, two); // 512
+      updateRecordWithTracking(key1, two); // 512
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -608,18 +664,18 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
+      insertRecordWithTracking(key1, narrow);
 
-      recordsFile.insertRecord(key2, wide);
+      insertRecordWithTracking(key2, wide);
 
-      recordsFile.updateRecord(key2, narrow);
+      updateRecordWithTracking(key2, narrow);
 
       // then
       val put2 = recordsFile.readRecordData(key2);
@@ -632,18 +688,18 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
+      insertRecordWithTracking(key1, wide);
 
-      recordsFile.insertRecord(key2, narrow);
+      insertRecordWithTracking(key2, narrow);
 
-      recordsFile.updateRecord(key1, narrow);
+      updateRecordWithTracking(key1, narrow);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -656,7 +712,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
@@ -664,11 +720,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       val key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
-      recordsFile.insertRecord(key3, narrow);
+      insertRecordWithTracking(key1, narrow);
+      insertRecordWithTracking(key2, wide);
+      insertRecordWithTracking(key3, narrow);
 
-      recordsFile.updateRecord(key2, narrow);
+      updateRecordWithTracking(key2, narrow);
 
       // then
       val put2 = recordsFile.readRecordData(key2);
@@ -681,14 +737,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
-      recordsFile.updateRecord(key1, narrow);
+      insertRecordWithTracking(key1, wide);
+      updateRecordWithTracking(key1, narrow);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -701,16 +757,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
-      recordsFile.deleteRecord(key1);
+      insertRecordWithTracking(key1, narrow);
+      insertRecordWithTracking(key2, wide);
+      deleteRecordWithTracking(key1);
 
       // then
       val put2 = recordsFile.readRecordData(key2);
@@ -723,16 +779,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
-      recordsFile.deleteRecord(key2);
+      insertRecordWithTracking(key1, narrow);
+      insertRecordWithTracking(key2, wide);
+      deleteRecordWithTracking(key2);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -745,7 +801,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
@@ -753,10 +809,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       val key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, narrow);
-      recordsFile.insertRecord(key3, wide);
-      recordsFile.deleteRecord(key2);
+      insertRecordWithTracking(key1, narrow);
+      insertRecordWithTracking(key2, narrow);
+      insertRecordWithTracking(key3, wide);
+      deleteRecordWithTracking(key2);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -770,14 +826,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   public void testDeleteOnlyEntryWithIOExceptions() throws Exception {
     val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
-      recordsFile.deleteRecord(key1);
+      insertRecordWithTracking(key1, wide);
+      deleteRecordWithTracking(key1);
 
       // then
       assertEquals(0, recordsFile.size());
@@ -791,16 +847,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val oneWide = String.join("", Collections.nCopies(1024, "1")).getBytes();
     val twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
       val key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneWide);
-      recordsFile.updateRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoNarrow);
+      insertRecordWithTracking(key1, oneWide);
+      updateRecordWithTracking(key1, oneNarrow);
+      insertRecordWithTracking(key2, twoNarrow);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -817,7 +873,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
     val threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
@@ -825,10 +881,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       val key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoWide);
-      recordsFile.updateRecord(key2, twoNarrow);
-      recordsFile.insertRecord(key3, threeNarrow);
+      insertRecordWithTracking(key1, oneNarrow);
+      insertRecordWithTracking(key2, twoWide);
+      updateRecordWithTracking(key2, twoNarrow);
+      insertRecordWithTracking(key3, threeNarrow);
 
       // then
       val put1 = recordsFile.readRecordData(key1);
@@ -848,7 +904,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
     val fourNarrow = String.join("", Collections.nCopies(38, "4")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // given
       val key1 = ByteSequence.of("key1".getBytes());
@@ -857,11 +913,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       val key4 = ByteSequence.of("key4".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoWide);
-      recordsFile.insertRecord(key3, threeNarrow);
-      recordsFile.updateRecord(key2, twoNarrow);
-      recordsFile.insertRecord(key4, fourNarrow);
+      insertRecordWithTracking(key1, oneNarrow);
+      insertRecordWithTracking(key2, twoWide);
+      insertRecordWithTracking(key3, threeNarrow);
+      updateRecordWithTracking(key2, twoNarrow);
+      insertRecordWithTracking(key4, fourNarrow);
 
 
       // then
@@ -884,15 +940,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
     verifyWorkWithIOExceptions((wc, fileName) -> {
       // set initial size equal to 2x header and 2x padded payload
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName,
-          4 * FileRecordStore.DEFAULT_MAX_KEY_LENGTH, wc, false);
+      recordsFile = openTrackedStore(fileName, 4 * FileRecordStore.DEFAULT_MAX_KEY_LENGTH, wc);
 
       // when
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), oneLarge);
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), twoSmall);
+      insertRecordWithTracking(ByteSequence.stringToUtf8("one"), oneLarge);
+      insertRecordWithTracking(ByteSequence.stringToUtf8("two"), twoSmall);
       val maxLen = recordsFile.getFileLength();
-      recordsFile.deleteRecord(ByteSequence.stringToUtf8("one"));
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), threeSmall);
+      deleteRecordWithTracking(ByteSequence.stringToUtf8("one"));
+      insertRecordWithTracking(ByteSequence.stringToUtf8("three"), threeSmall);
 
       val finalLen = recordsFile.getFileLength();
 
@@ -911,19 +966,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     val four = String.join("", Collections.nCopies(38, "4")).getBytes();
 
     verifyWorkWithIOExceptions((wc, fileName) -> {
-      recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
+      recordsFile = openTrackedStore(fileName, 2, wc);
 
       // when
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), (one));
+      insertRecordWithTracking(ByteSequence.stringToUtf8("one"), (one));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), (twoLarge));
+      insertRecordWithTracking(ByteSequence.stringToUtf8("two"), (twoLarge));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), (three));
+      insertRecordWithTracking(ByteSequence.stringToUtf8("three"), (three));
 
       val maxLen = recordsFile.getFileLength();
-      recordsFile.deleteRecord(ByteSequence.stringToUtf8("two"));
+      deleteRecordWithTracking(ByteSequence.stringToUtf8("two"));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("four"), (four));
+      insertRecordWithTracking(ByteSequence.stringToUtf8("four"), (four));
 
       val finalLen = recordsFile.getFileLength();
 
@@ -1028,6 +1083,277 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   interface InterceptedTestOperations {
     void performTestOperations(WriteCallback wc,
                                String fileName) throws Exception;
+  }
+
+  private static final class CrashValidationTracker {
+    private LinkedHashMap<ByteSequence, byte[]> expectedData = new LinkedHashMap<>();
+    private List<FileRecordStore.RecordSnapshot> expectedSnapshots = new ArrayList<>();
+    private long expectedFileLength = 0L;
+
+    private LinkedHashMap<ByteSequence, byte[]> snapshotBeforeOperation = new LinkedHashMap<>();
+    private List<FileRecordStore.RecordSnapshot> snapshotsBeforeOperation = new ArrayList<>();
+    private long fileLengthBeforeOperation = 0L;
+
+    private OperationContext currentOperation;
+    private FailureContext lastFailure;
+    private int currentCrashIndex = -1;
+    private List<String> currentStack = Collections.emptyList();
+
+    enum OperationType {INSERT, UPDATE, DELETE, INITIALIZATION}
+
+    private record OperationContext(OperationType type, ByteSequence key, byte[] data) {
+    }
+
+    private record FailureContext(OperationContext operation, Exception cause) {
+    }
+
+    private record StoreSnapshot(LinkedHashMap<ByteSequence, byte[]> data,
+                                 List<FileRecordStore.RecordSnapshot> recordSnapshots,
+                                 long fileLength) {
+    }
+
+    void reset() {
+      expectedData = new LinkedHashMap<>();
+      expectedSnapshots = new ArrayList<>();
+      expectedFileLength = 0L;
+      snapshotBeforeOperation = new LinkedHashMap<>();
+      snapshotsBeforeOperation = new ArrayList<>();
+      fileLengthBeforeOperation = 0L;
+      currentOperation = null;
+      lastFailure = null;
+      currentCrashIndex = -1;
+      currentStack = Collections.emptyList();
+    }
+
+    void prepareForCrashScenario(int crashIndex, List<String> stack) {
+      reset();
+      currentCrashIndex = crashIndex;
+      currentStack = new ArrayList<>(stack);
+    }
+
+    void bootstrap(FileRecordStore store) throws IOException {
+      StoreSnapshot snapshot = collectSnapshot(store);
+      expectedData = snapshot.data();
+      expectedSnapshots = snapshot.recordSnapshots();
+      expectedFileLength = snapshot.fileLength();
+    }
+
+    void beginOperation(OperationType type, ByteSequence key, byte[] data, FileRecordStore store) throws IOException {
+      Objects.requireNonNull(store, "recordsFile must not be null");
+      if (expectedSnapshots.isEmpty() && expectedData.isEmpty() && expectedFileLength == 0L) {
+        bootstrap(store);
+      }
+      snapshotBeforeOperation = deepCopyData(expectedData);
+      snapshotsBeforeOperation = deepCopyRecordSnapshots(expectedSnapshots);
+      fileLengthBeforeOperation = expectedFileLength;
+      currentOperation = new OperationContext(type, key.copy(), data == null ? null : Arrays.copyOf(data, data.length));
+    }
+
+    void operationCommitted(FileRecordStore store) throws IOException {
+      if (currentOperation == null) {
+        return;
+      }
+      StoreSnapshot snapshot = collectSnapshot(store);
+      expectedData = snapshot.data();
+      expectedSnapshots = snapshot.recordSnapshots();
+      expectedFileLength = snapshot.fileLength();
+      currentOperation = null;
+      snapshotBeforeOperation = new LinkedHashMap<>();
+      snapshotsBeforeOperation = new ArrayList<>();
+      lastFailure = null;
+    }
+
+    void operationFailed(Exception cause) {
+      if (currentOperation == null) {
+        return;
+      }
+      expectedData = deepCopyData(snapshotBeforeOperation);
+      expectedSnapshots = deepCopyRecordSnapshots(snapshotsBeforeOperation);
+      expectedFileLength = fileLengthBeforeOperation;
+      lastFailure = new FailureContext(currentOperation, cause);
+      currentOperation = null;
+      snapshotBeforeOperation = new LinkedHashMap<>();
+      snapshotsBeforeOperation = new ArrayList<>();
+    }
+
+    void flagInitializationFailure(Exception cause) {
+      expectedData = new LinkedHashMap<>();
+      expectedSnapshots = new ArrayList<>();
+      expectedFileLength = -1L;
+      snapshotBeforeOperation = new LinkedHashMap<>();
+      snapshotsBeforeOperation = new ArrayList<>();
+      fileLengthBeforeOperation = 0L;
+      currentOperation = null;
+      lastFailure = new FailureContext(
+          new OperationContext(OperationType.INITIALIZATION, ByteSequence.copyOf(new byte[0]), null),
+          cause);
+    }
+
+    void assertPostCrashState(FileRecordStore store) throws IOException {
+      if (lastFailure == null) {
+        throw failure("missing failure context to validate crash state");
+      }
+      StoreSnapshot actual = collectSnapshot(store);
+      assertDataMatches(actual.data());
+      assertRecordMetadata(actual.recordSnapshots(), store);
+      assertFileLength(actual.fileLength());
+    }
+
+    RuntimeException wrapAsCorruption(Exception cause) {
+      return new RuntimeException(describeScenario("corrupted file"), cause);
+    }
+
+    private void assertFileLength(long actualFileLength) {
+      if (expectedFileLength >= 0 && actualFileLength < expectedFileLength) {
+        throw failure(String.format("file length shrank expected at least %d actual %d", expectedFileLength, actualFileLength));
+      }
+    }
+
+    private void assertDataMatches(LinkedHashMap<ByteSequence, byte[]> actualData) {
+      if (actualData.size() != expectedData.size()) {
+        throw failure(String.format("record count mismatch expected %d actual %d", expectedData.size(), actualData.size()));
+      }
+      for (Map.Entry<ByteSequence, byte[]> entry : expectedData.entrySet()) {
+        byte[] actual = actualData.get(entry.getKey());
+        if (actual == null) {
+          throw failure(String.format("missing key %s", describeKey(entry.getKey())));
+        }
+        if (!Arrays.equals(entry.getValue(), actual)) {
+          throw failure(String.format("data mismatch for key %s", describeKey(entry.getKey())));
+        }
+      }
+      if (!actualData.keySet().equals(expectedData.keySet())) {
+        Set<ByteSequence> extra = new HashSet<>(actualData.keySet());
+        extra.removeAll(expectedData.keySet());
+        throw failure(String.format("unexpected keys %s", extra));
+      }
+    }
+
+    private void assertRecordMetadata(List<FileRecordStore.RecordSnapshot> actualSnapshots,
+                                      FileRecordStore store) throws IOException {
+      if (store.getNumRecords() != expectedData.size()) {
+        throw failure(String.format("store numRecords mismatch expected %d actual %d", expectedData.size(), store.getNumRecords()));
+      }
+      if (actualSnapshots.size() != expectedSnapshots.size()) {
+        throw failure(String.format("snapshot count mismatch expected %d actual %d", expectedSnapshots.size(), actualSnapshots.size()));
+      }
+      for (int i = 0; i < expectedSnapshots.size(); i++) {
+        FileRecordStore.RecordSnapshot expected = expectedSnapshots.get(i);
+        FileRecordStore.RecordSnapshot actual = actualSnapshots.get(i);
+        if (expected.indexPosition() != actual.indexPosition()
+            || expected.dataPointer() != actual.dataPointer()
+            || expected.dataCapacity() != actual.dataCapacity()
+            || expected.dataCount() != actual.dataCount()
+            || expected.headerCrc32() != actual.headerCrc32()
+            || !expected.key().equals(actual.key())) {
+          throw failure(String.format("index mismatch at %d expected %s actual %s", i, expected, actual));
+        }
+        byte[] expectedValue = expectedData.get(actual.key());
+        if (expectedValue == null) {
+          throw failure(String.format("missing expected data for key %s", describeKey(actual.key())));
+        }
+        if (actual.dataCount() != expectedValue.length) {
+          throw failure(String.format("payload length mismatch for key %s expected %d actual %d",
+              describeKey(actual.key()), expectedValue.length, actual.dataCount()));
+        }
+        if (actual.dataCount() > actual.dataCapacity()) {
+          throw failure(String.format("dataCount > dataCapacity for key %s", describeKey(actual.key())));
+        }
+      }
+      ensureNoOverlap(actualSnapshots, store.getFileLength());
+    }
+
+    private void ensureNoOverlap(List<FileRecordStore.RecordSnapshot> snapshots, long fileLength) {
+      List<FileRecordStore.RecordSnapshot> sorted = new ArrayList<>(snapshots);
+      sorted.sort(Comparator.comparingLong(FileRecordStore.RecordSnapshot::dataPointer));
+      long previousEnd = 0L;
+      for (FileRecordStore.RecordSnapshot snapshot : sorted) {
+        if (snapshot.dataPointer() < 0) {
+          throw failure(String.format("negative data pointer %d for key %s", snapshot.dataPointer(), describeKey(snapshot.key())));
+        }
+        long recordEnd = snapshot.dataPointer() + snapshot.dataCapacity();
+        if (recordEnd > fileLength) {
+          throw failure(String.format("record for key %s extends beyond file length %d", describeKey(snapshot.key()), fileLength));
+        }
+        if (snapshot.dataPointer() < previousEnd) {
+          throw failure(String.format("records overlap near key %s (pointer %d < %d)", describeKey(snapshot.key()), snapshot.dataPointer(), previousEnd));
+        }
+        previousEnd = Math.max(previousEnd, recordEnd);
+      }
+    }
+
+    private StoreSnapshot collectSnapshot(FileRecordStore store) throws IOException {
+      List<FileRecordStore.RecordSnapshot> rawSnapshots = store.snapshotRecords();
+      List<FileRecordStore.RecordSnapshot> snapshots = new ArrayList<>(rawSnapshots.size());
+      LinkedHashMap<ByteSequence, byte[]> data = new LinkedHashMap<>();
+      for (FileRecordStore.RecordSnapshot snapshot : rawSnapshots) {
+        ByteSequence keyCopy = snapshot.key().copy();
+        byte[] value = store.readRecordData(snapshot.key());
+        data.put(keyCopy, Arrays.copyOf(value, value.length));
+        snapshots.add(new FileRecordStore.RecordSnapshot(
+            snapshot.indexPosition(),
+            keyCopy,
+            snapshot.dataPointer(),
+            snapshot.dataCapacity(),
+            snapshot.dataCount(),
+            snapshot.headerCrc32()));
+      }
+      return new StoreSnapshot(data, snapshots, store.getFileLength());
+    }
+
+    private LinkedHashMap<ByteSequence, byte[]> deepCopyData(Map<ByteSequence, byte[]> source) {
+      LinkedHashMap<ByteSequence, byte[]> copy = new LinkedHashMap<>(source.size());
+      for (Map.Entry<ByteSequence, byte[]> entry : source.entrySet()) {
+        copy.put(entry.getKey().copy(), Arrays.copyOf(entry.getValue(), entry.getValue().length));
+      }
+      return copy;
+    }
+
+    private List<FileRecordStore.RecordSnapshot> deepCopyRecordSnapshots(List<FileRecordStore.RecordSnapshot> source) {
+      List<FileRecordStore.RecordSnapshot> copy = new ArrayList<>(source.size());
+      for (FileRecordStore.RecordSnapshot snapshot : source) {
+        copy.add(new FileRecordStore.RecordSnapshot(
+            snapshot.indexPosition(),
+            snapshot.key().copy(),
+            snapshot.dataPointer(),
+            snapshot.dataCapacity(),
+            snapshot.dataCount(),
+            snapshot.headerCrc32()));
+      }
+      return copy;
+    }
+
+    private AssertionError failure(String detail) {
+      return new AssertionError(describeScenario(detail));
+    }
+
+    private String describeScenario(String detail) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("crash index ").append(currentCrashIndex);
+      if (lastFailure != null) {
+        sb.append(" during ").append(lastFailure.operation.type());
+        sb.append(" key=").append(describeKey(lastFailure.operation.key()));
+        if (lastFailure.operation.data() != null) {
+          sb.append(" dataLen=").append(lastFailure.operation.data().length);
+        }
+        if (lastFailure.cause() != null) {
+          sb.append(" cause=").append(lastFailure.cause().getClass().getSimpleName());
+        }
+      }
+      if (!currentStack.isEmpty()) {
+        sb.append(" firstStack=").append(currentStack.get(0));
+      }
+      sb.append(": ").append(detail);
+      return sb.toString();
+    }
+
+    private String describeKey(ByteSequence key) {
+      try {
+        return ByteSequence.utf8ToString(key);
+      } catch (Exception ignored) {
+        return Arrays.toString(key.bytes());
+      }
+    }
   }
 
   /// A utility to record how many times file write operations are called

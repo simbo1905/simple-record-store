@@ -2,7 +2,9 @@
 
 ## Overview
 
-The current implementation uses an in-place update strategy with a free space tracking system. The file structure consists of:
+The current implementation uses an in-place update strategy with a free space tracking system.
+
+### File Structure
 
 1. **File Headers** (13 bytes):
    - Byte 0: Max key length
@@ -16,14 +18,13 @@ The current implementation uses an in-place update strategy with a free space tr
 3. **Data Region**: Contains actual record data
    - May have gaps from deletions/updates
 
-## Data Structures
+### In-Memory Data Structures
 
-### In-Memory Structures
 - `HashMap<ByteSequence, RecordHeader> memIndex` - O(1) key lookup
 - `TreeMap<Long, RecordHeader> positionIndex` - Records indexed by file position
 - `ConcurrentSkipListMap<RecordHeader, Integer> freeMap` - Free space sorted by size (ascending)
 
-### RecordHeader
+### RecordHeader Structure
 ```
 long dataPointer;      // 8 bytes - file position
 int dataCapacity;      // 4 bytes - allocated space
@@ -32,320 +33,589 @@ int crc32;            // 4 bytes - header checksum
 int indexPosition;     // position in index (not written to file)
 ```
 
-## Operation Sequence Diagrams and Write Counts
+## Operation Cases Summary
 
-### INSERT Operation
+### INSERT Operation Cases
+- **Insert - File Empty**: Initial insert when file is empty or only has space for index
+- **Insert - Gap Available**: Space available between index and data start
+- **Insert - Free Space Available**: Existing record has free space that can be reused
+- **Insert - Append to End**: No suitable free space, must expand file
+- **Insert - Index Expansion Required**: Index region is full, must move records
 
-```
-Client -> FileRecordStore: insertRecord(key, value)
-  |
-  +-> Check if key exists
-  |
-  +-> ensureIndexSpace(numRecords + 1)
-  |     |
-  |     +-> Calculate: endIndexPtr = FILE_HEADERS + (numRecords * indexEntryLength)
-  |     |
-  |     +-> WHILE endIndexPtr > dataStartPtr:
-  |           |
-  |           +-> Read first record at dataStartPtr            [READ]
-  |           +-> Move to end of file:
-  |               +-> Read record data                         [READ]
-  |               +-> Update dataPointer to EOF
-  |               +-> Expand file
-  |               +-> Write record data at new position        [WRITE #1: data]
-  |               +-> Write record header to index             [WRITE #2: header in index]
-  |               +-> Update dataStartPtr
-  |               +-> Write dataStartPtr to file header        [WRITE #3: data start header]
-  |
-  +-> allocateRecord(dataLength)
-  |     |
-  |     +-> Calculate padded length
-  |     |
-  |     +-> Check gap between index and data start:
-  |     |   IF enough space:
-  |     |     +-> Allocate in gap
-  |     |     +-> Write dataStartPtr header                    [WRITE #1: data start header]
-  |     |     +-> Return new RecordHeader
-  |     |
-  |     +-> ELSE search freeMap (sorted by size):
-  |     |   FOR EACH free space:
-  |     |     IF space large enough:
-  |     |       +-> Split existing record
-  |     |       +-> Write updated previous record header       [WRITE #1: previous header]
-  |     |       +-> Return new RecordHeader
-  |     |
-  |     +-> ELSE append to end:
-  |         +-> Expand file
-  |         +-> Return new RecordHeader
-  |
-  +-> writeRecordData(header, value)
-  |     +-> Seek to dataPointer
-  |     +-> Write length + data + CRC32                        [WRITE #N: record data]
-  |
-  +-> addEntryToIndex(key, header, numRecords)
-        +-> writeKeyToIndex()
-        |   +-> Seek to index position
-        |   +-> Write key length + key + CRC32                 [WRITE #N+1: key]
-        |
-        +-> Write RecordHeader to index                        [WRITE #N+2: record header]
-        +-> Write numRecords header                            [WRITE #N+3: num records]
-        +-> Update in-memory maps
+### UPDATE Operation Cases
+- **Update - In Place (Same Size)**: New data fits exactly in old space
+- **Update - In Place (Smaller, CRC Enabled)**: New data smaller, CRC32 checks enabled
+- **Update - Last Record Resize**: Record is at end of file, can expand/contract
+- **Update - Move Required (Grows)**: Record grows, must allocate new space
+
+### DELETE Operation Cases
+- **Delete - Last Record**: Record is at end of file, can shrink file
+- **Delete - Last in Index**: Record header is last in index, overwrite with final entry
+- **Delete - Middle Record**: Record in middle, merge free space with adjacent record
+
+## INSERT Operations
+
+### Insert - Gap Available
+
+**Scenario**: Space is available between the end of the index region and the start of the data region.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: insertRecord(key, value)
+    FileRecordStore->>FileRecordStore: Check key exists
+    FileRecordStore->>FileRecordStore: ensureIndexSpace(numRecords + 1)
+    FileRecordStore->>FileRecordStore: allocateRecord(dataLength)
+    FileRecordStore->>FileRecordStore: Calculate gap space available
+    FileRecordStore->>File: Write dataStartPtr header
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write record data at gap
+    Note over File: WRITE #2
+    FileRecordStore->>File: Write key to index
+    Note over File: WRITE #3
+    FileRecordStore->>File: Write record header to index
+    Note over File: WRITE #4
+    FileRecordStore->>File: Write numRecords header
+    Note over File: WRITE #5
+    FileRecordStore->>FileRecordStore: Update memIndex & positionIndex
+    FileRecordStore-->>Client: Success
 ```
 
-**INSERT Write Count (Best Case - no index expansion, gap available):**
-- 1 write: data start pointer header
-- 1 write: record data
-- 1 write: key to index
-- 1 write: record header to index
-- 1 write: num records header
-- **Total: 5 writes**
+**Steps**:
+1. Check if key already exists (throw exception if it does)
+2. Ensure index has space for new entry
+3. Calculate space needed with padding
+4. Calculate available gap: `dataStart - endIndexPtr - (2 * indexEntryLength)`
+5. **WRITE #1**: Update dataStartPtr header to shrink gap
+6. **WRITE #2**: Write length + data + CRC32 at new position in gap
+7. **WRITE #3**: Write key length + key bytes + CRC32 to index
+8. **WRITE #4**: Write RecordHeader (dataPointer, capacity, count, CRC) to index
+9. **WRITE #5**: Write incremented numRecords to file header
+10. Update in-memory maps (memIndex, positionIndex)
 
-**INSERT Write Count (Worst Case - with index expansion moving N records):**
-- For each moved record (3 writes × N records):
-  - Write moved data
-  - Write updated header in index
-  - Write data start pointer header
-- Plus 5 writes for the actual insert
-- **Total: 3N + 5 writes**
+**Write Count**: 5 writes
 
-### UPDATE Operation (In-Place)
+---
 
-```
-Client -> FileRecordStore: updateRecord(key, value)
-  |
-  +-> keyToRecordHeader(key)                                   [Lookup in memIndex]
-  |
-  +-> IF same size OR (smaller AND CRC enabled):
-        |
-        +-> Write existing header (for crash safety)           [WRITE #1: header backup]
-        +-> Update dataCount
-        +-> writeRecordData(header, value)
-        |     +-> Seek to dataPointer
-        |     +-> Write length + data + CRC32                  [WRITE #2: record data]
-        |
-        +-> Write header again (with new CRC)                  [WRITE #3: header final]
-```
+### Insert - Free Space Available
 
-**UPDATE Write Count (In-Place - Same Size or Smaller with CRC):**
-- 1 write: record header (backup)
-- 1 write: record data
-- 1 write: record header (final)
-- **Total: 3 writes**
+**Scenario**: An existing deleted or updated record has free space that can be reused.
 
-### UPDATE Operation (Last Record - Expand/Contract File)
-
-```
-Client -> FileRecordStore: updateRecord(key, value)
-  |
-  +-> keyToRecordHeader(key)
-  |
-  +-> IF endOfRecord == fileLength:
-        |
-        +-> Update dataCount and dataCapacity
-        +-> Expand or contract file
-        +-> writeRecordData(header, value)
-        |     +-> Write length + data + CRC32                  [WRITE #1: record data]
-        |
-        +-> Write header to index                              [WRITE #2: record header]
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant FreeMap
+    participant File
+    
+    Client->>FileRecordStore: insertRecord(key, value)
+    FileRecordStore->>FileRecordStore: Check key exists
+    FileRecordStore->>FileRecordStore: ensureIndexSpace(numRecords + 1)
+    FileRecordStore->>FileRecordStore: allocateRecord(dataLength)
+    FileRecordStore->>FreeMap: Scan for suitable free space
+    FreeMap-->>FileRecordStore: Found record with free space
+    FileRecordStore->>FileRecordStore: Split existing record
+    FileRecordStore->>File: Write updated previous record header
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write record data in free space
+    Note over File: WRITE #2
+    FileRecordStore->>File: Write key to index
+    Note over File: WRITE #3
+    FileRecordStore->>File: Write record header to index
+    Note over File: WRITE #4
+    FileRecordStore->>File: Write numRecords header
+    Note over File: WRITE #5
+    FileRecordStore->>FileRecordStore: Update memIndex & positionIndex
+    FileRecordStore-->>Client: Success
 ```
 
-**UPDATE Write Count (Last Record):**
-- 1 write: record data
-- 1 write: record header
-- **Total: 2 writes**
+**Steps**:
+1. Check if key already exists
+2. Ensure index has space for new entry
+3. Calculate space needed with padding
+4. Search freeMap (ConcurrentSkipListMap sorted by size) for first fit
+5. Find record with sufficient free space: `getFreeSpace() >= dataLengthPadded`
+6. Split the record: create new header at `dataPointer + dataCount + padding`
+7. **WRITE #1**: Update previous record header (shrink its capacity)
+8. **WRITE #2**: Write length + data + CRC32 at split position
+9. **WRITE #3**: Write key to index
+10. **WRITE #4**: Write new RecordHeader to index
+11. **WRITE #5**: Write incremented numRecords
+12. Update in-memory maps and freeMap
 
-### UPDATE Operation (Move Required - Data Grows)
+**Write Count**: 5 writes
 
-```
-Client -> FileRecordStore: updateRecord(key, value)
-  |
-  +-> keyToRecordHeader(key) -> oldHeader
-  |
-  +-> IF value.length > oldHeader.dataCapacity:
-        |
-        +-> allocateRecord(value.length)
-        |     +-> [See allocateRecord flow above]              [WRITE #1-2: varies]
-        |
-        +-> writeRecordData(newHeader, value)                  [WRITE #3: new data]
-        +-> Write new header to index                          [WRITE #4: new header]
-        +-> Update in-memory maps
-        |
-        +-> Handle old space:
-            |
-            +-> IF previous record exists:
-            |     +-> Increment previous record's capacity
-            |     +-> Write previous header                    [WRITE #5: previous header]
-            |
-            +-> ELSE:
-                  +-> Write dataStartPtr header                [WRITE #5: data start header]
-```
+---
 
-**UPDATE Write Count (Move - Record Grows):**
-- Best case (append to end): 5 writes
-- Worst case (reuse free space): 6 writes
+### Insert - Append to End
 
-### DELETE Operation
+**Scenario**: No free space available anywhere, must expand file and append.
 
-```
-Client -> FileRecordStore: deleteRecord(key)
-  |
-  +-> keyToRecordHeader(key) -> delRec
-  |
-  +-> deleteEntryFromIndex(delRec, numRecords)
-  |     |
-  |     +-> IF not last in index:
-  |     |     +-> Read last key from index                     [READ]
-  |     |     +-> Get last header
-  |     |     +-> Update last header's indexPosition
-  |     |     +-> Write last key to deleted position           [WRITE #1: key overwrite]
-  |     |     +-> Write last header to deleted position        [WRITE #2: header overwrite]
-  |     |
-  |     +-> Write numRecords - 1                               [WRITE #3: num records]
-  |
-  +-> Remove from in-memory maps
-  |
-  +-> IF delRec is at end of file:
-  |     +-> Shrink file
-  |
-  +-> ELSE IF previous record exists:
-  |     +-> Increment previous capacity
-  |     +-> Write previous header                              [WRITE #4: previous header]
-  |
-  +-> ELSE:
-        +-> Write dataStartPtr + delRec.capacity               [WRITE #4: data start header]
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant FreeMap
+    participant File
+    
+    Client->>FileRecordStore: insertRecord(key, value)
+    FileRecordStore->>FileRecordStore: Check key exists
+    FileRecordStore->>FileRecordStore: ensureIndexSpace(numRecords + 1)
+    FileRecordStore->>FileRecordStore: allocateRecord(dataLength)
+    FileRecordStore->>FreeMap: Search for free space
+    FreeMap-->>FileRecordStore: No suitable space found
+    FileRecordStore->>File: Get current file length
+    FileRecordStore->>File: Expand file by dataLengthPadded
+    FileRecordStore->>File: Write record data at EOF
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write key to index
+    Note over File: WRITE #2
+    FileRecordStore->>File: Write record header to index
+    Note over File: WRITE #3
+    FileRecordStore->>File: Write numRecords header
+    Note over File: WRITE #4
+    FileRecordStore->>FileRecordStore: Update memIndex & positionIndex
+    FileRecordStore-->>Client: Success
 ```
 
-**DELETE Write Count (Not Last Record):**
-- If not last in index: 2 writes (key + header overwrite)
-- 1 write: num records header
-- 1 write: update adjacent space (previous header or data start)
-- **Total: 4 writes**
+**Steps**:
+1. Check if key already exists
+2. Ensure index has space for new entry
+3. Calculate space needed with padding
+4. Check gap between index and data start: not enough
+5. Search freeMap for suitable space: none found
+6. Get current file length (EOF position)
+7. Expand file: `setFileLength(fileLength + dataLengthPadded)`
+8. **WRITE #1**: Write length + data + CRC32 at EOF
+9. **WRITE #2**: Write key to index
+10. **WRITE #3**: Write RecordHeader to index
+11. **WRITE #4**: Write incremented numRecords
+12. Update in-memory maps
 
-**DELETE Write Count (Last Record in File):**
-- Similar index updates (0-2 writes)
-- 1 write: num records header
-- File shrink (no write)
-- **Total: 1-3 writes**
+**Write Count**: 4 writes
 
-## Free Space Management
+---
 
-### Current Strategy
-1. **FreeMap Structure**: `ConcurrentSkipListMap` sorted by free space size (ascending)
-2. **Space Allocation**: Linear scan from smallest to find first fit
-3. **Space Tracking**: Each RecordHeader tracks its own free space via `dataCapacity - (dataCount + overhead)`
-4. **Coalescing**: Only happens with adjacent previous record on delete/move
+### Insert - Index Expansion Required
 
-### Space Allocation Priority
-1. Gap between index and data start (if available)
-2. First-fit search in freeMap (scans from smallest)
-3. Append to end of file
+**Scenario**: Index region is full and needs to expand by moving data records to end of file.
 
-### Issues with Current Approach
-1. **Write Amplification**: Multiple seeks and writes per operation
-2. **Fragmentation**: Free space scattered throughout file
-3. **Linear Scan**: Must iterate freeMap to find suitable space
-4. **In-Place Updates**: Requires seeking to old position to overwrite
-5. **Index Expansion**: May require moving multiple records (3N writes)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: insertRecord(key, value)
+    FileRecordStore->>FileRecordStore: Check key exists
+    FileRecordStore->>FileRecordStore: ensureIndexSpace(numRecords + 1)
+    
+    loop For each record blocking index expansion
+        FileRecordStore->>File: Read record data
+        Note over File: READ
+        FileRecordStore->>File: Write record data at EOF
+        Note over File: WRITE #N (data)
+        FileRecordStore->>File: Write updated record header to index
+        Note over File: WRITE #N+1 (header)
+        FileRecordStore->>File: Write new dataStartPtr
+        Note over File: WRITE #N+2 (pointer)
+        FileRecordStore->>FileRecordStore: Update positionIndex
+    end
+    
+    FileRecordStore->>FileRecordStore: allocateRecord(dataLength)
+    FileRecordStore->>File: Write record data
+    Note over File: WRITE #M
+    FileRecordStore->>File: Write key to index
+    Note over File: WRITE #M+1
+    FileRecordStore->>File: Write record header to index
+    Note over File: WRITE #M+2
+    FileRecordStore->>File: Write numRecords header
+    Note over File: WRITE #M+3
+    FileRecordStore->>FileRecordStore: Update memIndex & positionIndex
+    FileRecordStore-->>Client: Success
+```
 
-## Summary: Total Writes Per Operation
+**Steps**:
+1. Check if key already exists
+2. Call `ensureIndexSpace(numRecords + 1)`
+3. Calculate required index end pointer: `FILE_HEADERS + (numRecords * indexEntryLength)`
+4. While `endIndexPtr > dataStartPtr` (index needs more space):
+   - **READ**: Read first record at dataStartPtr
+   - Get file length (EOF)
+   - **WRITE #1**: Write record data at EOF (moved)
+   - **WRITE #2**: Write updated RecordHeader to index (new position)
+   - Update dataStartPtr to next record position
+   - **WRITE #3**: Write new dataStartPtr to file header
+   - Update positionIndex with new location
+   - Repeat for next blocking record (3 writes per moved record)
+5. After index expansion, perform normal insert:
+   - **WRITE #N**: Write record data
+   - **WRITE #N+1**: Write key to index
+   - **WRITE #N+2**: Write record header to index
+   - **WRITE #N+3**: Write numRecords
+6. Update in-memory maps
 
-| Operation | Best Case | Worst Case | Notes |
-|-----------|-----------|------------|-------|
-| INSERT (no index expand) | 5 | 6 | Depends on free space reuse |
-| INSERT (with index expand) | 5 | 3N + 6 | N = records to move |
-| UPDATE (in-place) | 3 | 3 | Same/smaller size |
-| UPDATE (move) | 5 | 6 | Record grows |
-| DELETE | 1 | 4 | Last record vs middle |
+**Write Count**: 3N + 4 writes (where N = number of records moved)
 
-## Key Observations
+---
 
-1. **Multiple Writes Per Operation**: Each operation involves 3-6 writes minimum
-2. **Scattered Writes**: Writes happen at different file locations (header, index, data)
-3. **Synchronous Operations**: All writes must complete before operation finishes
-4. **Index Maintenance Overhead**: Moving headers between index positions
-5. **Free Space Bookkeeping**: Requires updating headers of adjacent records
-6. **No Batching**: Each operation commits immediately
+## UPDATE Operations
 
-## Current Micro-Optimizations
+### Update - In Place (Same Size)
 
-1. **PAD_DATA_TO_KEY_LENGTH**: Pads records to avoid frequent index expansions
-2. **CRC32 for Crash Safety**: Dual writes of headers for atomic updates
-3. **Free Space Sorting**: ConcurrentSkipListMap for fast iteration
-4. **Index Preallocation**: Initial size hint to reduce early expansions
+**Scenario**: New data is exactly the same size as the old data.
 
-## Requirements for SSD-Optimized Approach
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: updateRecord(key, value)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: Check if same size
+    FileRecordStore->>File: Write record header (backup)
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write new data at dataPointer
+    Note over File: WRITE #2
+    FileRecordStore->>File: Write record header (final)
+    Note over File: WRITE #3
+    FileRecordStore->>FileRecordStore: Update freeMap
+    FileRecordStore-->>Client: Success
+```
 
-Based on the analysis above, an SSD-optimized approach should:
+**Steps**:
+1. Get existing RecordHeader from memIndex using key
+2. Check if `value.length == header.dataCapacity`
+3. **WRITE #1**: Write existing header to index (backup for crash safety)
+4. Update dataCount in memory
+5. **WRITE #2**: Write length + new data + CRC32 at dataPointer
+6. **WRITE #3**: Write header again with updated CRC (final)
+7. Update freeMap if free space changed
 
-### 1. Append-Only Writes
-- **Eliminate in-place updates**: Never seek backwards to overwrite data
-- **Always append**: All writes go to the end of the current active segment
-- **No free space reuse**: Don't search for gaps in the file
-- **Simplified allocation**: Just increment end-of-file pointer
+**Write Count**: 3 writes
 
-### 2. Minimal Bookkeeping
-- **Track total free space**: Single counter instead of sorted map
-- **No per-record free space**: Remove freeMap entirely
-- **Simpler data structures**: Eliminate NavigableMap overhead
+---
 
-### 3. Large Block Allocation
-- **Big slab preallocation**: Start with large file (e.g., 100MB)
-- **Big slab expansion**: Grow by large chunks (e.g., 50MB)
-- **Always pad records**: Don't optimize for space - optimize for simplicity
+### Update - In Place (Smaller, CRC Enabled)
 
-### 4. Copy Compaction Strategy
-- **Two-file approach**: Active file and shadow file
-- **Version counter**: Track which file is current
-- **Background compaction**: Copy live records when free space exceeds threshold
-- **Atomic switch**: Update version counter to make new file active
+**Scenario**: New data is smaller and CRC32 is enabled (allows safe in-place shrink).
 
-### 5. Crash Safety
-- **Write-ahead version**: Version counter ensures recovery
-- **Monotonic operations**: Only append, never modify in place
-- **Simple recovery**: On restart, use file with highest version
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: updateRecord(key, value)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: Check smaller + CRC enabled
+    FileRecordStore->>File: Write record header (backup)
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write new data at dataPointer
+    Note over File: WRITE #2
+    FileRecordStore->>File: Write record header (final)
+    Note over File: WRITE #3
+    FileRecordStore->>FileRecordStore: Update freeMap (more free space)
+    FileRecordStore-->>Client: Success
+```
 
-### 6. Operation Simplification
+**Steps**:
+1. Get existing RecordHeader from memIndex
+2. Check if `!disableCrc32 && value.length < header.dataCapacity`
+3. **WRITE #1**: Write current header (backup)
+4. Update dataCount to new smaller size
+5. **WRITE #2**: Write length + new data + CRC32 at dataPointer (leaves free space after)
+6. **WRITE #3**: Write header with new CRC
+7. Update freeMap with increased free space: `dataCapacity - (dataCount + overhead)`
 
-**INSERT (Append-Only)**:
-- Calculate space needed
-- Append data to end of file
-- Append index entry
-- Update in-memory maps
-- **Target: 2 writes** (data + index entry)
+**Write Count**: 3 writes
 
-**UPDATE (Append-Only)**:
-- Append new data to end of file
-- Update index entry in place (or append if append-only index)
-- Mark old space as free (increment free space counter)
-- **Target: 2-3 writes**
+---
 
-**DELETE (Append-Only)**:
-- Mark index entry as deleted (tombstone) or remove
-- Increment free space counter
-- **Target: 1 write**
+### Update - Last Record Resize
 
-**COMPACTION (Background)**:
-- When free space > threshold (e.g., 30%):
-  - Expand file to (current size - free space) × 1.5
-  - Copy all live records to new area
-  - Update version counter
-  - Truncate old area
-- **Periodic operation, not per-request**
+**Scenario**: Record is at the end of the file, can expand or contract by changing file length.
 
-### 7. Trade-offs
-- **Space for Speed**: Accept more disk space usage for fewer writes
-- **Periodic Compaction**: Amortize space reclamation across many operations
-- **Larger Files**: Pre-allocate to avoid frequent expansions
-- **Simpler Code**: Remove complex free space management logic
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: updateRecord(key, value)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: Check if at EOF
+    FileRecordStore->>File: Expand/contract file
+    FileRecordStore->>File: Write new data
+    Note over File: WRITE #1
+    FileRecordStore->>File: Write record header
+    Note over File: WRITE #2
+    FileRecordStore->>FileRecordStore: Update freeMap
+    FileRecordStore-->>Client: Success
+```
 
-### 8. Write Reduction Analysis
+**Steps**:
+1. Get existing RecordHeader from memIndex
+2. Calculate end of record: `dataPointer + dataCapacity`
+3. Check if `endOfRecord == getFileLength()` (record is last)
+4. Update dataCount and dataCapacity to new size
+5. Expand or contract file: `setFileLength(fileLength + (newSize - oldCapacity))`
+6. **WRITE #1**: Write length + new data + CRC32 at dataPointer
+7. **WRITE #2**: Write updated RecordHeader to index
+8. Update freeMap
 
-Current average writes per operation: **3-5 writes**
-Target with append-only: **2 writes** (data + index update)
-**Reduction: 40-60% fewer writes**
+**Write Count**: 2 writes
 
-Additionally:
-- Fewer seeks (always append)
-- Better SSD wear leveling
-- Simpler recovery logic
-- More predictable performance
+---
+
+### Update - Move Required (Grows)
+
+**Scenario**: New data is larger, must allocate new space and move the record.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: updateRecord(key, value)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: Check if grows
+    FileRecordStore->>FileRecordStore: allocateRecord(newSize)
+    Note over FileRecordStore: May use gap/free space/append
+    FileRecordStore->>File: Write new data at new location
+    Note over File: WRITE #1-2 (from allocate)
+    FileRecordStore->>File: Write new data
+    Note over File: WRITE #3
+    FileRecordStore->>File: Write new record header
+    Note over File: WRITE #4
+    FileRecordStore->>FileRecordStore: Find previous record at old location
+    
+    alt Previous record exists
+        FileRecordStore->>File: Write previous header (expanded capacity)
+        Note over File: WRITE #5
+    else No previous record (was first)
+        FileRecordStore->>File: Write dataStartPtr (moved forward)
+        Note over File: WRITE #5
+    end
+    
+    FileRecordStore->>FileRecordStore: Update memIndex & positionIndex
+    FileRecordStore-->>Client: Success
+```
+
+**Steps**:
+1. Get existing RecordHeader from memIndex
+2. Check if `value.length > header.dataCapacity`
+3. Call allocateRecord(value.length) to find/create new space
+   - This may allocate from gap (1 write), free space (1 write), or append (0 writes)
+4. **WRITE #1-2**: Writes from allocate step (0-2 writes depending on method)
+5. **WRITE #3**: Write length + new data + CRC32 at new location
+6. **WRITE #4**: Write new RecordHeader to index
+7. Update memIndex and positionIndex to point to new location
+8. Handle old space - find previous record at `oldDataPointer - 1`:
+   - If previous record exists:
+     - Increment its dataCapacity by old record's capacity
+     - **WRITE #5**: Write updated previous header (coalesce free space)
+   - If no previous (was first record):
+     - **WRITE #5**: Write dataStartPtr moved forward to skip freed space
+9. Update freeMap
+
+**Write Count**: 5-6 writes (depending on allocation method)
+
+---
+
+## DELETE Operations
+
+### Delete - Last Record
+
+**Scenario**: Deleting the record at the end of the file, can shrink file.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: deleteRecord(key)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: deleteEntryFromIndex()
+    
+    alt Not last in index
+        FileRecordStore->>File: Read last key from index
+        FileRecordStore->>File: Write last key to deleted position
+        Note over File: WRITE #1
+        FileRecordStore->>File: Write last header to deleted position
+        Note over File: WRITE #2
+    end
+    
+    FileRecordStore->>File: Write numRecords - 1
+    Note over File: WRITE #3
+    FileRecordStore->>FileRecordStore: Remove from memIndex & positionIndex
+    FileRecordStore->>FileRecordStore: Check if at EOF
+    FileRecordStore->>File: Shrink file to dataPointer
+    FileRecordStore-->>Client: Success
+```
+
+**Steps**:
+1. Get RecordHeader for key from memIndex
+2. Call `deleteEntryFromIndex(header, currentNumRecords)`:
+   - If not last in index (indexPosition != numRecords - 1):
+     - Read last key from index
+     - Get last header from memIndex
+     - Update last header's indexPosition to deleted position
+     - **WRITE #1**: Write last key to deleted index position
+     - **WRITE #2**: Write last header to deleted index position
+   - **WRITE #3**: Write numRecords - 1
+3. Remove from memIndex and positionIndex
+4. Remove from freeMap
+5. Check if record is at EOF: `fileLength == dataPointer + dataCapacity`
+6. Shrink file: `setFileLength(dataPointer)` (no write, just truncate)
+
+**Write Count**: 1-3 writes (1 if last in index, 3 if not)
+
+---
+
+### Delete - Middle Record with Previous
+
+**Scenario**: Deleting a record in the middle, merge free space with previous record.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: deleteRecord(key)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: deleteEntryFromIndex()
+    
+    alt Not last in index
+        FileRecordStore->>File: Write last key to deleted position
+        Note over File: WRITE #1
+        FileRecordStore->>File: Write last header to deleted position
+        Note over File: WRITE #2
+    end
+    
+    FileRecordStore->>File: Write numRecords - 1
+    Note over File: WRITE #3
+    FileRecordStore->>FileRecordStore: Remove from maps
+    FileRecordStore->>FileRecordStore: getRecordAt(dataPointer - 1)
+    FileRecordStore->>FileRecordStore: Increment previous capacity
+    FileRecordStore->>File: Write previous record header
+    Note over File: WRITE #4
+    FileRecordStore->>FileRecordStore: Update freeMap
+    FileRecordStore-->>Client: Success
+```
+
+**Steps**:
+1. Get RecordHeader for key
+2. Delete entry from index (0-2 writes, see above)
+3. **WRITE #3**: Write numRecords - 1
+4. Remove from memIndex, positionIndex, and freeMap
+5. Not at EOF, so check for previous record at `dataPointer - 1`
+6. Find previous record using positionIndex.floorEntry()
+7. Increment previous record's dataCapacity by deleted record's capacity
+8. **WRITE #4**: Write updated previous header
+9. Update freeMap with previous record's new free space
+
+**Write Count**: 2-4 writes (depending on index position)
+
+---
+
+### Delete - First Record (No Previous)
+
+**Scenario**: Deleting the first record in data region, update dataStartPtr.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant FileRecordStore
+    participant File
+    
+    Client->>FileRecordStore: deleteRecord(key)
+    FileRecordStore->>FileRecordStore: keyToRecordHeader(key)
+    FileRecordStore->>FileRecordStore: deleteEntryFromIndex()
+    
+    alt Not last in index
+        FileRecordStore->>File: Write last key to deleted position
+        Note over File: WRITE #1
+        FileRecordStore->>File: Write last header to deleted position
+        Note over File: WRITE #2
+    end
+    
+    FileRecordStore->>File: Write numRecords - 1
+    Note over File: WRITE #3
+    FileRecordStore->>FileRecordStore: Remove from maps
+    FileRecordStore->>FileRecordStore: getRecordAt(dataPointer - 1)
+    Note over FileRecordStore: No previous record found
+    FileRecordStore->>File: Write dataStartPtr + capacity
+    Note over File: WRITE #4
+    FileRecordStore-->>Client: Success
+```
+
+**Steps**:
+1. Get RecordHeader for key
+2. Delete entry from index (0-2 writes)
+3. **WRITE #3**: Write numRecords - 1
+4. Remove from memIndex, positionIndex, and freeMap
+5. Not at EOF, search for previous record at `dataPointer - 1`
+6. No previous record found (this was first data record)
+7. **WRITE #4**: Write dataStartPtr advanced by deleted capacity: `dataPointer + dataCapacity`
+8. This creates free space at end of index region
+
+**Write Count**: 2-4 writes (depending on index position)
+
+---
+
+## Write Count Summary
+
+| Operation | Scenario | Write Count |
+|-----------|----------|-------------|
+| **INSERT** | Gap available | 5 |
+| **INSERT** | Free space reuse | 5 |
+| **INSERT** | Append to end | 4 |
+| **INSERT** | Index expansion (N records moved) | 3N + 4 |
+| **UPDATE** | In place (same size) | 3 |
+| **UPDATE** | In place (smaller, CRC) | 3 |
+| **UPDATE** | Last record resize | 2 |
+| **UPDATE** | Move required (grows) | 5-6 |
+| **DELETE** | Last record | 1-3 |
+| **DELETE** | Middle (with previous) | 2-4 |
+| **DELETE** | First record (no previous) | 2-4 |
+
+## Analysis and Issues
+
+### Current Problems
+
+1. **Write Amplification**: Most operations require 3-5 writes minimum
+2. **Multiple Seeks**: Each write may be at a different file location
+3. **Index Expansion Cost**: Worst case 3N+4 writes when moving N records
+4. **Complex Free Space Management**: ConcurrentSkipListMap requires sorting and scanning
+5. **In-Place Overwrites**: Suboptimal for SSD wear leveling
+6. **No Write Batching**: Each operation completes all writes synchronously
+
+### Micro-Optimizations Currently Used
+
+1. **PAD_DATA_TO_KEY_LENGTH**: Pad records to avoid frequent index expansions
+2. **CRC32 for Crash Safety**: Dual writes of headers enable crash recovery
+3. **Free Space Sorting**: ConcurrentSkipListMap for O(log n) iteration
+4. **Index Preallocation**: Initial size hint reduces early expansions
+5. **Gap Allocation**: Try to use space between index and data first
+
+### Requirements for SSD-Optimized Approach
+
+Based on the analysis above, an SSD-optimized append-only design should:
+
+1. **Eliminate In-Place Updates**: Never seek backwards to overwrite
+2. **Always Append**: All writes go to end of file (sequential I/O)
+3. **Simplify Bookkeeping**: Replace freeMap with single totalFreeSpace counter
+4. **Remove Space Reuse**: Don't search for gaps, just append
+5. **Large Slab Allocation**: Preallocate large chunks (100MB+)
+6. **Periodic Compaction**: Background copy collection when free space exceeds threshold
+7. **Version Counter**: Two-file approach with version for crash recovery
+8. **Reduce Write Count**: Target 2 writes per operation vs 3-5 currently
+

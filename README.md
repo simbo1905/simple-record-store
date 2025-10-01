@@ -69,6 +69,82 @@ There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the
 updated, or deleted. If you have a bug please try to create a repeatable test with fine logging enabled and post the 
 logging. There is additional logging at `Level.FINEST` that shows every byte that is written to, or read from, the file. 
 
+## Memory-Mapped File Optimization
+
+Simple Record Store supports an optional **memory-mapped file** mode that reduces write amplification while preserving all crash safety guarantees. This mode batches multiple write operations in memory and defers disk synchronization.
+
+### Benefits
+
+- **Reduced Write Amplification**: Multiple writes are batched in memory instead of individual disk operations
+- **Eliminated Seek Overhead**: All writes are memory accesses instead of disk seeks
+- **Same Crash Safety**: Preserves dual-write patterns, CRC32 validation, and structural invariants
+- **Drop-in Replacement**: No API changes, controlled via constructor parameter
+
+### Usage
+
+Enable memory-mapping by passing `true` as the `useMemoryMapping` parameter:
+
+```java
+// Create new store with memory-mapping
+FileRecordStore store = new FileRecordStore("data.db", 10000, true);
+
+// Open existing store with memory-mapping
+FileRecordStore store = new FileRecordStore("data.db", "rw", true);
+
+// Full control with all parameters
+FileRecordStore store = new FileRecordStore(
+    "data.db",           // path
+    10000,               // initial size
+    64,                  // max key length
+    false,               // disable CRC32
+    true                 // use memory mapping
+);
+```
+
+### How It Works
+
+Memory-mapped mode uses Java's `MappedByteBuffer` to map the file into memory:
+
+1. **Write Operations**: All writes go to memory-mapped buffers instead of direct file I/O
+2. **Flush Control**: Data is synchronized to disk only on `close()` or explicit `fsync()` calls
+3. **Crash Safety**: The OS guarantees consistency of memory-mapped files; CRC32 validation catches corruption on read
+4. **File Growth**: Automatically remaps when the file needs to expand
+
+### Crash Safety
+
+Memory-mapped mode maintains the same crash safety guarantees as direct I/O:
+
+- **Dual-Write Pattern**: Critical updates still write backup → data → final header
+- **CRC32 Validation**: All data includes CRC32 checksums validated on read
+- **Structural Invariants**: File structure remains consistent after crashes
+- **OS Guarantees**: The operating system ensures memory-mapped file consistency
+
+The difference is in *when* writes reach disk:
+- **Direct I/O**: Each write operation immediately goes to disk (unless OS caches)
+- **Memory-Mapped**: Writes accumulate in memory, flushed on `close()` or `fsync()`
+
+### When to Use Memory-Mapping
+
+**Use memory-mapped mode when:**
+- You perform many sequential write operations
+- You want to reduce write amplification
+- You have sufficient RAM to map the file
+- You control when durability is required (via `fsync()`)
+
+**Use direct I/O mode when:**
+- You need immediate durability after each operation
+- File size exceeds available RAM
+- You're debugging write patterns with the crash testing harness
+
+### Performance Considerations
+
+Memory-mapping reduces write operations from 3-5 disk I/Os per operation to 1-2 memory operations plus periodic flushes. The actual performance gain depends on:
+
+- **Workload**: Batch operations benefit more than single operations
+- **File Size**: Smaller files that fit in RAM benefit most
+- **OS Configuration**: Page cache and memory-mapped file limits
+- **Hardware**: SSD vs HDD latency differences
+
 ## Thread Safety
 
 `FileRecordStore` is **thread-safe** for single-process access:

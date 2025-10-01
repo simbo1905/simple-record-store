@@ -1,0 +1,220 @@
+package com.github.trex_paxos.srs;
+
+import lombok.val;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.io.File;
+import java.util.Arrays;
+import java.util.Collections;
+
+import static org.junit.Assert.*;
+
+/**
+ * Tests for memory-mapped file implementation to ensure it provides
+ * the same correctness guarantees as DirectRandomAccessFile while
+ * reducing write amplification.
+ */
+public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
+
+    private static final String TEST_DIR = System.getProperty("java.io.tmpdir");
+
+    @Test
+    public void testBasicOperationsWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-basic-" + System.nanoTime() + ".db";
+        try {
+            // Create a new store with memory mapping enabled
+            try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
+                // Insert
+                val key1 = ByteSequence.of("key1".getBytes());
+                val value1 = "value1".getBytes();
+                store.insertRecord(key1, value1);
+                
+                // Read
+                byte[] read1 = store.readRecordData(key1);
+                Assert.assertArrayEquals(value1, read1);
+                
+                // Update
+                val value2 = "value2-updated".getBytes();
+                store.updateRecord(key1, value2);
+                byte[] read2 = store.readRecordData(key1);
+                Assert.assertArrayEquals(value2, read2);
+                
+                // Delete
+                store.deleteRecord(key1);
+                Assert.assertFalse(store.recordExists(key1));
+            }
+            
+            // Reopen without memory mapping to verify data persisted
+            try (FileRecordStore store = new FileRecordStore(fileName, "r", false, false)) {
+                Assert.assertEquals(0, store.getNumRecords());
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testMultipleInsertsWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-multiple-" + System.nanoTime() + ".db";
+        try {
+            try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
+                // Insert multiple records
+                for (int i = 0; i < 100; i++) {
+                    val key = ByteSequence.of(("key" + i).getBytes());
+                    val value = ("value" + i).getBytes();
+                    store.insertRecord(key, value);
+                }
+                
+                // Verify all records
+                for (int i = 0; i < 100; i++) {
+                    val key = ByteSequence.of(("key" + i).getBytes());
+                    Assert.assertTrue(store.recordExists(key));
+                    byte[] value = store.readRecordData(key);
+                    Assert.assertArrayEquals(("value" + i).getBytes(), value);
+                }
+            }
+            
+            // Reopen and verify persistence
+            try (FileRecordStore store = new FileRecordStore(fileName, "r", false, true)) {
+                Assert.assertEquals(100, store.getNumRecords());
+                for (int i = 0; i < 100; i++) {
+                    val key = ByteSequence.of(("key" + i).getBytes());
+                    Assert.assertTrue(store.recordExists(key));
+                }
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testLargeRecordsWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-large-" + System.nanoTime() + ".db";
+        try {
+            try (FileRecordStore store = new FileRecordStore(fileName, 10000, true)) {
+                // Insert large records
+                val key1 = ByteSequence.of("largekey1".getBytes());
+                byte[] largeValue = new byte[10000];
+                Arrays.fill(largeValue, (byte) 'A');
+                store.insertRecord(key1, largeValue);
+                
+                // Read and verify
+                byte[] read = store.readRecordData(key1);
+                Assert.assertArrayEquals(largeValue, read);
+                
+                // Update with even larger value
+                byte[] largerValue = new byte[20000];
+                Arrays.fill(largerValue, (byte) 'B');
+                store.updateRecord(key1, largerValue);
+                
+                byte[] read2 = store.readRecordData(key1);
+                Assert.assertArrayEquals(largerValue, read2);
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testUpdateInPlaceWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-update-" + System.nanoTime() + ".db";
+        try {
+            val data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
+            val data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
+            
+            try (FileRecordStore store = new FileRecordStore(fileName, 2000, true)) {
+                val key = ByteSequence.of("testkey".getBytes());
+                store.insertRecord(key, data1);
+                
+                // Update with same size (should be in-place)
+                store.updateRecord(key, data2);
+                
+                byte[] read = store.readRecordData(key);
+                Assert.assertArrayEquals(data2, read);
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testFsyncWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-fsync-" + System.nanoTime() + ".db";
+        try {
+            try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
+                val key = ByteSequence.of("key1".getBytes());
+                val value = "value1".getBytes();
+                store.insertRecord(key, value);
+                
+                // Call fsync explicitly
+                store.fsync();
+                
+                // Verify data is still accessible
+                byte[] read = store.readRecordData(key);
+                Assert.assertArrayEquals(value, read);
+            }
+            
+            // Verify persistence after close
+            try (FileRecordStore store = new FileRecordStore(fileName, "r", false, false)) {
+                val key = ByteSequence.of("key1".getBytes());
+                Assert.assertTrue(store.recordExists(key));
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testMixedDirectAndMemoryMappedAccess() throws Exception {
+        String fileName = TEST_DIR + "/test-mixed-" + System.nanoTime() + ".db";
+        try {
+            // Create with direct I/O
+            try (FileRecordStore store = new FileRecordStore(fileName, 1000, false)) {
+                val key1 = ByteSequence.of("key1".getBytes());
+                val value1 = "value1".getBytes();
+                store.insertRecord(key1, value1);
+            }
+            
+            // Open with memory-mapped I/O and add more data
+            try (FileRecordStore store = new FileRecordStore(fileName, "rw", false, true)) {
+                val key2 = ByteSequence.of("key2".getBytes());
+                val value2 = "value2".getBytes();
+                store.insertRecord(key2, value2);
+                
+                // Verify both records
+                Assert.assertTrue(store.recordExists(ByteSequence.of("key1".getBytes())));
+                Assert.assertTrue(store.recordExists(key2));
+            }
+            
+            // Open with direct I/O again and verify
+            try (FileRecordStore store = new FileRecordStore(fileName, "r", false, false)) {
+                Assert.assertEquals(2, store.getNumRecords());
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+
+    @Test
+    public void testFileGrowthWithMemoryMapping() throws Exception {
+        String fileName = TEST_DIR + "/test-mmap-growth-" + System.nanoTime() + ".db";
+        try {
+            // Start with small initial size
+            try (FileRecordStore store = new FileRecordStore(fileName, 100, true)) {
+                // Insert records that will require file growth
+                for (int i = 0; i < 50; i++) {
+                    val key = ByteSequence.of(("key" + i).getBytes());
+                    byte[] value = new byte[100];
+                    Arrays.fill(value, (byte) ('A' + (i % 26)));
+                    store.insertRecord(key, value);
+                }
+                
+                // Verify all records
+                Assert.assertEquals(50, store.getNumRecords());
+            }
+        } finally {
+            new File(fileName).delete();
+        }
+    }
+}

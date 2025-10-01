@@ -92,7 +92,17 @@ public class FileRecordStore implements AutoCloseable {
      * @param initialSize an optimization to preallocate the file length in bytes.
      */
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
-        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false);
+        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, false);
+    }
+
+    /*
+     * Creates a new database file with optional memory-mapping support.
+     * @param dbPath the location on disk to create the storage file.
+     * @param initialSize an optimization to preallocate the file length in bytes.
+     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
+     */
+    public FileRecordStore(String dbPath, int initialSize, boolean useMemoryMapping) throws IOException {
+        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, useMemoryMapping);
     }
 
     /*
@@ -105,7 +115,19 @@ public class FileRecordStore implements AutoCloseable {
      * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
      */
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
-        logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, disableCrc32, this));
+        this(dbPath, initialSize, maxKeyLength, disableCrc32, false);
+    }
+
+    /*
+     * Creates a new database file with optional memory-mapping support.
+     * @param dbPath the location on disk to create the storage file.
+     * @param initialSize an optimization to preallocate the file length in bytes.
+     * @param maxKeyLength maximum key length in bytes
+     * @param disableCrc32 whether to disable explicit CRC32 of record data
+     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
+     */
+    public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32, boolean useMemoryMapping) throws IOException {
+        logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s, %s", dbPath, initialSize, maxKeyLength, disableCrc32, useMemoryMapping, this));
         this.disableCrc32 = disableCrc32;
         this.maxKeyLength = maxKeyLength;
         this.indexEntryLength = maxKeyLength + Integer.BYTES
@@ -115,7 +137,12 @@ public class FileRecordStore implements AutoCloseable {
         if (f.exists()) {
             throw new IllegalArgumentException("Database already exits: " + dbPath);
         }
-        file = new DirectRandomAccessFile(new RandomAccessFile(f, "rw"));
+        RandomAccessFile raf = new RandomAccessFile(f, "rw");
+        if (useMemoryMapping) {
+            file = new MemoryMappedRandomAccessFile(raf);
+        } else {
+            file = new DirectRandomAccessFile(raf);
+        }
         dataStartPtr = initialSize; // set data region start index
         setFileLength(dataStartPtr);
         writeNumRecordsHeader(0);
@@ -131,7 +158,7 @@ public class FileRecordStore implements AutoCloseable {
      * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
      */
     public FileRecordStore(String dbPath, String accessFlags) throws IOException {
-        this(dbPath, accessFlags, false);
+        this(dbPath, accessFlags, false, false);
     }
 
     /*
@@ -142,12 +169,28 @@ public class FileRecordStore implements AutoCloseable {
      * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
-        logger.log(Level.FINE, () -> String.format("opening %s, %s, %s, %s", dbPath, accessFlags, disableCrc32, this));
+        this(dbPath, accessFlags, disableCrc32, false);
+    }
+
+    /*
+     * Opens an existing database with optional memory-mapping support.
+     * @param dbPath the location of the database file on disk to open.
+     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+     * @param disableCrc32 whether to disable explicit CRC32 of record data
+     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
+     */
+    public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32, boolean useMemoryMapping) throws IOException {
+        logger.log(Level.FINE, () -> String.format("opening %s, %s, %s, %s, %s", dbPath, accessFlags, disableCrc32, useMemoryMapping, this));
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new IllegalArgumentException("Database not found: " + dbPath);
         }
-        file = new DirectRandomAccessFile(new RandomAccessFile(f, accessFlags));
+        RandomAccessFile raf = new RandomAccessFile(f, accessFlags);
+        if (useMemoryMapping) {
+            file = new MemoryMappedRandomAccessFile(raf);
+        } else {
+            file = new DirectRandomAccessFile(raf);
+        }
         this.disableCrc32 = disableCrc32;
         // load the max key length from first byte
         file.seek(0);

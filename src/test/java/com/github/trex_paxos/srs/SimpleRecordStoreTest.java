@@ -101,10 +101,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     logger.info("test completed.");
   }
 
-  @Test
-  public void testMoveUpdatesPositionMap() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 100, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
+@Test
+public void testMoveUpdatesPositionMap() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  try (val recordStore = new FileRecordStore(fileName, 100, 64, false)) {
     IntStream.range(0, 4).forEach(i -> {
       final String key = String.join("", Collections.nCopies(64, "" + i));
       try {
@@ -114,16 +114,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       }
     });
   }
+}
 
-  @Test
-  public void testDoubleInsertIntoLargeFile() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 1000, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
-    val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
-    val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+@Test
+public void testDoubleInsertIntoLargeFile() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
+  val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+
+  try (val recordStore = new FileRecordStore(fileName, 1000, 64, false)) {
     recordStore.insertRecord(key1, value.getBytes());
     recordStore.insertRecord(key2, value.getBytes());
   }
+}
 
   @Test
   public void testInsertOneRecordWithIOExceptions() throws Exception {
@@ -1085,29 +1088,29 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
                                String fileName) throws Exception;
   }
 
-  private static final class CrashValidationTracker {
-    private LinkedHashMap<ByteSequence, byte[]> expectedData = new LinkedHashMap<>();
-    private List<FileRecordStore.RecordSnapshot> expectedSnapshots = new ArrayList<>();
-    private long expectedFileLength = 0L;
+  static final class CrashValidationTracker {
+    LinkedHashMap<ByteSequence, byte[]> expectedData = new LinkedHashMap<>();
+    List<FileRecordStore.RecordSnapshot> expectedSnapshots = new ArrayList<>();
+    long expectedFileLength = 0L;
 
-    private LinkedHashMap<ByteSequence, byte[]> snapshotBeforeOperation = new LinkedHashMap<>();
-    private List<FileRecordStore.RecordSnapshot> snapshotsBeforeOperation = new ArrayList<>();
-    private long fileLengthBeforeOperation = 0L;
+    LinkedHashMap<ByteSequence, byte[]> snapshotBeforeOperation = new LinkedHashMap<>();
+    List<FileRecordStore.RecordSnapshot> snapshotsBeforeOperation = new ArrayList<>();
+    long fileLengthBeforeOperation = 0L;
 
-    private OperationContext currentOperation;
-    private FailureContext lastFailure;
-    private int currentCrashIndex = -1;
-    private List<String> currentStack = Collections.emptyList();
+    OperationContext currentOperation;
+    FailureContext lastFailure;
+    int currentCrashIndex = -1;
+    List<String> currentStack = Collections.emptyList();
 
     enum OperationType {INSERT, UPDATE, DELETE, INITIALIZATION}
 
-    private record OperationContext(OperationType type, ByteSequence key, byte[] data) {
+    record OperationContext(OperationType type, ByteSequence key, byte[] data) {
     }
 
-    private record FailureContext(OperationContext operation, Exception cause) {
+    record FailureContext(OperationContext operation, Exception cause) {
     }
 
-    private record StoreSnapshot(LinkedHashMap<ByteSequence, byte[]> data,
+    record StoreSnapshot(LinkedHashMap<ByteSequence, byte[]> data,
                                  List<FileRecordStore.RecordSnapshot> recordSnapshots,
                                  long fileLength) {
     }
@@ -1341,7 +1344,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         }
       }
       if (!currentStack.isEmpty()) {
-        sb.append(" firstStack=").append(currentStack.get(0));
+        sb.append(" firstStack=").append(currentStack.getFirst());
       }
       sb.append(": ").append(detail);
       return sb.toString();

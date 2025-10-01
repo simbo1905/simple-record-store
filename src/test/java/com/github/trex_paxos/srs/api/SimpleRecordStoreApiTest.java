@@ -2,7 +2,7 @@ package com.github.trex_paxos.srs.api;
 
 import com.github.trex_paxos.srs.ByteSequence;
 import com.github.trex_paxos.srs.FileRecordStore;
-import com.github.trex_paxos.srs.SimpleRecordStoreTest;
+import com.github.trex_paxos.srs.JulLoggingConfig;
 import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
@@ -18,7 +18,7 @@ import java.util.logging.Logger;
 import static com.github.trex_paxos.srs.ByteSequence.utf8ToString;
 import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 
-public class SimpleRecordStoreApiTest {
+public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     String fileName;
     FileRecordStore recordsFile = null;
     int initialSize;

@@ -25,17 +25,7 @@ import static org.junit.Assert.assertThat;
  * Tests that the simple random access storage 'db' works and does not get
  * corrupted under write errors.
  */
-public class SimpleRecordStoreTest {
-
-    static {
-        System.setProperty("java.util.logging.SimpleFormatter.format",
-                "%1$tT %4$s %2$s %5$s%6$s%n");
-    }
-
-    static {
-        Logger.getLogger("").setLevel(Level.FINEST);
-        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
-    }
+public class SimpleRecordStoreTest extends JulLoggingConfig {
 
     /**
      * A utility to recored how many times file write operations are called

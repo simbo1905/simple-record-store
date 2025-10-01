@@ -167,7 +167,7 @@ mvn package
 Release: 
 
 ```shell script
-# do a snaphost release
+# do a snapshot release
 mvn clean deploy
 
 # do a dry run of the real release

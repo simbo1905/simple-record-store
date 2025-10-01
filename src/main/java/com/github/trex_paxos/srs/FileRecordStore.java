@@ -29,18 +29,17 @@ public class FileRecordStore implements AutoCloseable {
     // File index to the start of the data region beyond the index region
     private static final long DATA_START_HEADER_LOCATION = 5;
 
-    /**
-     * Total length in bytes of the global database headers:
-     * 1 byte is the key length that the file was created with. cannot be changed you can copy to a new store with a new length.
-     * 4 byte int is the number of records
-     * 8 byte long is the index to the start of the data region
-     */
+    /// Total length in bytes of the global database headers:
+    /// 1. 1 byte stores the key length the file was created with. (This cannot
+    ///    be changed; copy into a new store to adjust the limit.)
+    /// 2. 4-byte int tracking the number of records.
+    /// 3. 8-byte long pointing to the start of the data region.
     private static final int FILE_HEADERS_REGION_LENGTH = 13;
 
     // this can be overridden up to 2^8 - 4
     public static final int DEFAULT_MAX_KEY_LENGTH = 64;
 
-    // its an unsigned 32 int
+    // this is an unsigned 32 int
     private static final int CRC32_LENGTH = 4;
 
     public static final int MAX_KEY_LENGTH_THEORETICAL = Double.valueOf(Math.pow(2, 8)).intValue() - Integer.BYTES;
@@ -67,18 +66,11 @@ public class FileRecordStore implements AutoCloseable {
     private Map<ByteSequence, RecordHeader> memIndex;
 
 
-    /**
-     * TreeMap of headers by file index
-     */
+    /// TreeMap of headers by file index.
     private TreeMap<Long, RecordHeader> positionIndex;
 
 
-    private Comparator<RecordHeader> compareRecordHeaderByFreeSpace = new Comparator<RecordHeader>() {
-        @Override
-        public int compare(RecordHeader o1, RecordHeader o2) {
-            return o1.getFreeSpace(true) - o2.getFreeSpace(true);
-        }
-    };
+    private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace = Comparator.comparingInt(o -> o.getFreeSpace(true));
 
     /*
      * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
@@ -95,9 +87,9 @@ public class FileRecordStore implements AutoCloseable {
     /*
      * Creates a new database file. The initialSize parameter determines the
      * amount of space which is allocated for the index. The index can grow
-     * dynamically, but the parameter is provide to increase efficiency.
+     * dynamically, but the parameter is provided to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimisation to preallocate the file length in bytes.
+     * @param initialSize an optimization to preallocate the file length in bytes.
      */
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
         this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false);
@@ -106,14 +98,14 @@ public class FileRecordStore implements AutoCloseable {
     /*
      * Creates a new database file. The initialSize parameter determines the
      * amount of space which is allocated for the index. The index can grow
-     * dynamically, but the parameter is provide to increase efficiency.
+     * dynamically, but the parameter is provided to increase efficiency.
      * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimisation to preallocate the file length in bytes.
+     * @param initialSize an optimization to preallocate the file length in bytes.
      * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped it
      * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
      */
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
-        logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, Boolean.valueOf(disableCrc32), this));
+        logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s", dbPath, initialSize, maxKeyLength, disableCrc32, this));
         this.disableCrc32 = disableCrc32;
         this.maxKeyLength = maxKeyLength;
         this.indexEntryLength = maxKeyLength + Integer.BYTES
@@ -150,7 +142,7 @@ public class FileRecordStore implements AutoCloseable {
      * will have a CRC check built in so you can safely disable here.
      */
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
-        logger.log(Level.FINE, () -> String.format("opening %s, %s, %s, %s", dbPath, accessFlags, Boolean.valueOf(disableCrc32), this));
+        logger.log(Level.FINE, () -> String.format("opening %s, %s, %s, %s", dbPath, accessFlags, disableCrc32, this));
         File f = new File(dbPath);
         if (!f.exists()) {
             throw new IllegalArgumentException("Database not found: " + dbPath);
@@ -172,7 +164,7 @@ public class FileRecordStore implements AutoCloseable {
         for (int i = 0; i < numRecords; i++) {
             val key = readKeyFromIndex(i);
             RecordHeader header = readRecordHeaderFromIndex(i);
-            logger.log(Level.FINEST, () -> String.format("header:%s, key:%s", header.toString(), print(key.bytes)));
+            logger.log(Level.FINEST, () -> String.format("header:%s, key:%s", header, print(key.bytes)));
             header.setIndexPosition(i);
             val duplicate = memIndex.put(key, header);
             // duplicates are due to crashes where the later write can replace the earlier one
@@ -211,14 +203,16 @@ public class FileRecordStore implements AutoCloseable {
         return sb.toString();
     }
 
+    @SuppressWarnings("unused")
     @SneakyThrows
     static String print(File f) {
-        RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r");
-        val len = file.length();
-        assert len < Integer.MAX_VALUE;
-        val bytes = new byte[(int) len];
-        file.readFully(bytes);
-        return print(bytes);
+        try (RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r")) {
+            val len = file.length();
+            assert len < Integer.MAX_VALUE;
+            val bytes = new byte[(int) len];
+            file.readFully(bytes);
+            return print(bytes);
+        }
     }
 
     private int getDataLengthPadded(int dataLength) {
@@ -227,12 +221,10 @@ public class FileRecordStore implements AutoCloseable {
 
     @Synchronized
     private Set<ByteSequence> snapshotKeys() {
-        return new HashSet(memIndex.keySet());
+        return new HashSet<>(memIndex.keySet());
     }
 
-    /**
-     * This generates a defensive copy of all the keys in a thread safe manner.
-     */
+    /// Generates a defensive copy of all the keys in a thread safe manner.
     public Iterable<ByteSequence> keys() {
         val snapshot = snapshotKeys();
         return snapshot.stream().map(ByteSequence::copy).collect(Collectors.toSet());
@@ -294,14 +286,14 @@ public class FileRecordStore implements AutoCloseable {
         // we needs space for the length int and the optional long crc32
         int payloadLength = payloadLength(dataLength);
 
-        // we pad the record to be at least the size of a header to avoid moving many values to expand the the index
+        // we pad the record to be at least the size of a header to avoid moving many values to expand the index
         int dataLengthPadded = getDataLengthPadded(payloadLength);
 
         // FIFO deletes cause free space after the index.
         long dataStart = readDataStartHeader();
         long endIndexPtr = indexPositionToKeyFp(getNumRecords());
         // we prefer speed overs space so we leave space for the header for this insert plus one for future use
-        long available = dataStart - endIndexPtr - (2 * indexEntryLength);
+        long available = dataStart - endIndexPtr - (2L * indexEntryLength);
 
         RecordHeader newRecord = null;
 
@@ -410,7 +402,7 @@ public class FileRecordStore implements AutoCloseable {
 
     private void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
         if (rh.dataCount < 0) {
-            throw new IllegalStateException("dataCount has not been initialized " + this.toString());
+            throw new IllegalStateException("dataCount has not been initialized " + this);
         }
         val fp = out.getFilePointer();
         ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
@@ -480,39 +472,39 @@ public class FileRecordStore implements AutoCloseable {
             System.exit(1);
         }
         if (args.length < 2) {
-            System.err.println("no comamnd passed");
+            System.err.println("no command passed");
             System.exit(2);
         }
         final String filename = args[0];
-        final String command = args[1];
-        logger.info("Reading from " + filename);
+      logger.info("Reading from " + filename);
 
         boolean disableCrc32 = false;
         dumpFile(Level.INFO, filename, disableCrc32);
     }
 
     static void dumpFile(Level level, String filename, boolean disableCrc) throws IOException {
-        final FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc);
-        val len = recordFile.getFileLength();
-        logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), len, recordFile.dataStartPtr));
-        for (int index = 0; index < recordFile.getNumRecords(); index++) {
-            final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
-            val bk = recordFile.readKeyFromIndex(index);
-            final String k = new String(bk.bytes);
-            logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
-                    index,
-                    k,
-                    header.indexPosition,
-                    header.getDataCapacity(),
-                    header.dataCount,
-                    header.dataPointer,
-                    header.crc32
-            ));
-            final byte[] data = recordFile.readRecordData(bk);
+        try (FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc)) {
+            val len = recordFile.getFileLength();
+            logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), len, recordFile.dataStartPtr));
+            for (int index = 0; index < recordFile.getNumRecords(); index++) {
+                final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
+                val bk = recordFile.readKeyFromIndex(index);
+                final String k = new String(bk.bytes);
+                logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                        index,
+                        k,
+                        header.indexPosition,
+                        header.getDataCapacity(),
+                        header.dataCount,
+                        header.dataPointer,
+                        header.crc32
+                ));
+                final byte[] data = recordFile.readRecordData(bk);
 
-            String d = new String(data);
-            int finalIndex = index;
-            logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex, data.length, d));
+                String d = new String(data);
+                int finalIndex = index;
+                logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex, data.length, d));
+            }
         }
     }
 
@@ -578,7 +570,7 @@ public class FileRecordStore implements AutoCloseable {
      * located at the given index position.
      */
     private long indexPositionToKeyFp(int pos) {
-        return FILE_HEADERS_REGION_LENGTH + (indexEntryLength * pos);
+        return FILE_HEADERS_REGION_LENGTH + ((long) indexEntryLength * pos);
     }
 
     /*
@@ -718,7 +710,7 @@ public class FileRecordStore implements AutoCloseable {
         val recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
 
         // can update in place if the record is same size no matter whether CRC32 is enabled.
-        // if record is smaller then we can only update in place if we have a CRC32 to validate which data length is valid
+        // if record is smaller than we can only update in place if we have a CRC32 to validate which data length is valid
         if (recordIsSameSize || recordIsSmallerAndCrcEnabled) {
             // write with the backup crc so one of the two CRCs will be valid after a crash
             writeRecordHeaderToIndex(updateMeHeader);
@@ -825,7 +817,7 @@ public class FileRecordStore implements AutoCloseable {
 
             if (actualCrc != expectedCrc) {
                 throw new IllegalStateException(String.format("CRC32 check failed expected %d got %d for data length %d with header %s",
-                        expectedCrc, actualCrc, buf.length, header.toString()));
+                        expectedCrc, actualCrc, buf.length, header));
             }
         }
 
@@ -918,7 +910,8 @@ public class FileRecordStore implements AutoCloseable {
         // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
             val firstOptional = getRecordAt(dataStartPtr);
-            val first = firstOptional.get();
+            // TODO figure out if there is some case where someone could trigger the following IllegalStateException
+            val first = firstOptional.orElseThrow( ()-> new IllegalStateException("no record at dataStartPtr "+dataStartPtr));
             positionIndex.remove(first.dataPointer);
             freeMap.remove(first);
             byte[] data = readRecordData(first);
@@ -938,6 +931,7 @@ public class FileRecordStore implements AutoCloseable {
 
     @SneakyThrows
     @Synchronized
+    @SuppressWarnings("unused")
     public void logAll(Level level, boolean disableCrc32) {
         val oldDisableCdc32 = this.disableCrc32;
         try {

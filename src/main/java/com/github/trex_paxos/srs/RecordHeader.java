@@ -1,6 +1,8 @@
 package com.github.trex_paxos.srs;
 
 import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
 
 @ToString
@@ -20,17 +22,11 @@ class RecordHeader {
 	/*
 	 * Number of bytes of data that this record can hold (4 bytes).
 	 */
-	int dataCapacity;
+  @Setter
+  @Getter
+  int dataCapacity;
 
-	public int getDataCapacity() {
-		return dataCapacity;
-	}
-
-	public void setDataCapacity(int dataCapacity) {
-		this.dataCapacity = dataCapacity;
-	}
-
-	/*
+  /*
 	 * Indicates this header's position in the file index.
 	 */
 	protected int indexPosition;

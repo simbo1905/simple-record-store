@@ -3,59 +3,76 @@
 package com.github.trex_paxos.srs;
 
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.IntStream;
 
 public class UUIDGeneratorTest {
 
+    private static final Logger LOGGER = Logger.getLogger(UUIDGeneratorTest.class.getName());
+
+    @BeforeClass
+    public static void enableJulDebug() {
+        Logger.getLogger("").setLevel(Level.FINEST);
+        Logger.getLogger("").getHandlers()[0].setLevel(Level.FINEST);
+    }
+
     @Test
     public void testGenerateUUIDsAreUnique() {
+        LOGGER.info("testGenerateUUIDsAreUnique starting");
         Set<UUID> uuids = new HashSet<>();
         int count = 10000;
-        for (int i = 0; i < count; i++) {
+        IntStream.range(0, count).forEach(i -> {
             UUID uuid = UUIDGenerator.generateUUID();
             Assert.assertNotNull(uuid);
             uuids.add(uuid);
-        }
+        });
         // All UUIDs should be unique
         Assert.assertEquals(count, uuids.size());
     }
 
     @Test
     public void testGenerateUUIDsAreTimeOrdered() {
+        LOGGER.info("testGenerateUUIDsAreTimeOrdered starting");
         // Generate UUIDs and verify they are generally increasing (time-ordered)
-        UUID previous = UUIDGenerator.generateUUID();
-        int ascendingCount = 0;
+        AtomicReference<UUID> previous = new AtomicReference<>(UUIDGenerator.generateUUID());
+        AtomicInteger ascendingCount = new AtomicInteger(0);
         int testCount = 1000;
         
-        for (int i = 0; i < testCount; i++) {
+        IntStream.range(0, testCount).forEach(i -> {
             UUID current = UUIDGenerator.generateUUID();
             // Compare the most significant bits which contain the timestamp
-            if (current.getMostSignificantBits() >= previous.getMostSignificantBits()) {
-                ascendingCount++;
+            if (current.getMostSignificantBits() >= previous.get().getMostSignificantBits()) {
+                ascendingCount.incrementAndGet();
             }
-            previous = current;
-        }
+            previous.set(current);
+        });
         
         // Most UUIDs should be in ascending order (allowing for some edge cases)
         // We expect at least 99% to be ascending
         Assert.assertTrue("UUIDs should be mostly time-ordered", 
-            ascendingCount > testCount * 0.99);
+            ascendingCount.get() > testCount * 0.99);
     }
 
     @Test
     public void testGenerateUUIDsAtHighRate() {
+        LOGGER.info("testGenerateUUIDsAtHighRate starting");
         // Test that we can generate many UUIDs quickly without collisions
         Set<UUID> uuids = new HashSet<>();
         int count = 100000;
         
         long startTime = System.currentTimeMillis();
-        for (int i = 0; i < count; i++) {
+        IntStream.range(0, count).forEach(i -> {
             uuids.add(UUIDGenerator.generateUUID());
-        }
+        });
         long endTime = System.currentTimeMillis();
         
         // All UUIDs should be unique
@@ -63,7 +80,7 @@ public class UUIDGeneratorTest {
         
         // Log performance for information
         double rate = (count * 1000.0) / (endTime - startTime);
-        System.out.println("Generated " + count + " UUIDs in " + 
+        LOGGER.fine("Generated " + count + " UUIDs in " + 
             (endTime - startTime) + "ms (rate: " + String.format("%.0f", rate) + " UUIDs/sec)");
     }
 }

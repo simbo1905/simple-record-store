@@ -69,6 +69,27 @@ There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the
 updated, or deleted. If you have a bug please try to create a repeatable test with fine logging enabled and post the 
 logging. There is additional logging at `Level.FINEST` that shows every byte that is written to, or read from, the file. 
 
+## Thread Safety
+
+`FileRecordStore` is **thread-safe** for single-process access:
+
+- All public methods are synchronized using Lombok's `@Synchronized` annotation
+- Multiple threads can safely share one `FileRecordStore` instance
+- No additional locking is required by callers
+- Defensive copies are returned by methods like `keys()` to ensure thread safety
+
+**Limitations**:
+
+- **Not safe for concurrent multi-process access** - Multiple processes opening the same file will lead to data corruption
+- If multiple processes need access, they must coordinate access externally (e.g., using file locks or a coordination service)
+- The underlying `RandomAccessFile` is not designed for multi-process synchronization
+
+**Safe Backup Approaches**:
+
+- For backups within the same process, use the `keys()` method to enumerate records and `readRecordData()` to read values
+- For external backups, ensure the store is closed or that no writes are occurring, then use standard file copying tools
+- Consider using explicit `fsync()` before copying to ensure all data is flushed to disk
+
 ## Details
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)

@@ -135,6 +135,16 @@ and decide how many times to attempt to reopen the store.
 
 Note that the source code using Lombok to be able to write cleaner and safer code. This is compile time only dependency. 
 
+## Crash-Safety Testing
+
+Crash resilience is enforced by a replay harness that wraps every functional scenario in `SimpleRecordStoreTest`:
+
+- `RecordsFileSimulatesDiskFailures` substitutes the production `RandomAccessFile` with an `InterceptedRandomAccessFile`, routing every I/O call through a `WriteCallback` hook.
+- Each scenario first runs with a `StackCollectingWriteCallback`, capturing the precise sequence of file operations (stack traces are trimmed once execution exits `com.github.simbo1905`).
+- The test then replays the same scenario once per recorded call, using a `CrashAtWriteCallback` to throw an `IOException` at that call index. This simulates a crash immediately after the intercepted disk operation.
+- After the injected failure, the store is reopened using the standard `FileRecordStore`, iterating `keys()` and reading every value via `readRecordData`. That replay exercises the built-in `CRC32` guard while asserting that `getNumRecords()` matches the readable set, flagging any divergence as corruption.
+- The harness runs across inserts, updates, deletes, compaction, and both narrow and padded payloads (see `string1k`) so every write ordering is brute-forced.
+
 ## Configuration
 
 The file byte position is 64 bits so thousands of peta bytes. The data value size is 32 bits so a maximum of 2.14 G. 

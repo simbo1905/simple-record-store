@@ -959,7 +959,7 @@ public void testDoubleInsertIntoLargeFile() throws Exception {
   /// Validates file structure after a simulated crash
   static void validateFileStructure(FileRecordStore store, int crashIndex) throws IOException {
     // 1. Get structural snapshot
-    List<RecordSnapshot> actualStructure = store.snapshotRecords();
+    RecordSnapshot[] actualStructure = store.snapshotRecords();
 
     // 2. Validate structural invariants
     validateStructuralInvariants(actualStructure, crashIndex, store.getFileLength());
@@ -968,7 +968,7 @@ public void testDoubleInsertIntoLargeFile() throws Exception {
     validateDataIntegrity(store, actualStructure);
   }
 
-  private static void validateStructuralInvariants(List<RecordSnapshot> structure, int crashIndex, long fileLength) {
+  private static void validateStructuralInvariants(RecordSnapshot[] structure, int crashIndex, long fileLength) {
     // Check index positions are unique (not necessarily sequential due to deletes)
     Set<Integer> indexPositions = new HashSet<>();
     for (RecordSnapshot snapshot : structure) {
@@ -978,7 +978,7 @@ public void testDoubleInsertIntoLargeFile() throws Exception {
     }
 
     // Verify all records are within file bounds
-    structure.forEach(snapshot -> {
+    Arrays.stream(structure).forEach(snapshot -> {
       long recordEnd = snapshot.dataPointer() + snapshot.dataCapacity();
       if (recordEnd > fileLength) {
         throw new RuntimeException("Record extends beyond file length: recordEnd=" + recordEnd + ", fileLength=" + fileLength);
@@ -993,14 +993,14 @@ public void testDoubleInsertIntoLargeFile() throws Exception {
     validateNoOverlappingData(structure, crashIndex);
   }
 
-  private static void validateNoOverlappingData(List<RecordSnapshot> structure, int crashIndex) {
-    List<RecordSnapshot> byPosition = structure.stream()
+  private static void validateNoOverlappingData(RecordSnapshot[] structure, int crashIndex) {
+    RecordSnapshot[] byPosition = Arrays.stream(structure)
             .sorted(Comparator.comparingLong(RecordSnapshot::dataPointer))
-            .toList();
+            .toArray(RecordSnapshot[]::new);
 
-    IntStream.range(0, byPosition.size() - 1).forEach(i -> {
-      RecordSnapshot current = byPosition.get(i);
-      RecordSnapshot next = byPosition.get(i + 1);
+    IntStream.range(0, byPosition.length - 1).forEach(i -> {
+      RecordSnapshot current = byPosition[i];
+      RecordSnapshot next = byPosition[i + 1];
 
       // Check if actual data overlaps (not capacity)
       // Data format: 4-byte length prefix + data + 8-byte CRC32 (if enabled)
@@ -1016,7 +1016,7 @@ public void testDoubleInsertIntoLargeFile() throws Exception {
   }
 
   private static void validateDataIntegrity(FileRecordStore store,
-                                                   List<RecordSnapshot> structure) throws IOException {
+                                                   RecordSnapshot[] structure) throws IOException {
     // For each record in the structure, verify it can be read
     // readRecordData has a CRC32 check where the payload must match the header
     for (RecordSnapshot snapshot : structure) {

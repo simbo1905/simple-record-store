@@ -233,19 +233,22 @@ public class FileRecordStore implements AutoCloseable {
     /// Captures the on-disk index ordering so crash tests can validate
     /// structural invariants without exposing mutable headers.
     @Synchronized
-    List<RecordSnapshot> snapshotRecords() {
-        List<RecordSnapshot> snapshots = new ArrayList<>(getNumRecords());
-        for (Map.Entry<ByteSequence, RecordHeader> entry : memIndex.entrySet()) {
+    RecordSnapshot[] snapshotRecords() {
+        val entries = memIndex.entrySet().toArray(new Map.Entry[0]);
+        RecordSnapshot[] snapshots = new RecordSnapshot[entries.length];
+        Arrays.setAll(snapshots, i -> {
+            @SuppressWarnings("unchecked")
+            Map.Entry<ByteSequence, RecordHeader> entry = entries[i];
             RecordHeader header = entry.getValue();
             ByteSequence key = entry.getKey();
-            snapshots.add(new RecordSnapshot(
+            return new RecordSnapshot(
                     header.indexPosition,
                     key.copy(),
                     header.dataPointer,
                     header.getDataCapacity(),
                     header.dataCount,
-                    header.crc32));
-        }
+                    header.crc32);
+        });
         return snapshots;
     }
 

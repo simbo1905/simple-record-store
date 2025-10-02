@@ -2,11 +2,9 @@ package com.github.trex_paxos.srs;
 
 import java.io.IOException;
 
-/**
- * Interface for crash-safe file operations with explicit synchronization control.
- * Wraps file I/O operations to support both direct and memory-mapped implementations
- * while maintaining crash safety guarantees through coordinated write patterns.
- */
+/// Interface for crash-safe file operations with explicit synchronization control.
+/// Wraps file I/O operations to support both direct and memory-mapped implementations
+/// while maintaining crash safety guarantees through coordinated write patterns.
 interface CrashSafeFileOperations {
 
   /// Forces all buffered modifications to be written to the storage device.

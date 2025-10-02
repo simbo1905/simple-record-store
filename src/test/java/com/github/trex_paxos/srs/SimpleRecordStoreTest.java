@@ -100,10 +100,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     logger.info("test completed.");
   }
 
-  @Test
-  public void testMoveUpdatesPositionMap() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 100, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
+@Test
+public void testMoveUpdatesPositionMap() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  try (val recordStore = new FileRecordStore(fileName, 100, 64, false)) {
     IntStream.range(0, 4).forEach(i -> {
       final String key = String.join("", Collections.nCopies(64, "" + i));
       try {
@@ -113,16 +113,19 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       }
     });
   }
+}
 
-  @Test
-  public void testDoubleInsertIntoLargeFile() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 1000, 64, false);
-    final String value = String.join("", Collections.nCopies(100, "x"));
-    val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
-    val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+@Test
+public void testDoubleInsertIntoLargeFile() throws Exception {
+  final String value = String.join("", Collections.nCopies(100, "x"));
+  val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
+  val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+
+  try (val recordStore = new FileRecordStore(fileName, 1000, 64, false)) {
     recordStore.insertRecord(key1, value.getBytes());
     recordStore.insertRecord(key2, value.getBytes());
   }
+}
 
   @Test
   public void testInsertOneRecordWithIOExceptions() throws Exception {
@@ -168,13 +171,8 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         } catch (Exception ioe) {
           recordsFile.close();
           try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
-            int count = possiblyCorruptedFile.getNumRecords();
-            for (val k : possiblyCorruptedFile.keys()) {
-              // readRecordData has a CRC32 check where the payload must match the header
-              possiblyCorruptedFile.readRecordData(k);
-              count--;
-            }
-            assertEquals(0, count);
+            // Use snapshotRecords() for proper structural validation
+            validateFileStructure(possiblyCorruptedFile, index);
           } catch (Exception e) {
             FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
             final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
@@ -429,73 +427,6 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new FileRecordStore(fileName, "r", false);
     });
   }
-//        List<UUID> uuids = createUuid(3);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid2);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
-//    @Test
-//    public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
-//        List<UUID> uuids = createUuid(4);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                deleteFileIfExists(fileName);
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//                UUID uuid3 = uuids.get(3);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                writeUuid(uuid2);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid3);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid3.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                Assert.assertThat(put3, is(uuid3.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
 
   @Test
   public void testUpdateExpandFirstRecord() throws Exception {
@@ -1023,6 +954,75 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize);
     recordsFile.close();
     recordsFile.close();
+  }
+
+  /// Validates file structure after a simulated crash
+  static void validateFileStructure(FileRecordStore store, int crashIndex) throws IOException {
+    // 1. Get structural snapshot
+    RecordSnapshot[] actualStructure = store.snapshotRecords();
+
+    // 2. Validate structural invariants
+    validateStructuralInvariants(actualStructure, crashIndex, store.getFileLength());
+
+    // 3. Validate data integrity - all records can be read with CRC32 validation
+    validateDataIntegrity(store, actualStructure);
+  }
+
+  private static void validateStructuralInvariants(RecordSnapshot[] structure, int crashIndex, long fileLength) {
+    // Check index positions are unique (not necessarily sequential due to deletes)
+    Set<Integer> indexPositions = new HashSet<>();
+    for (RecordSnapshot snapshot : structure) {
+      if (!indexPositions.add(snapshot.indexPosition())) {
+        throw new RuntimeException("Duplicate index position: " + snapshot.indexPosition() + " at crash index " + crashIndex);
+      }
+    }
+
+    // Verify all records are within file bounds
+    Arrays.stream(structure).forEach(snapshot -> {
+      long recordEnd = snapshot.dataPointer() + snapshot.dataCapacity();
+      if (recordEnd > fileLength) {
+        throw new RuntimeException("Record extends beyond file length: recordEnd=" + recordEnd + ", fileLength=" + fileLength);
+      }
+      if (snapshot.dataPointer() < 0) {
+        throw new RuntimeException("Invalid negative data pointer: " + snapshot.dataPointer());
+      }
+    });
+
+    // Check that actual data regions don't overlap (capacity regions may overlap after crashes)
+    // This validates that the live data in memIndex doesn't have corrupted pointers
+    validateNoOverlappingData(structure, crashIndex);
+  }
+
+  private static void validateNoOverlappingData(RecordSnapshot[] structure, int crashIndex) {
+    RecordSnapshot[] byPosition = Arrays.stream(structure)
+            .sorted(Comparator.comparingLong(RecordSnapshot::dataPointer))
+            .toArray(RecordSnapshot[]::new);
+
+    IntStream.range(0, byPosition.length - 1).forEach(i -> {
+      RecordSnapshot current = byPosition[i];
+      RecordSnapshot next = byPosition[i + 1];
+
+      // Check if actual data overlaps (not capacity)
+      // Data format: 4-byte length prefix + data + 8-byte CRC32 (if enabled)
+      // We conservatively estimate overhead as 4 + 8 = 12 bytes
+      long currentDataEnd = current.dataPointer() + current.dataCount() + 12;
+      if (currentDataEnd > next.dataPointer()) {
+        String msg = String.format("Overlapping data at crash index %d: record key=%s dataPointer=%d dataCount=%d ends at %d, next key=%s starts at %d",
+                crashIndex, new String(current.key().bytes), current.dataPointer(), current.dataCount(), currentDataEnd,
+                new String(next.key().bytes), next.dataPointer());
+        throw new RuntimeException(msg);
+      }
+    });
+  }
+
+  private static void validateDataIntegrity(FileRecordStore store,
+                                                   RecordSnapshot[] structure) throws IOException {
+    // For each record in the structure, verify it can be read
+    // readRecordData has a CRC32 check where the payload must match the header
+    for (RecordSnapshot snapshot : structure) {
+      ByteSequence key = snapshot.key();
+      store.readRecordData(key);
+    }
   }
 
   interface InterceptedTestOperations {

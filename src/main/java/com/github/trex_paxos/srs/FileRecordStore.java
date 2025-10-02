@@ -82,13 +82,14 @@ public class FileRecordStore implements AutoCloseable {
     /// Creates a new database file. The initialSize parameter determines the
     /// amount of space which is allocated for the index. The index can grow
     /// dynamically, but the parameter is provided to increase efficiency.
+    /// This constructor will use a traditional random access file not a memory mapped file.
     /// @param dbPath the location on disk to create the storage file.
     /// @param initialSize an optimization to preallocate the file length in bytes.
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
         this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, false);
     }
 
-    /// Creates a new database file with optional memory-mapping support.
+    /// Creates a new database file using memory mapped files for performance.
     /// @param dbPath the location on disk to create the storage file.
     /// @param initialSize an optimization to preallocate the file length in bytes.
     /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
@@ -101,7 +102,7 @@ public class FileRecordStore implements AutoCloseable {
     /// dynamically, but the parameter is provided to increase efficiency.
     /// @param dbPath the location on disk to create the storage file.
     /// @param initialSize an optimization to preallocate the file length in bytes.
-    /// @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped it
+    /// @param disableCrc32 whether to disable explicit CRC32 of record data as zipped payloads have built-in integrity checks.
     /// has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
         this(dbPath, initialSize, maxKeyLength, disableCrc32, false);
@@ -141,14 +142,14 @@ public class FileRecordStore implements AutoCloseable {
 
     /// Opens an existing database and initializes the in-memory index.
     /// @param dbPath the location of the database file on disk to open.
-    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+    /// @param accessFlags the access flags supported by the java.io.RandomAccessFile e.g. "r" or "rw"
     public FileRecordStore(String dbPath, String accessFlags) throws IOException {
         this(dbPath, accessFlags, false, false);
     }
 
     /// Opens an existing database and initializes the in-memory index.
     /// @param dbPath the location of the database file on disk to open.
-    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+    /// @param accessFlags the access flags supported by the java.io.RandomAccessFile e.g. "r" or "rw"
     /// @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
     /// will have a CRC check built in so you can safely disable here.
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
@@ -157,7 +158,7 @@ public class FileRecordStore implements AutoCloseable {
 
     /// Opens an existing database with optional memory-mapping support.
     /// @param dbPath the location of the database file on disk to open.
-    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+    /// @param accessFlags the access flags supported by the java.io.RandomAccessFile e.g. "r" or "rw"
     /// @param disableCrc32 whether to disable explicit CRC32 of record data
     /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32, boolean useMemoryMapping) throws IOException {

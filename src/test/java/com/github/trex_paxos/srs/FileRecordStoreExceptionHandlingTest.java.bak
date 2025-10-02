@@ -870,40 +870,6 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         // Verify subsequent operations fail
         verifyStoreIsClosed(store);
         
-        // Persistence verification: reopen store and verify data integrity
-        if (filePath != null) {
-            FileRecordStore verificationStore = null;
-            try {
-                verificationStore = new FileRecordStore.Builder()
-                    .path(filePath)
-                    .open();
-                
-                // Count valid records in the reopened store
-                int validRecords = 0;
-                for (ByteSequence verificationKey : verificationStore.keys()) {
-                    try {
-                        byte[] verificationData = verificationStore.readRecordData(verificationKey);
-                        if (verificationData != null && verificationData.length > 0) {
-                            validRecords++;
-                        }
-                    } catch (IOException e) {
-                        // Skip invalid records
-                    }
-                }
-                
-                final int finalValidRecords = validRecords;
-                final String finalDescription = description;
-                logger.log(Level.FINE, () -> String.format("Persistence verification for %s: found %d valid records after exception", finalDescription, finalValidRecords));
-                
-            } catch (Exception e) {
-                logger.log(Level.WARNING, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
-            } finally {
-                if (verificationStore != null) {
-                    try { verificationStore.close(); } catch (Exception ignored) {}
-                }
-            }
-        }
-        
         store.close();
     }
 
@@ -942,54 +908,6 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         }
         
         Assert.assertTrue("Store should be closed after " + description, testStore.isClosed());
-        
-        // Persistence verification: verify original data is still intact after exception
-        FileRecordStore verificationStore = null;
-        try {
-            verificationStore = new FileRecordStore.Builder()
-                .path(filePath)
-                .open();
-            
-            // Verify original records are still present and valid
-            int originalRecordsFound = 0;
-            for (int i = 0; i < 5; i++) {
-                if (i == 1 || i == 3) continue; // These were deleted
-                
-                ByteSequence originalKey = ByteSequence.of(("existing" + i).getBytes());
-                String expectedData = "existingdata" + i;
-                
-                try {
-                    if (verificationStore.recordExists(originalKey)) {
-                        byte[] data = verificationStore.readRecordData(originalKey);
-                        if (data != null) {
-                            String actualData = new String(data, StandardCharsets.UTF_8);
-                            if (expectedData.equals(actualData)) {
-                                originalRecordsFound++;
-                            }
-                        }
-                    }
-                } catch (IOException e) {
-                    // Skip corrupted records
-                }
-            }
-            
-            // We expect 3 original records (5 created - 2 deleted)
-            final int finalOriginalRecordsFound = originalRecordsFound;
-            final String finalDescription2 = description;
-            Assert.assertEquals("Original data should be intact after exception", 3, finalOriginalRecordsFound);
-            logger.log(Level.FINE, () -> String.format("Persistence verified: %d original records intact after %s", finalOriginalRecordsFound, finalDescription2));
-            
-            // Verify the new insert did NOT happen (store closed before completion)
-            Assert.assertFalse("New insert should not have completed", verificationStore.recordExists(newKey));
-            
-        } catch (Exception e) {
-            logger.log(Level.WARNING, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
-        } finally {
-            if (verificationStore != null) {
-                try { verificationStore.close(); } catch (Exception ignored) {}
-            }
-        }
-        
         testStore.close();
     }
 

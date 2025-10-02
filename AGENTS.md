@@ -18,8 +18,13 @@
 - Encode keys deterministically; prefer `ByteSequence.stringToUtf8` over `String#getBytes` to prevent charset drift.
 
 ## Testing Guidelines
-- New scenarios belong in `SimpleRecordStoreTest` or a sibling test class; name files `*Test` so Surefire picks them up.
-- Crash-safety coverage uses the replay harness built into `SimpleRecordStoreTest`:
+- New scenarios belong in `FileRecordStoreExceptionHandlingTest` or a sibling test class; name files `*Test` so Surefire picks them up.
+- **Note**: `SimpleRecordStoreTest` has been deleted - all exception handling and persistence testing is now covered by `FileRecordStoreExceptionHandlingTest` which includes:
+  - Comprehensive persistence verification after exceptions
+  - verifyStoreIntegrity() helper for data validation
+  - Enhanced scenario testing with persistence checks
+  - Behavior-based verification instead of internal state inspection
+- Crash-safety coverage uses the replay harness built into `FileRecordStoreExceptionHandlingTest`:
   - `RecordsFileSimulatesDiskFailures` swaps the production `RandomAccessFile` for an `InterceptedRandomAccessFile` so every I/O call flows through a `WriteCallback`.
   - `verifyWorkWithIOExceptions` first runs the scenario with a `StackCollectingWriteCallback` to capture the full sequence of file operations (stack traces trimmed once the call exits `com.github.simbo1905`).
   - It then replays the exact same scenario once per recorded call, using `CrashAtWriteCallback` to throw an `IOException` at that call index. Each run mimics a crash right after the intercepted disk operation.

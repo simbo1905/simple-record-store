@@ -9,11 +9,9 @@ import java.io.IOException;
  */
 interface CrashSafeFileOperations {
 
-	/**
-	 * Forces all buffered modifications to be written to the storage device.
-	 * For direct I/O, calls FileChannel.force(false). For memory-mapped I/O,
-	 * calls MappedByteBuffer.force() on all mapped regions.
-	 */
+  /// Forces all buffered modifications to be written to the storage device.
+  /// For direct I/O, calls FileChannel.force(false). For memory-mapped I/O,
+  /// calls MappedByteBuffer.force() on all mapped regions.
 	void sync() throws IOException;
 
 	long getFilePointer() throws IOException;

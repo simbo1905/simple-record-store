@@ -13,87 +13,80 @@ import java.util.Base64;
 /// wrapping will never be mutated you can use the static `of` method.
 @RequiredArgsConstructor
 public class ByteSequence {
-    final byte[] bytes;
+  final byte[] bytes;
+  // here we memoize the hashcode upon first use. when the map is resized the cached value will be reused.
+  @Getter(lazy = true)
+  private final int hashCode = Arrays.hashCode(bytes);
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        ByteSequence that = (ByteSequence) o;
-        return Arrays.equals(bytes, that.bytes);
-    }
+  /// Decodes a Base64 string into a ByteSequence.
+  ///
+  /// @param base64 Base64-encoded string
+  /// @return ByteSequence containing the decoded bytes
+  /// @throws IllegalArgumentException if the string is not valid Base64
+  public static ByteSequence fromBase64(String base64) {
+    return of(Base64.getDecoder().decode(base64));
+  }
 
-    // here we memoize the hashcode upon first use. when the map is resized the cached value will be reused.
-    @Getter(lazy=true)
-    private final int hashCode = Arrays.hashCode(bytes);
+  /// This does not take a defensive copy of the passed bytes. This should be
+  /// used only if you know that the array cannot be recycled.
+  /// @param bytes The bytes to copy.
+  public static ByteSequence of(byte[] bytes) {
+    return new ByteSequence(bytes);
+  }
 
-    @Override
-    public int hashCode() {
-        return this.getHashCode();
-    }
+  @Override
+  public int hashCode() {
+    return this.getHashCode();
+  }
 
-    /**
-     * Returns a Base64-encoded string representation of the byte array.
-     * This is safe for arbitrary binary data including UUIDs, hashes, and encrypted data.
-     * The string can be decoded back to the original bytes using fromBase64().
-     * 
-     * @return Base64-encoded string representation
-     */
-    @Override
-    public String toString() {
-        return toBase64();
-    }
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    ByteSequence that = (ByteSequence) o;
+    return Arrays.equals(bytes, that.bytes);
+  }
 
-    /**
-     * Encodes this ByteSequence as a Base64 string.
-     * This is safe for any binary data and guarantees perfect round-trip conversion.
-     * 
-     * @return Base64-encoded string representation
-     */
-    public String toBase64() {
-        return Base64.getEncoder().encodeToString(bytes);
-    }
+  /// Returns a Base64-encoded string representation of the byte array.
+  /// This is safe for arbitrary binary data including UUIDs, hashes, and encrypted data.
+  /// The string can be decoded back to the original bytes using fromBase64().
+  ///
+  /// @return Base64-encoded string representation
+  @Override
+  public String toString() {
+    return toBase64();
+  }
 
-    /**
-     * Decodes a Base64 string into a ByteSequence.
-     * 
-     * @param base64 Base64-encoded string
-     * @return ByteSequence containing the decoded bytes
-     * @throws IllegalArgumentException if the string is not valid Base64
-     */
-    public static ByteSequence fromBase64(String base64) {
-        return of(Base64.getDecoder().decode(base64));
-    }
+  /// Encodes this ByteSequence as a Base64 string.
+  /// This is safe for any binary data and guarantees perfect round-trip conversion.
+  ///
+  /// @return Base64-encoded string representation
+  public String toBase64() {
+    return Base64.getEncoder().encodeToString(bytes);
+  }
 
-    /// This takes a defensive copy of the passed bytes. This should be used if
-    /// the array can be recycled by the caller.
-    /// @param bytes The bytes to copy.
-    public static ByteSequence copyOf(byte[] bytes) {
-        return new ByteSequence(bytes.clone());
-    }
+  /// This returns a defensive copy.:x
+  /// @return A deep copy of this sequence.
+  public ByteSequence copy() {
+    return ByteSequence.copyOf(bytes);
+  }
 
-    /// This does not take a defensive copy of the passed bytes. This should be
-    /// used only if you know that the array cannot be recycled.
-    /// @param bytes The bytes to copy.
-    public static ByteSequence of(byte[] bytes) {
-        return new ByteSequence(bytes);
-    }
+  /// This takes a defensive copy of the passed bytes. This should be used if
+  /// the array can be recycled by the caller.
+  /// @param bytes The bytes to copy.
+  public static ByteSequence copyOf(byte[] bytes) {
+    return new ByteSequence(bytes.clone());
+  }
 
-    /// This returns a defensive copy.:x
-    /// @return A deep copy of this sequence.
-    public ByteSequence copy() {
-        return ByteSequence.copyOf(bytes);
-    }
+  /// This returns a defensive copy of the internal byte array.
+  /// TODO why is this unused
+  /// @return A copy of the wrapped bytes.
+  @SuppressWarnings("unused")
+  public byte[] bytes() {
+    return bytes.clone();
+  }
 
-    /// This returns a defensive copy of the internal byte array.
-    /// TODO why is this unused
-    /// @return A copy of the wrapped bytes.
-    @SuppressWarnings("unused")
-    public byte[] bytes() {
-        return bytes.clone();
-    }
-
-    public long length() {
-        return bytes.length;
-    }
+  public long length() {
+    return bytes.length;
+  }
 }

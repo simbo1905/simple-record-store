@@ -300,7 +300,7 @@ public class FileRecordStore implements AutoCloseable {
     private RecordHeader keyToRecordHeader(ByteSequence key) {
         RecordHeader h = memIndex.get(key);
         if (h == null) {
-            throw new IllegalArgumentException(String.format("Key not found %s '%s'", print(key.bytes), new String(key.bytes)));
+            throw new IllegalArgumentException(String.format("Key not found %s '%s'", print(key.bytes), key.toBase64()));
         }
         return h;
     }
@@ -532,7 +532,7 @@ public class FileRecordStore implements AutoCloseable {
             for (int index = 0; index < recordFile.getNumRecords(); index++) {
                 final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
                 val bk = recordFile.readKeyFromIndex(index);
-                final String k = new String(bk.bytes);
+                final String k = bk.toBase64();
                 logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                         index,
                         k,
@@ -544,7 +544,7 @@ public class FileRecordStore implements AutoCloseable {
                 ));
                 final byte[] data = recordFile.readRecordData(bk);
 
-                String d = new String(data);
+                String d = java.util.Base64.getEncoder().encodeToString(data);
                 int finalIndex = index;
                 logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex, data.length, d));
             }
@@ -647,7 +647,7 @@ public class FileRecordStore implements AutoCloseable {
 
         FileRecordStore.logger.log(Level.FINEST, () ->
                 String.format(">k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
-                        fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, new String(key.bytes), print(key.bytes)));
+                        fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, key.toBase64(), print(key.bytes)));
     }
 
     /*
@@ -677,7 +677,7 @@ public class FileRecordStore implements AutoCloseable {
 
         FileRecordStore.logger.log(Level.FINEST, () ->
                 String.format("<k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
-                        fp, position, len, fp + len, crc32actual, new String(key), print(key)));
+                        fp, position, len, fp + len, crc32actual, java.util.Base64.getEncoder().encodeToString(key), print(key)));
 
         if (crc32actual != crc32expected) {
             throw new IllegalStateException(
@@ -686,7 +686,7 @@ public class FileRecordStore implements AutoCloseable {
                             crc32actual,
                             len,
                             fp,
-                            new String(key),
+                            java.util.Base64.getEncoder().encodeToString(key),
                             print(key)
                     ));
         }
@@ -984,7 +984,7 @@ public class FileRecordStore implements AutoCloseable {
             for (int index = 0; index < getNumRecords(); index++) {
                 final RecordHeader header = readRecordHeaderFromIndex(index);
                 val bk = readKeyFromIndex(index);
-                final String k = new String(bk.bytes);
+                final String k = bk.toBase64();
                 int finalIndex = index;
                 logger.log(level, () -> String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                         finalIndex,
@@ -997,7 +997,7 @@ public class FileRecordStore implements AutoCloseable {
                 ));
                 final byte[] data = readRecordData(bk);
 
-                String d = new String(data);
+                String d = java.util.Base64.getEncoder().encodeToString(data);
                 int finalIndex1 = index;
                 logger.log(level, () -> String.format("%d data  len=%d data=%s", finalIndex1, data.length, d));
             }

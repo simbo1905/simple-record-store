@@ -3,7 +3,6 @@ package com.github.trex_paxos.srs;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 
@@ -64,50 +63,6 @@ public class ByteSequence {
      */
     public static ByteSequence fromBase64(String base64) {
         return of(Base64.getDecoder().decode(base64));
-    }
-
-    /**
-     * This encodes a string into a fresh UTF8 byte array wrapped as a
-     * ByteSequence. Note that this copies data.
-     * 
-     * @deprecated Use fromBase64() for arbitrary binary data or explicitly construct
-     *             with of(string.getBytes(StandardCharsets.UTF_8)) for text keys.
-     *             This method is kept for backward compatibility.
-     * @param string A string
-     * @return ByteSequence wrapping a UTF8 byte array generated from the input string.
-     */
-    @Deprecated
-    public static ByteSequence stringToUtf8(String string){
-        return of(string.getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
-     * This decodes a UTF8 byte array wrapped in a ByteSequence into a string.
-     * Note that this copies data.
-     * 
-     * @deprecated Use toBase64() for safe string representation of arbitrary binary data.
-     *             This method can corrupt data if bytes are not valid UTF-8.
-     *             Kept for backward compatibility.
-     * @param utf8 A ByteSequence wrapping a UTF8 encoded string.
-     * @return A String that has decoded and copied the data into its internal state.
-     */
-    @Deprecated
-    public static String utf8ToString(ByteSequence utf8){
-        return utf8ToString(utf8.bytes);
-    }
-
-    /**
-     * This decodes a UTF8 byte array into a string. Note that this copies data.
-     * 
-     * @deprecated Use Base64 encoding for safe string representation of arbitrary binary data.
-     *             This method can corrupt data if bytes are not valid UTF-8.
-     *             Kept for backward compatibility.
-     * @param utf8 A byte array
-     * @return A String that has decoded and copied the data into its internal state.
-     */
-    @Deprecated
-    public static String utf8ToString(byte[] utf8){
-        return new String(utf8, StandardCharsets.UTF_8);
     }
 
     /// This takes a defensive copy of the passed bytes. This should be used if

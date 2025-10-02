@@ -1,6 +1,5 @@
 package com.github.trex_paxos.srs;
 
-import lombok.val;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,42 +26,42 @@ public class TracePlayback {
     }
 
     public static void main(String[] args) throws Exception {
-        val initialLength = Integer.parseInt(args[0]);
-        val keyMax = Integer.parseInt(args[1]);
-        val file = args[2];
-        val f = new File(TMP+"playback");
+        final var initialLength = Integer.parseInt(args[0]);
+        final var keyMax = Integer.parseInt(args[1]);
+        final var file = args[2];
+        final var f = new File(TMP+"playback");
         if( f.exists() ) //noinspection ResultOfMethodCallIgnored
           f.delete();
         System.out.printf("initialLength: %d, keyMax: %d, file: %s%n", initialLength, keyMax, file);
-        val counter = new AtomicInteger(0);
+        final var counter = new AtomicInteger(0);
         try (FileRecordStore recordStore = new FileRecordStore(TMP + "playback", initialLength, keyMax, false);
              Scanner in = new Scanner(new FileInputStream(file))) {
             while (in.hasNextLine()) {
                 String l = in.nextLine();
                 if (l.startsWith("FINE: ")) {
-                    val keyMatcher = keyPattern.matcher(l);
+                    final var keyMatcher = keyPattern.matcher(l);
                     if (keyMatcher.find()) {
-                        val octalString = keyMatcher.group(1);
-                        val octalValues = octalString.split(" ");
+                        final var octalString = keyMatcher.group(1);
+                        final var octalValues = octalString.split(" ");
                         byte[] key = new byte[octalValues.length];
                         int index = 0;
                         for (String o : octalValues) {
-                            val o2 = o.substring(2);
+                            final var o2 = o.substring(2);
                             int firstDigit = toDigit(o2.charAt(0));
                             int secondDigit = toDigit(o2.charAt(1));
-                            val b = (byte) ((firstDigit << 4) + secondDigit);
+                            final var b = (byte) ((firstDigit << 4) + secondDigit);
                             key[index] = b;
                             index++;
                         }
-                        val k = ByteSequence.of(key);
+                        final var k = ByteSequence.of(key);
                         try {
                             if (l.startsWith("FINE: deleteRecord")) {
                                 recordStore.deleteRecord(k);
                                 return;
                             }
-                            val lenMatcher = lenPattern.matcher(l);
+                            final var lenMatcher = lenPattern.matcher(l);
                             if (lenMatcher.find()) {
-                                val len = lenMatcher.group(1);
+                                final var len = lenMatcher.group(1);
                                 byte[] value = new byte[Integer.parseInt(len)];
                                 if (l.startsWith("FINE: insertRecord"))
                                     recordStore.insertRecord(ByteSequence.of(key), value);

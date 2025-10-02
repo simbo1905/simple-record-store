@@ -37,3 +37,14 @@
 ## Configuration & Logging Tips
 - Tune key length and padding with system properties such as `-Dcom.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH=128` to mirror production limits.
 - Enable `Level.FINEST` logging when investigating disk corruption; redact sensitive keys before sharing traces.
+
+## Use Modern CLI Tools When Available
+
+Check for `rg` and `perl` and other power tools and use them if that makes sense. For example to do mechanical refactors
+across many sites perfer things like:
+
+```shell
+#  □ Replace Lombok `val` usages with `final var` in tests and sources.
+perl -pi -e 's/\bval\b/final var/g' $(rg -l '\bval\b' --glob '*.java')
+perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var;' --glob '*.java')
+```

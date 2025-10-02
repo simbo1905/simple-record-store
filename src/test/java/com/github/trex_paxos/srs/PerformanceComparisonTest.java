@@ -1,6 +1,5 @@
 package com.github.trex_paxos.srs;
 
-import lombok.val;
 import org.junit.Test;
 
 import java.io.File;
@@ -29,7 +28,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long directStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore(directFile, 10000, false)) {
                 for (int i = 0; i < RECORD_COUNT; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     byte[] value = new byte[RECORD_SIZE];
                     Arrays.fill(value, (byte) ('A' + (i % 26)));
                     store.insertRecord(key, value);
@@ -41,7 +40,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long mmapStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore(mmapFile, 10000, true)) {
                 for (int i = 0; i < RECORD_COUNT; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     byte[] value = new byte[RECORD_SIZE];
                     Arrays.fill(value, (byte) ('A' + (i % 26)));
                     store.insertRecord(key, value);
@@ -85,7 +84,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             // Test direct I/O updates
             try (FileRecordStore store = new FileRecordStore(directFile, 10000, false)) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     store.insertRecord(key, value1);
                 }
             }
@@ -93,7 +92,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long directStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore(directFile, "rw", false, false)) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     store.updateRecord(key, value2);
                 }
             }
@@ -102,7 +101,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             // Test memory-mapped I/O updates
             try (FileRecordStore store = new FileRecordStore(mmapFile, 10000, true)) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     store.insertRecord(key, value1);
                 }
             }
@@ -110,7 +109,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long mmapStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore(mmapFile, "rw", false, true)) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     store.updateRecord(key, value2);
                 }
             }

@@ -1,6 +1,5 @@
 package com.github.trex_paxos.srs;
 
-import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -17,6 +16,7 @@ import java.util.stream.IntStream;
 import java.util.zip.CRC32;
 
 import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
+import static com.github.trex_paxos.srs.TestByteSequences.fromUtf8;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
@@ -28,7 +28,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   private final static Logger logger = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
   static {
-    val msg = String.format(">TMP:%s", TMP);
+    final var msg = String.format(">TMP:%s", TMP);
     logger.info(msg);
   }
 
@@ -72,24 +72,24 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
     logger.info("adding a record...");
     final Date date = new Date();
-    recordsFile.insertRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"), serializerDate.apply(date));
+    recordsFile.insertRecord(fromUtf8("foo.lastAccessTime"), serializerDate.apply(date));
 
     logger.info("reading record...");
-    Date d = deserializerDate.apply(recordsFile.readRecordData(ByteSequence.stringToUtf8("foo.lastAccessTime")));
+    Date d = deserializerDate.apply(recordsFile.readRecordData(fromUtf8("foo.lastAccessTime")));
 
     Assert.assertEquals(date, d);
 
     logger.info("updating record...");
-    recordsFile.updateRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"), serializerDate.apply(new Date()));
+    recordsFile.updateRecord(fromUtf8("foo.lastAccessTime"), serializerDate.apply(new Date()));
 
     logger.info("reading record...");
     //noinspection UnusedAssignment
-    d = deserializerDate.apply(recordsFile.readRecordData(ByteSequence.stringToUtf8("foo.lastAccessTime")));
+    d = deserializerDate.apply(recordsFile.readRecordData(fromUtf8("foo.lastAccessTime")));
 
     logger.info("deleting record...");
-    recordsFile.deleteRecord(ByteSequence.stringToUtf8("foo.lastAccessTime"));
+    recordsFile.deleteRecord(fromUtf8("foo.lastAccessTime"));
 
-    if (recordsFile.recordExists(ByteSequence.stringToUtf8("foo.lastAccessTime"))) {
+    if (recordsFile.recordExists(fromUtf8("foo.lastAccessTime"))) {
       throw new Exception("Record not deleted");
     } else {
       logger.info("record successfully deleted.");
@@ -102,12 +102,12 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testMoveUpdatesPositionMap() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 100, 64, false);
+    final var recordStore = new FileRecordStore(fileName, 100, 64, false);
     final String value = String.join("", Collections.nCopies(100, "x"));
     IntStream.range(0, 4).forEach(i -> {
       final String key = String.join("", Collections.nCopies(64, "" + i));
       try {
-        recordStore.insertRecord(ByteSequence.stringToUtf8(key), value.getBytes());
+        recordStore.insertRecord(fromUtf8(key), value.getBytes());
       } catch (IOException e) {
         throw new RuntimeException(e.getMessage(), e);
       }
@@ -116,10 +116,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testDoubleInsertIntoLargeFile() throws Exception {
-    val recordStore = new FileRecordStore(fileName, 1000, 64, false);
+    final var recordStore = new FileRecordStore(fileName, 1000, 64, false);
     final String value = String.join("", Collections.nCopies(100, "x"));
-    val key1 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "1")));
-    val key2 = ByteSequence.stringToUtf8(String.join("", Collections.nCopies(4, "2")));
+    final var key1 = fromUtf8(String.join("", Collections.nCopies(4, "1")));
+    final var key2 = fromUtf8(String.join("", Collections.nCopies(4, "2")));
     recordStore.insertRecord(key1, value.getBytes());
     recordStore.insertRecord(key2, value.getBytes());
   }
@@ -134,12 +134,12 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
-      val key = ByteSequence.of("key".getBytes());
-      val data = (dataPadding + "data").getBytes();
+      final var key = ByteSequence.of("key".getBytes());
+      final var data = (dataPadding + "data").getBytes();
       recordsFile.insertRecord(key, data);
 
       // then
-      val put0 = recordsFile.readRecordData(key);
+      final var put0 = recordsFile.readRecordData(key);
       Assert.assertArrayEquals(put0, data);
 
       recordsFile = new FileRecordStore(fileName, "r", false);
@@ -169,7 +169,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
           recordsFile.close();
           try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
             int count = possiblyCorruptedFile.getNumRecords();
-            for (val k : possiblyCorruptedFile.keys()) {
+            for (var k : possiblyCorruptedFile.keys()) {
               // readRecordData has a CRC32 check where the payload must match the header
               possiblyCorruptedFile.readRecordData(k);
               count--;
@@ -222,16 +222,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
-      val key2 = ByteSequence.of("key2".getBytes());
-      val data2 = (dataPadding + "data2").getBytes();
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.insertRecord(key2, data2);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
-      val put2 = recordsFile.readRecordData(key2);
+      final var put1 = recordsFile.readRecordData(key1);
+      final var put2 = recordsFile.readRecordData(key2);
 
       Assert.assertArrayEquals(put1, data1);
       Assert.assertArrayEquals(put2, data2);
@@ -251,8 +251,8 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
       recordsFile.deleteRecord(key1);
 
@@ -276,12 +276,12 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
-      val key2 = ByteSequence.of("key2".getBytes());
-      val data2 = (dataPadding + "data2").getBytes();
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.insertRecord(key2, data2);
 
       recordsFile.deleteRecord(key1);
@@ -311,26 +311,26 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
-      val key2 = ByteSequence.of("key2".getBytes());
-      val data2 = (dataPadding + "data2").getBytes();
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.insertRecord(key2, data2);
 
       recordsFile.deleteRecord(key1);
 
-      val key3 = ByteSequence.of("key3".getBytes());
-      val data3 = (dataPadding + "data3").getBytes();
+      final var key3 = ByteSequence.of("key3".getBytes());
+      final var data3 = (dataPadding + "data3").getBytes();
       recordsFile.insertRecord(key3, data3);
 
       // then
       if (recordsFile.recordExists(key1)) {
         throw new Exception("Record not deleted");
       }
-      val put2 = recordsFile.readRecordData(key2);
-      val put3 = recordsFile.readRecordData(key3);
+      final var put2 = recordsFile.readRecordData(key2);
+      final var put3 = recordsFile.readRecordData(key3);
 
       Assert.assertArrayEquals(put2, data2);
       Assert.assertArrayEquals(put3, data3);
@@ -350,26 +350,26 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
-      val key2 = ByteSequence.of("key2".getBytes());
-      val data2 = (dataPadding + "data2").getBytes();
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.insertRecord(key2, data2);
 
       recordsFile.deleteRecord(key1);
 
-      val key3 = ByteSequence.of("key3".getBytes());
-      val data3 = (dataPadding + "data3").getBytes();
+      final var key3 = ByteSequence.of("key3".getBytes());
+      final var data3 = (dataPadding + "data3").getBytes();
       recordsFile.insertRecord(key3, data3);
 
       // then
       if (recordsFile.recordExists(key1)) {
         throw new Exception("Record not deleted");
       }
-      val put2 = recordsFile.readRecordData(key2);
-      val put3 = recordsFile.readRecordData(key3);
+      final var put2 = recordsFile.readRecordData(key2);
+      final var put3 = recordsFile.readRecordData(key3);
 
       Assert.assertArrayEquals(put2, data2);
       Assert.assertArrayEquals(put3, data3);
@@ -389,14 +389,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
-      val data2 = (dataPadding + "data2").getBytes();
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.updateRecord(key1, data2);
 
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
 
       Assert.assertArrayEquals(put1, data2);
 
@@ -415,87 +415,20 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
       @SuppressWarnings("SpellCheckingInspection")
-      val data2 = (dataPadding + "data2xxxxxxxxxxxxxxxx").getBytes();
+      final var data2 = (dataPadding + "data2xxxxxxxxxxxxxxxx").getBytes();
       recordsFile.updateRecord(key1, data2);
 
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data2);
 
       recordsFile = new FileRecordStore(fileName, "r", false);
     });
   }
-//        List<UUID> uuids = createUuid(3);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid2);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
-//    @Test
-//    public void testInsertThreeDeleteSecondInsertOneWithIOExceptions() throws Exception {
-//        List<UUID> uuids = createUuid(4);
-//
-//        verifyWorkWithIOExceptions(new InterceptedTestOperations() {
-//            @Override
-//            public void performTestOperations(WriteCallback wc, String fileName,
-//                                              List<UUID> uuids,
-//                                              AtomicReference<Set<Entry<String, String>>> written) throws Exception {
-//                deleteFileIfExists(fileName);
-//                // given
-//                recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
-//                UUID uuid0 = uuids.get(0);
-//                UUID uuid1 = uuids.get(1);
-//                UUID uuid2 = uuids.get(2);
-//                UUID uuid3 = uuids.get(3);
-//
-//                writeUuid(uuid0);
-//                writeUuid(uuid1);
-//                writeUuid(uuid2);
-//                recordsFile.deleteRecord(stringToUtf8(uuid1.toString()));
-//                writeUuid(uuid3);
-//
-//                // then
-//                String put0 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid0.toString())));
-//                String put2 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid2.toString())));
-//                String put3 = FileRecordStore.bytesToString(recordsFile.readRecordData(stringToUtf8(uuid3.toString())));
-//                Assert.assertThat(put0, is(uuid0.toString()));
-//                Assert.assertThat(put2, is(uuid2.toString()));
-//                Assert.assertThat(put3, is(uuid3.toString()));
-//                if (recordsFile.recordExists(stringToUtf8(uuid1.toString()))) {
-//                    throw new Exception("Record not deleted");
-//                }
-//            }
-//        }, uuids);
-//    }
-//
 
   @Test
   public void testUpdateExpandFirstRecord() throws Exception {
@@ -508,18 +441,18 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, initialSize, wc, false);
 
       // when
-      val key1 = ByteSequence.of("key1".getBytes());
-      val data1 = (dataPadding + "data1").getBytes();
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var data1 = (dataPadding + "data1").getBytes();
       recordsFile.insertRecord(key1, data1);
 
-      val key2 = ByteSequence.of("key2".getBytes());
-      val data2 = (dataPadding + "data2").getBytes();
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.insertRecord(key2, data2);
 
-      val data1large = (dataPadding + "data1" + dataPadding).getBytes();
+      final var data1large = (dataPadding + "data1" + dataPadding).getBytes();
       recordsFile.updateRecord(key1, data1large);
 
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data1large);
 
       recordsFile = new FileRecordStore(fileName, "r", false);
@@ -528,16 +461,16 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testUpdateExpandMiddleRecordWithIOExceptions() throws Exception {
-    val one = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val two = String.join("", Collections.nCopies(512, "1")).getBytes();
-    val three = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var one = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var two = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var three = String.join("", Collections.nCopies(256, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
-      val key3 = ByteSequence.of("key3".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var key3 = ByteSequence.of("key3".getBytes());
       recordsFile.insertRecord(key1, one);
       recordsFile.insertRecord(key2, one); // 256
       recordsFile.insertRecord(key3, three);
@@ -545,11 +478,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       //when
       recordsFile.updateRecord(key2, two); // 512
 
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, one);
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, two);
-      val put3 = (recordsFile.readRecordData(key3));
+      final var put3 = (recordsFile.readRecordData(key3));
       Assert.assertArrayEquals(put3, three);
 
       recordsFile = new FileRecordStore(fileName, "r", false);
@@ -558,20 +491,20 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testUpdateExpandOnlyRecord() throws Exception {
-    val one = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val two = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var one = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var two = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
       recordsFile.insertRecord(key1, one);
 
       // when
       recordsFile.updateRecord(key1, two); // 512
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, two);
 
       recordsFile = new FileRecordStore(fileName, "r", false);
@@ -580,14 +513,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void indexOfFatRecordCausesHole() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     recordsFile = new FileRecordStore(fileName, initialSize);
 
     // given
-    val key1 = ByteSequence.of("key1".getBytes());
-    val key2 = ByteSequence.of("key2".getBytes());
-    val key3 = ByteSequence.of("key3".getBytes());
+    final var key1 = ByteSequence.of("key1".getBytes());
+    final var key2 = ByteSequence.of("key2".getBytes());
+    final var key3 = ByteSequence.of("key3".getBytes());
 
     // when
     recordsFile.insertRecord(key1, narrow);
@@ -605,14 +538,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testUpdateShrinkLastRecordWithIOExceptions() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
       recordsFile.insertRecord(key1, narrow);
@@ -622,21 +555,21 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.updateRecord(key2, narrow);
 
       // then
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, narrow);
     });
   }
 
   @Test
   public void testUpdateShrinkFirstRecordWithIOExceptions() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
       recordsFile.insertRecord(key1, wide);
@@ -646,22 +579,22 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.updateRecord(key1, narrow);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, narrow);
     });
   }
 
   @Test
   public void testUpdateShrinkMiddleRecordWithIOExceptions() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
-      val key3 = ByteSequence.of("key3".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
       recordsFile.insertRecord(key1, narrow);
@@ -671,41 +604,41 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.updateRecord(key2, narrow);
 
       // then
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, narrow);
     });
   }
 
   @Test
   public void testUpdateShrinkOnlyRecordWithIOExceptions() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
 
       // when
       recordsFile.insertRecord(key1, wide);
       recordsFile.updateRecord(key1, narrow);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, narrow);
     });
   }
 
   @Test
   public void testDeleteFirstEntries() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
       recordsFile.insertRecord(key1, narrow);
@@ -713,21 +646,21 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.deleteRecord(key1);
 
       // then
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, wide);
     });
   }
 
   @Test
   public void testDeleteLastEntry() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
       recordsFile.insertRecord(key1, narrow);
@@ -735,22 +668,22 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.deleteRecord(key2);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, narrow);
     });
   }
 
   @Test
   public void testDeleteMiddleEntriesWithIOExceptions() throws Exception {
-    val narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
-      val key3 = ByteSequence.of("key3".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
       recordsFile.insertRecord(key1, narrow);
@@ -759,21 +692,21 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.deleteRecord(key2);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, narrow);
-      val put3 = recordsFile.readRecordData(key3);
+      final var put3 = recordsFile.readRecordData(key3);
       Assert.assertArrayEquals(put3, wide);
     });
   }
 
   @Test
   public void testDeleteOnlyEntryWithIOExceptions() throws Exception {
-    val wide = String.join("", Collections.nCopies(512, "1")).getBytes();
+    final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
 
       // when
       recordsFile.insertRecord(key1, wide);
@@ -787,15 +720,15 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void tesSplitFirstWithIOExceptions() throws Exception {
-    val oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
-    val oneWide = String.join("", Collections.nCopies(1024, "1")).getBytes();
-    val twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
+    final var oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
+    final var oneWide = String.join("", Collections.nCopies(1024, "1")).getBytes();
+    final var twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
       recordsFile.insertRecord(key1, oneWide);
@@ -803,26 +736,26 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.insertRecord(key2, twoNarrow);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, oneNarrow);
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, twoNarrow);
     });
   }
 
   @Test
   public void tesSplitLastWithIOExceptions() throws Exception {
-    val oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
-    val twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
-    val twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
-    val threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
+    final var oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
+    final var twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
+    final var twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
+    final var threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
-      val key3 = ByteSequence.of("key3".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
       recordsFile.insertRecord(key1, oneNarrow);
@@ -831,30 +764,30 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile.insertRecord(key3, threeNarrow);
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, oneNarrow);
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, twoNarrow);
-      val put3 = recordsFile.readRecordData(key3);
+      final var put3 = recordsFile.readRecordData(key3);
       Assert.assertArrayEquals(put3, threeNarrow);
     });
   }
 
   @Test
   public void tesSplitMiddleWithIOExceptions() throws Exception {
-    val oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
-    val twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
-    val twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
-    val threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
-    val fourNarrow = String.join("", Collections.nCopies(38, "4")).getBytes();
+    final var oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
+    final var twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
+    final var twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
+    final var threeNarrow = String.join("", Collections.nCopies(38, "3")).getBytes();
+    final var fourNarrow = String.join("", Collections.nCopies(38, "4")).getBytes();
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // given
-      val key1 = ByteSequence.of("key1".getBytes());
-      val key2 = ByteSequence.of("key2".getBytes());
-      val key3 = ByteSequence.of("key3".getBytes());
-      val key4 = ByteSequence.of("key4".getBytes());
+      final var key1 = ByteSequence.of("key1".getBytes());
+      final var key2 = ByteSequence.of("key2".getBytes());
+      final var key3 = ByteSequence.of("key3".getBytes());
+      final var key4 = ByteSequence.of("key4".getBytes());
 
       // when
       recordsFile.insertRecord(key1, oneNarrow);
@@ -865,22 +798,22 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
 
       // then
-      val put1 = recordsFile.readRecordData(key1);
+      final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, oneNarrow);
-      val put2 = recordsFile.readRecordData(key2);
+      final var put2 = recordsFile.readRecordData(key2);
       Assert.assertArrayEquals(put2, twoNarrow);
-      val put3 = recordsFile.readRecordData(key3);
+      final var put3 = recordsFile.readRecordData(key3);
       Assert.assertArrayEquals(put3, threeNarrow);
-      val put4 = recordsFile.readRecordData(key4);
+      final var put4 = recordsFile.readRecordData(key4);
       Assert.assertArrayEquals(put4, fourNarrow);
     });
   }
 
   @Test
   public void testFreeSpaceInIndexWithIOExceptions() throws Exception {
-    val oneLarge = String.join("", Collections.nCopies(1024, "1")).getBytes();
-    val twoSmall = String.join("", Collections.nCopies(38, "2")).getBytes();
-    val threeSmall = String.join("", Collections.nCopies(38, "3")).getBytes();
+    final var oneLarge = String.join("", Collections.nCopies(1024, "1")).getBytes();
+    final var twoSmall = String.join("", Collections.nCopies(38, "2")).getBytes();
+    final var threeSmall = String.join("", Collections.nCopies(38, "3")).getBytes();
 
     verifyWorkWithIOExceptions((wc, fileName) -> {
       // set initial size equal to 2x header and 2x padded payload
@@ -888,13 +821,13 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
           4 * FileRecordStore.DEFAULT_MAX_KEY_LENGTH, wc, false);
 
       // when
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), oneLarge);
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), twoSmall);
-      val maxLen = recordsFile.getFileLength();
-      recordsFile.deleteRecord(ByteSequence.stringToUtf8("one"));
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), threeSmall);
+      recordsFile.insertRecord(fromUtf8("one"), oneLarge);
+      recordsFile.insertRecord(fromUtf8("two"), twoSmall);
+      final var maxLen = recordsFile.getFileLength();
+      recordsFile.deleteRecord(fromUtf8("one"));
+      recordsFile.insertRecord(fromUtf8("three"), threeSmall);
 
-      val finalLen = recordsFile.getFileLength();
+      final var finalLen = recordsFile.getFileLength();
 
       // then
       assertEquals(2, recordsFile.size());
@@ -905,27 +838,27 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testFreeSpaceInMiddleWithIOExceptions() throws Exception {
-    val one = String.join("", Collections.nCopies(38, "1")).getBytes();
-    val twoLarge = String.join("", Collections.nCopies(1024, "2")).getBytes();
-    val three = String.join("", Collections.nCopies(38, "3")).getBytes();
-    val four = String.join("", Collections.nCopies(38, "4")).getBytes();
+    final var one = String.join("", Collections.nCopies(38, "1")).getBytes();
+    final var twoLarge = String.join("", Collections.nCopies(1024, "2")).getBytes();
+    final var three = String.join("", Collections.nCopies(38, "3")).getBytes();
+    final var four = String.join("", Collections.nCopies(38, "4")).getBytes();
 
     verifyWorkWithIOExceptions((wc, fileName) -> {
       recordsFile = new RecordsFileSimulatesDiskFailures(fileName, 2, wc, false);
 
       // when
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("one"), (one));
+      recordsFile.insertRecord(fromUtf8("one"), (one));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("two"), (twoLarge));
+      recordsFile.insertRecord(fromUtf8("two"), (twoLarge));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("three"), (three));
+      recordsFile.insertRecord(fromUtf8("three"), (three));
 
-      val maxLen = recordsFile.getFileLength();
-      recordsFile.deleteRecord(ByteSequence.stringToUtf8("two"));
+      final var maxLen = recordsFile.getFileLength();
+      recordsFile.deleteRecord(fromUtf8("two"));
 
-      recordsFile.insertRecord(ByteSequence.stringToUtf8("four"), (four));
+      recordsFile.insertRecord(fromUtf8("four"), (four));
 
-      val finalLen = recordsFile.getFileLength();
+      final var finalLen = recordsFile.getFileLength();
 
       // then
       assertEquals(3, recordsFile.size());
@@ -944,11 +877,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       recordsFile = new FileRecordStore(fileName, initialSize);
 
       // when
-      val longestKey = String.join("", Collections.nCopies(recordsFile.maxKeyLength, "1")).getBytes();
+      final var longestKey = String.join("", Collections.nCopies(recordsFile.maxKeyLength, "1")).getBytes();
       recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
 
       // then
-      val put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
+      final var put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
 
       Assert.assertArrayEquals(put0, longestKey);
     } finally {
@@ -961,7 +894,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   @Test
   public void testCrc32asUnsignedInteger() {
     final String data = String.join("", Collections.nCopies(1024, "2"));
-    val crc32 = new CRC32();
+    final var crc32 = new CRC32();
     crc32.update(data.getBytes(), 0, 1024);
     long crcLong = crc32.getValue();
     int crcInt = (int) crcLong;
@@ -981,7 +914,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
             FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
         Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
 
-    val longestKey = String.join("", Collections.nCopies(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1")).getBytes();
+    final var longestKey = String.join("", Collections.nCopies(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1")).getBytes();
 
     try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)) {
       recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
@@ -993,7 +926,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
     recordsFile = new FileRecordStore(fileName, "r");
 
-    val put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
+    final var put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
 
     Assert.assertArrayEquals(put0, longestKey);
 

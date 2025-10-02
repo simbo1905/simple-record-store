@@ -165,20 +165,6 @@ public class ByteSequenceBase64Test {
     }
 
     @Test
-    public void testBackwardCompatibilityOfUtf8Methods() {
-        // Ensure deprecated methods still work for valid UTF-8 text
-        String text = "Hello, World!";
-        
-        @SuppressWarnings("deprecation")
-        ByteSequence seq = ByteSequence.stringToUtf8(text);
-        
-        @SuppressWarnings("deprecation")
-        String decoded = ByteSequence.utf8ToString(seq);
-        
-        assertEquals("Deprecated UTF-8 methods should still work for text", text, decoded);
-    }
-
-    @Test
     public void testNullByteHandling() {
         byte[] withNulls = {0, 1, 0, 2, 0, 3};
         ByteSequence seq = ByteSequence.of(withNulls);

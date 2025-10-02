@@ -1,6 +1,5 @@
 package com.github.trex_paxos.srs;
 
-import lombok.val;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -26,8 +25,8 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             // Create a new store with memory mapping enabled
             try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
                 // Insert
-                val key1 = ByteSequence.of("key1".getBytes());
-                val value1 = "value1".getBytes();
+                final var key1 = ByteSequence.of("key1".getBytes());
+                final var value1 = "value1".getBytes();
                 store.insertRecord(key1, value1);
                 
                 // Read
@@ -35,7 +34,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
                 Assert.assertArrayEquals(value1, read1);
                 
                 // Update
-                val value2 = "value2-updated".getBytes();
+                final var value2 = "value2-updated".getBytes();
                 store.updateRecord(key1, value2);
                 byte[] read2 = store.readRecordData(key1);
                 Assert.assertArrayEquals(value2, read2);
@@ -61,14 +60,14 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
                 // Insert multiple records
                 for (int i = 0; i < 100; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
-                    val value = ("value" + i).getBytes();
+                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final var value = ("value" + i).getBytes();
                     store.insertRecord(key, value);
                 }
                 
                 // Verify all records
                 for (int i = 0; i < 100; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     Assert.assertTrue(store.recordExists(key));
                     byte[] value = store.readRecordData(key);
                     Assert.assertArrayEquals(("value" + i).getBytes(), value);
@@ -79,7 +78,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             try (FileRecordStore store = new FileRecordStore(fileName, "r", false, true)) {
                 Assert.assertEquals(100, store.getNumRecords());
                 for (int i = 0; i < 100; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     Assert.assertTrue(store.recordExists(key));
                 }
             }
@@ -94,7 +93,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         try {
             try (FileRecordStore store = new FileRecordStore(fileName, 10000, true)) {
                 // Insert large records
-                val key1 = ByteSequence.of("largekey1".getBytes());
+                final var key1 = ByteSequence.of("largekey1".getBytes());
                 byte[] largeValue = new byte[10000];
                 Arrays.fill(largeValue, (byte) 'A');
                 store.insertRecord(key1, largeValue);
@@ -120,11 +119,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     public void testUpdateInPlaceWithMemoryMapping() throws Exception {
         String fileName = TEST_DIR + "/test-mmap-update-" + System.nanoTime() + ".db";
         try {
-            val data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
-            val data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
+            final var data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
+            final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
             
             try (FileRecordStore store = new FileRecordStore(fileName, 2000, true)) {
-                val key = ByteSequence.of("testkey".getBytes());
+                final var key = ByteSequence.of("testkey".getBytes());
                 store.insertRecord(key, data1);
                 
                 // Update with same size (should be in-place)
@@ -143,8 +142,8 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         String fileName = TEST_DIR + "/test-mmap-fsync-" + System.nanoTime() + ".db";
         try {
             try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
-                val key = ByteSequence.of("key1".getBytes());
-                val value = "value1".getBytes();
+                final var key = ByteSequence.of("key1".getBytes());
+                final var value = "value1".getBytes();
                 store.insertRecord(key, value);
                 
                 // Call fsync explicitly
@@ -157,7 +156,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             
             // Verify persistence after close
             try (FileRecordStore store = new FileRecordStore(fileName, "r", false, false)) {
-                val key = ByteSequence.of("key1".getBytes());
+                final var key = ByteSequence.of("key1".getBytes());
                 Assert.assertTrue(store.recordExists(key));
             }
         } finally {
@@ -171,15 +170,15 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         try {
             // Create with direct I/O
             try (FileRecordStore store = new FileRecordStore(fileName, 1000, false)) {
-                val key1 = ByteSequence.of("key1".getBytes());
-                val value1 = "value1".getBytes();
+                final var key1 = ByteSequence.of("key1".getBytes());
+                final var value1 = "value1".getBytes();
                 store.insertRecord(key1, value1);
             }
             
             // Open with memory-mapped I/O and add more data
             try (FileRecordStore store = new FileRecordStore(fileName, "rw", false, true)) {
-                val key2 = ByteSequence.of("key2".getBytes());
-                val value2 = "value2".getBytes();
+                final var key2 = ByteSequence.of("key2".getBytes());
+                final var value2 = "value2".getBytes();
                 store.insertRecord(key2, value2);
                 
                 // Verify both records
@@ -204,7 +203,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             try (FileRecordStore store = new FileRecordStore(fileName, 100, true)) {
                 // Insert records that will require file growth
                 for (int i = 0; i < 50; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     byte[] value = new byte[100];
                     Arrays.fill(value, (byte) ('A' + (i % 26)));
                     store.insertRecord(key, value);
@@ -239,8 +238,8 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             // Write some data
             try (FileRecordStore store = new FileRecordStore(fileName, 1000, true)) {
                 for (int i = 0; i < 10; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
-                    val value = ("value" + i).getBytes();
+                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final var value = ("value" + i).getBytes();
                     store.insertRecord(key, value);
                 }
                 // Intentionally not calling fsync() to simulate crash during writes
@@ -251,7 +250,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
                 // Due to close() calling fsync(), all data should be present
                 Assert.assertEquals(10, store.getNumRecords());
                 for (int i = 0; i < 10; i++) {
-                    val key = ByteSequence.of(("key" + i).getBytes());
+                    final var key = ByteSequence.of(("key" + i).getBytes());
                     Assert.assertTrue(store.recordExists(key));
                     byte[] value = store.readRecordData(key);
                     Assert.assertArrayEquals(("value" + i).getBytes(), value);
@@ -270,11 +269,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     public void testDualWritePatternWithMemoryMapping() throws Exception {
         String fileName = TEST_DIR + "/test-mmap-dual-" + System.nanoTime() + ".db";
         try {
-            val data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
-            val data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
+            final var data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
+            final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
             
             try (FileRecordStore store = new FileRecordStore(fileName, 2000, true)) {
-                val key = ByteSequence.of("testkey".getBytes());
+                final var key = ByteSequence.of("testkey".getBytes());
                 store.insertRecord(key, data1);
                 store.fsync(); // Ensure first write is persisted
                 
@@ -288,7 +287,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             
             // Verify persistence
             try (FileRecordStore store = new FileRecordStore(fileName, "r", false, false)) {
-                val key = ByteSequence.of("testkey".getBytes());
+                final var key = ByteSequence.of("testkey".getBytes());
                 byte[] read = store.readRecordData(key);
                 Assert.assertArrayEquals(data2, read);
             }

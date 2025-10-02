@@ -4,7 +4,6 @@ import com.github.trex_paxos.srs.ByteSequence;
 import com.github.trex_paxos.srs.FileRecordStore;
 import com.github.trex_paxos.srs.JulLoggingConfig;
 import com.github.trex_paxos.srs.UUIDGenerator;
-import lombok.val;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Test;
@@ -15,7 +14,8 @@ import java.util.Collections;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.github.trex_paxos.srs.ByteSequence.utf8ToString;
+import static com.github.trex_paxos.srs.TestByteSequences.fromUtf8;
+import static com.github.trex_paxos.srs.TestByteSequences.toUtf8String;
 import static com.github.trex_paxos.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
 
 public class SimpleRecordStoreApiTest extends JulLoggingConfig {
@@ -58,28 +58,28 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         // given
         recordsFile = new FileRecordStore(fileName, initialSize);
         String uuid = UUIDGenerator.generateUUID().toString();
-        val key = ByteSequence.stringToUtf8(uuid);
+        final var key = fromUtf8(uuid);
 
         // when
         this.recordsFile.insertRecord(key, uuid.getBytes());
-        if( recordsFile.recordExists(ByteSequence.stringToUtf8(uuid))){
-            this.recordsFile.deleteRecord(ByteSequence.stringToUtf8(uuid));
+        if( recordsFile.recordExists(fromUtf8(uuid))){
+            this.recordsFile.deleteRecord(fromUtf8(uuid));
         }
 
         Assert.assertTrue(this.recordsFile.isEmpty());
-        Assert.assertFalse(this.recordsFile.recordExists(ByteSequence.stringToUtf8(uuid)));
+        Assert.assertFalse(this.recordsFile.recordExists(fromUtf8(uuid)));
 
-        this.recordsFile.insertRecord(ByteSequence.stringToUtf8(uuid), uuid.getBytes());
+        this.recordsFile.insertRecord(fromUtf8(uuid), uuid.getBytes());
 
         Assert.assertFalse(this.recordsFile.isEmpty());
-        Assert.assertTrue(this.recordsFile.recordExists(ByteSequence.stringToUtf8(uuid)));
+        Assert.assertTrue(this.recordsFile.recordExists(fromUtf8(uuid)));
 
         this.recordsFile.fsync();
 
-        val data = this.recordsFile.readRecordData(ByteSequence.stringToUtf8(uuid));
-        Assert.assertEquals(utf8ToString(data), uuid);
+        final var data = this.recordsFile.readRecordData(fromUtf8(uuid));
+        Assert.assertEquals(toUtf8String(data), uuid);
 
-        this.recordsFile.updateRecord(ByteSequence.stringToUtf8(uuid), "updated".getBytes());
+        this.recordsFile.updateRecord(fromUtf8(uuid), "updated".getBytes());
 
         this.recordsFile.fsync();
 
@@ -87,7 +87,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
         // then
         recordsFile = new FileRecordStore(fileName, "r", false);
-        val updated = this.recordsFile.readRecordData(ByteSequence.stringToUtf8(uuid));
+        final var updated = this.recordsFile.readRecordData(fromUtf8(uuid));
         Assert.assertEquals("updated", new String(updated));
         Assert.assertEquals(1, recordsFile.size());
 
@@ -106,7 +106,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
         final String longestKey = String.join("", Collections
             .nCopies(recordsFile.maxKeyLength - 5, "1"));
-        ByteSequence key = ByteSequence.stringToUtf8(longestKey);
+        ByteSequence key = fromUtf8(longestKey);
         byte[] value = longestKey.getBytes();
         recordsFile.insertRecord(key, value);
 
@@ -116,7 +116,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
                 Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
         recordsFile = new FileRecordStore(fileName, "r");
 
-        String put0 = new String(recordsFile.readRecordData(ByteSequence.stringToUtf8(longestKey)));
+        String put0 = new String(recordsFile.readRecordData(fromUtf8(longestKey)));
 
         Assert.assertEquals(put0, longestKey);
 

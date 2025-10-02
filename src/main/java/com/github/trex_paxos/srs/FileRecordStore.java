@@ -2,7 +2,6 @@ package com.github.trex_paxos.srs;
 
 import lombok.SneakyThrows;
 import lombok.Synchronized;
-import lombok.val;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -194,7 +193,7 @@ public class FileRecordStore implements AutoCloseable {
         this.disableCrc32 = disableCrc32;
         // load the max key length from first byte
         file.seek(0);
-        val b = file.readByte();
+        final var b = file.readByte();
         this.maxKeyLength = b & 0xFF;
         this.indexEntryLength = maxKeyLength + Integer.BYTES
                 + RECORD_HEADER_LENGTH;
@@ -205,11 +204,11 @@ public class FileRecordStore implements AutoCloseable {
         positionIndex = new TreeMap<>();
 
         for (int i = 0; i < numRecords; i++) {
-            val key = readKeyFromIndex(i);
+            final var key = readKeyFromIndex(i);
             RecordHeader header = readRecordHeaderFromIndex(i);
             logger.log(Level.FINEST, () -> String.format("header:%s, key:%s", header, print(key.bytes)));
             header.setIndexPosition(i);
-            val duplicate = memIndex.put(key, header);
+            final var duplicate = memIndex.put(key, header);
             // duplicates are due to crashes where the later write can replace the earlier one
             if (duplicate != null) positionIndex.remove(duplicate.dataPointer);
             positionIndex.put(header.dataPointer, header);
@@ -250,9 +249,9 @@ public class FileRecordStore implements AutoCloseable {
     @SneakyThrows
     static String print(File f) {
         try (RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r")) {
-            val len = file.length();
+            final var len = file.length();
             assert len < Integer.MAX_VALUE;
-            val bytes = new byte[(int) len];
+            final var bytes = new byte[(int) len];
             file.readFully(bytes);
             return print(bytes);
         }
@@ -269,7 +268,7 @@ public class FileRecordStore implements AutoCloseable {
 
     /// Generates a defensive copy of all the keys in a thread safe manner.
     public Iterable<ByteSequence> keys() {
-        val snapshot = snapshotKeys();
+        final var snapshot = snapshotKeys();
         return snapshot.stream().map(ByteSequence::copy).collect(Collectors.toSet());
     }
 
@@ -373,10 +372,10 @@ public class FileRecordStore implements AutoCloseable {
      * RecordHeader which is returned.
      */
     private Optional<RecordHeader> getRecordAt(long targetFp) {
-        val floor = positionIndex.floorEntry(targetFp);
+        final var floor = positionIndex.floorEntry(targetFp);
         Optional<Map.Entry<Long, RecordHeader>> before = (floor != null) ? of(floor) : Optional.empty();
         return before.map(entry -> {
-            val rh = entry.getValue();
+            final var rh = entry.getValue();
             if (targetFp >= rh.dataPointer
                     && targetFp < rh.dataPointer + (long) rh.getDataCapacity()) {
                 return rh;
@@ -433,7 +432,7 @@ public class FileRecordStore implements AutoCloseable {
 
         logger.log(Level.FINEST, ()->String.format("before maps: %s | %s", memIndex.toString(), positionIndex.toString()));
 
-        val duplicate = memIndex.put(key, newRecord);
+        final var duplicate = memIndex.put(key, newRecord);
         if( duplicate != null) positionIndex.remove(duplicate.dataPointer);
         positionIndex.put(newRecord.dataPointer, newRecord);
 
@@ -447,12 +446,12 @@ public class FileRecordStore implements AutoCloseable {
         if (rh.dataCount < 0) {
             throw new IllegalStateException("dataCount has not been initialized " + this);
         }
-        val fp = out.getFilePointer();
+        final var fp = out.getFilePointer();
         ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
         buffer.putLong(rh.dataPointer);
         buffer.putInt(rh.dataCapacity);
         buffer.putInt(rh.dataCount);
-        val array = buffer.array();
+        final var array = buffer.array();
         CRC32 crc = new CRC32();
         crc.update(array, 0, 8 + 4 + 4);
         rh.crc32 = crc.getValue();
@@ -466,7 +465,7 @@ public class FileRecordStore implements AutoCloseable {
 
     private static RecordHeader read(int index, CrashSafeFileOperations in) throws IOException {
         byte[] header = new byte[RECORD_HEADER_LENGTH];
-        val fp = in.getFilePointer();
+        final var fp = in.getFilePointer();
         in.readFully(header);
 
         logger.log(Level.FINEST, () -> String.format("<h fp:%d idx:%d len:%d bytes:%s",
@@ -480,7 +479,7 @@ public class FileRecordStore implements AutoCloseable {
         rh.dataCount = buffer.getInt();
         rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;
 
-        val array = buffer.array();
+        final var array = buffer.array();
         CRC32 crc = new CRC32();
         crc.update(array, 0, 8 + 4 + 4);
         long crc32expected = crc.getValue();
@@ -497,7 +496,7 @@ public class FileRecordStore implements AutoCloseable {
     private void deleteEntryFromIndex(RecordHeader header,
                                       int currentNumRecords) throws IOException {
         if (header.indexPosition != currentNumRecords - 1) {
-            val lastKey = readKeyFromIndex(currentNumRecords - 1);
+            final var lastKey = readKeyFromIndex(currentNumRecords - 1);
             RecordHeader last = keyToRecordHeader(lastKey);
             last.setIndexPosition(header.indexPosition);
 
@@ -527,11 +526,11 @@ public class FileRecordStore implements AutoCloseable {
 
     static void dumpFile(Level level, String filename, boolean disableCrc) throws IOException {
         try (FileRecordStore recordFile = new FileRecordStore(filename, "r", disableCrc)) {
-            val len = recordFile.getFileLength();
+            final var len = recordFile.getFileLength();
             logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", recordFile.getNumRecords(), len, recordFile.dataStartPtr));
             for (int index = 0; index < recordFile.getNumRecords(); index++) {
                 final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
-                val bk = recordFile.readKeyFromIndex(index);
+                final var bk = recordFile.readKeyFromIndex(index);
                 final String k = bk.toBase64();
                 logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                         index,
@@ -604,7 +603,7 @@ public class FileRecordStore implements AutoCloseable {
     private void writeKeyLengthHeader()
             throws IOException {
         file.seek(0);
-        val keyLength = (byte) maxKeyLength;
+        final var keyLength = (byte) maxKeyLength;
         file.write(keyLength);
     }
 
@@ -625,15 +624,15 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     private void writeKeyToIndex(ByteSequence key, int index) throws IOException {
-        val len = (byte) key.length();
-        val writeLen = (int) key.length() + 1 + CRC32_LENGTH;
+        final var len = (byte) key.length();
+        final var writeLen = (int) key.length() + 1 + CRC32_LENGTH;
 
         ByteBuffer buffer = ByteBuffer.allocate(writeLen);
         buffer.put(len);
         buffer.put(key.bytes, 0, (int) key.length());
 
         // compute crc from the backing array with what we have written
-        val array = buffer.array();
+        final var array = buffer.array();
         CRC32 crc = new CRC32();
         crc.update(array, 1, (int) key.length());
         int crc32 = (int) (crc.getValue() & 0xFFFFFFFFL);
@@ -641,7 +640,7 @@ public class FileRecordStore implements AutoCloseable {
         // add the crc which will write through to the backing array
         buffer.putInt(crc32);
 
-        val fpk = indexPositionToKeyFp(index);
+        final var fpk = indexPositionToKeyFp(index);
         file.seek(fpk);
         file.write(array, 0, writeLen);
 
@@ -654,7 +653,7 @@ public class FileRecordStore implements AutoCloseable {
      * Reads the ith key from the index.
      */
     private ByteSequence readKeyFromIndex(int position) throws IOException {
-        val fp = indexPositionToKeyFp(position);
+        final var fp = indexPositionToKeyFp(position);
         file.seek(fp);
 
         int len = file.readByte() & 0xFF; // interpret as unsigned byte https://stackoverflow.com/a/56052675/329496
@@ -673,7 +672,7 @@ public class FileRecordStore implements AutoCloseable {
 
         CRC32 crc = new CRC32();
         crc.update(key, 0, key.length);
-        val crc32actual = crc.getValue();
+        final var crc32actual = crc.getValue();
 
         FileRecordStore.logger.log(Level.FINEST, () ->
                 String.format("<k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
@@ -746,11 +745,11 @@ public class FileRecordStore implements AutoCloseable {
     @Synchronized
     public void updateRecord(ByteSequence key, byte[] value) throws IOException {
         logger.log(Level.FINE, () -> String.format("updateRecord value.len:%d key:%s", value.length, print(key.bytes)));
-        val updateMeHeader = keyToRecordHeader(key);
-        val capacity = updateMeHeader.getDataCapacity();
+        final var updateMeHeader = keyToRecordHeader(key);
+        final var capacity = updateMeHeader.getDataCapacity();
 
-        val recordIsSameSize = value.length == capacity;
-        val recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
+        final var recordIsSameSize = value.length == capacity;
+        final var recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
 
         // can update in place if the record is same size no matter whether CRC32 is enabled.
         // if record is smaller than we can only update in place if we have a CRC32 to validate which data length is valid
@@ -767,8 +766,8 @@ public class FileRecordStore implements AutoCloseable {
         }
 
         // if last record expand or contract the file
-        val endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
-        val fileLength = getFileLength();
+        final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
+        final var fileLength = getFileLength();
         if (endOfRecord == fileLength) {
             updateMeHeader.dataCount = value.length;
             setFileLength(fileLength + (value.length - updateMeHeader.getDataCapacity()));
@@ -794,8 +793,8 @@ public class FileRecordStore implements AutoCloseable {
                     String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
             // if there is a previous record add space to it
-            val previousIndex = updateMeHeader.dataPointer - 1;
-            val previousOptional = getRecordAt(previousIndex);
+            final var previousIndex = updateMeHeader.dataPointer - 1;
+            final var previousOptional = getRecordAt(previousIndex);
 
             if (previousOptional.isPresent()) {
                 RecordHeader previous = previousOptional.get();
@@ -819,7 +818,7 @@ public class FileRecordStore implements AutoCloseable {
     @Synchronized
     public byte[] readRecordData(ByteSequence key) throws IOException {
         logger.log(Level.FINE, () -> String.format("updateRecord key:%s", print(key.bytes)));
-        val header = keyToRecordHeader(key);
+        final var header = keyToRecordHeader(key);
         return readRecordData(header);
     }
 
@@ -848,7 +847,7 @@ public class FileRecordStore implements AutoCloseable {
         if (!disableCrc32) {
             byte[] crcBytes = new byte[CRC32_LENGTH];
             file.readFully(crcBytes);
-            val expectedCrc = (new DataInputStream(new ByteArrayInputStream(crcBytes))).readInt() & 0xffffffffL;
+            final var expectedCrc = (new DataInputStream(new ByteArrayInputStream(crcBytes))).readInt() & 0xffffffffL;
             CRC32 crc32 = new CRC32();
             crc32.update(buf, 0, buf.length);
 
@@ -890,7 +889,7 @@ public class FileRecordStore implements AutoCloseable {
             out.writeInt(crcInt);
         }
         out.close();
-        val payload = bout.toByteArray();
+        final var payload = bout.toByteArray();
         file.seek(header.dataPointer);
         file.write(payload, 0, payload.length); // drop
         byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
@@ -911,9 +910,9 @@ public class FileRecordStore implements AutoCloseable {
         RecordHeader delRec = keyToRecordHeader(key);
         int currentNumRecords = getNumRecords();
         deleteEntryFromIndex(delRec, currentNumRecords);
-        val memDeleted = memIndex.remove(key);
+        final var memDeleted = memIndex.remove(key);
         assert delRec == memDeleted;
-        val posDeleted = positionIndex.remove(delRec.dataPointer);
+        final var posDeleted = positionIndex.remove(delRec.dataPointer);
         assert delRec == posDeleted;
         assert memIndex.size() == positionIndex.size() :
                 String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
@@ -925,11 +924,11 @@ public class FileRecordStore implements AutoCloseable {
             return;
         }
 
-        val previousOptional = getRecordAt(delRec.dataPointer - 1);
+        final var previousOptional = getRecordAt(delRec.dataPointer - 1);
 
         if (previousOptional.isPresent()) {
             // append space of deleted record onto previous record
-            val previous = previousOptional.get();
+            final var previous = previousOptional.get();
             previous.incrementDataCapacity(delRec.getDataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
@@ -952,9 +951,9 @@ public class FileRecordStore implements AutoCloseable {
         }
         // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
         while (endIndexPtr > dataStartPtr) {
-            val firstOptional = getRecordAt(dataStartPtr);
+            final var firstOptional = getRecordAt(dataStartPtr);
             // TODO figure out if there is some case where someone could trigger the following IllegalStateException
-            val first = firstOptional.orElseThrow( ()-> new IllegalStateException("no record at dataStartPtr "+dataStartPtr));
+            final var first = firstOptional.orElseThrow( ()-> new IllegalStateException("no record at dataStartPtr "+dataStartPtr));
             positionIndex.remove(first.dataPointer);
             freeMap.remove(first);
             byte[] data = readRecordData(first);
@@ -976,14 +975,14 @@ public class FileRecordStore implements AutoCloseable {
     @Synchronized
     @SuppressWarnings("unused")
     public void logAll(Level level, boolean disableCrc32) {
-        val oldDisableCdc32 = this.disableCrc32;
+        final var oldDisableCdc32 = this.disableCrc32;
         try {
             this.disableCrc32 = disableCrc32;
-            val len = getFileLength();
+            final var len = getFileLength();
             logger.log(level, () -> String.format("Records=%s, FileLength=%s, DataPointer=%s", getNumRecords(), len, dataStartPtr));
             for (int index = 0; index < getNumRecords(); index++) {
                 final RecordHeader header = readRecordHeaderFromIndex(index);
-                val bk = readKeyFromIndex(index);
+                final var bk = readKeyFromIndex(index);
                 final String k = bk.toBase64();
                 int finalIndex = index;
                 logger.log(level, () -> String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",

@@ -44,15 +44,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         long fileSize = channel.size();
         List<Long> starts = new ArrayList<>();
         
-        // Determine if the file is writable
-        FileChannel.MapMode mapMode;
-        try {
-            // Try to determine if writable by attempting a write operation check
-            // If the file was opened with "r", this will fail
-            mapMode = FileChannel.MapMode.READ_WRITE;
-        } catch (Exception e) {
-            mapMode = FileChannel.MapMode.READ_ONLY;
-        }
+        // Start with READ_WRITE mode; will switch to READ_ONLY if channel is not writable
+        FileChannel.MapMode mapMode = FileChannel.MapMode.READ_WRITE;
         
         // Map the file in chunks to avoid issues with very large files
         long pos = 0;
@@ -64,7 +57,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
                 starts.add(pos);
                 pos += chunkSize;
             } catch (java.nio.channels.NonWritableChannelException e) {
-                // File is read-only, remap with READ_ONLY mode
+                // File is read-only, switch to READ_ONLY mode and retry
                 if (mapMode == FileChannel.MapMode.READ_WRITE) {
                     mapMode = FileChannel.MapMode.READ_ONLY;
                     // Retry with read-only mode

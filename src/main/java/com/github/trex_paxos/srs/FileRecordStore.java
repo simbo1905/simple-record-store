@@ -57,11 +57,9 @@ public class FileRecordStore implements AutoCloseable {
 
     /*default*/ CrashSafeFileOperations file;
 
-    /*
-     * Hashtable which holds the in-memory index. For efficiency, the entire
-     * index is cached in memory. The hashtable wraps the byte[] key as a String
-     * as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
-     */
+    /// Hashtable which holds the in-memory index. For efficiency, the entire
+    /// index is cached in memory. The hashtable wraps the byte[] key as a String
+    /// as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
     private Map<ByteSequence, RecordHeader> memIndex;
 
 
@@ -71,9 +69,7 @@ public class FileRecordStore implements AutoCloseable {
 
     private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace = Comparator.comparingInt(o -> o.getFreeSpace(true));
 
-    /*
-     * ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
-     */
+    /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
     private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
             new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
 
@@ -83,48 +79,40 @@ public class FileRecordStore implements AutoCloseable {
     // only change this when debugging in unit tests
     private boolean disableCrc32;
 
-    /*
-     * Creates a new database file. The initialSize parameter determines the
-     * amount of space which is allocated for the index. The index can grow
-     * dynamically, but the parameter is provided to increase efficiency.
-     * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimization to preallocate the file length in bytes.
-     */
+    /// Creates a new database file. The initialSize parameter determines the
+    /// amount of space which is allocated for the index. The index can grow
+    /// dynamically, but the parameter is provided to increase efficiency.
+    /// @param dbPath the location on disk to create the storage file.
+    /// @param initialSize an optimization to preallocate the file length in bytes.
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
         this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, false);
     }
 
-    /*
-     * Creates a new database file with optional memory-mapping support.
-     * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimization to preallocate the file length in bytes.
-     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
-     */
+    /// Creates a new database file with optional memory-mapping support.
+    /// @param dbPath the location on disk to create the storage file.
+    /// @param initialSize an optimization to preallocate the file length in bytes.
+    /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
     public FileRecordStore(String dbPath, int initialSize, boolean useMemoryMapping) throws IOException {
         this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, useMemoryMapping);
     }
 
-    /*
-     * Creates a new database file. The initialSize parameter determines the
-     * amount of space which is allocated for the index. The index can grow
-     * dynamically, but the parameter is provided to increase efficiency.
-     * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimization to preallocate the file length in bytes.
-     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped it
-     * has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
-     */
+    /// Creates a new database file. The initialSize parameter determines the
+    /// amount of space which is allocated for the index. The index can grow
+    /// dynamically, but the parameter is provided to increase efficiency.
+    /// @param dbPath the location on disk to create the storage file.
+    /// @param initialSize an optimization to preallocate the file length in bytes.
+    /// @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped it
+    /// has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
         this(dbPath, initialSize, maxKeyLength, disableCrc32, false);
     }
 
-    /*
-     * Creates a new database file with optional memory-mapping support.
-     * @param dbPath the location on disk to create the storage file.
-     * @param initialSize an optimization to preallocate the file length in bytes.
-     * @param maxKeyLength maximum key length in bytes
-     * @param disableCrc32 whether to disable explicit CRC32 of record data
-     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
-     */
+    /// Creates a new database file with optional memory-mapping support.
+    /// @param dbPath the location on disk to create the storage file.
+    /// @param initialSize an optimization to preallocate the file length in bytes.
+    /// @param maxKeyLength maximum key length in bytes
+    /// @param disableCrc32 whether to disable explicit CRC32 of record data
+    /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32, boolean useMemoryMapping) throws IOException {
         logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s, %s", dbPath, initialSize, maxKeyLength, disableCrc32, useMemoryMapping, this));
         this.disableCrc32 = disableCrc32;
@@ -151,33 +139,27 @@ public class FileRecordStore implements AutoCloseable {
         positionIndex = new TreeMap<>();
     }
 
-    /*
-     * Opens an existing database and initializes the in-memory index.
-     * @param dbPath the location of the database file on disk to open.
-     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
-     */
+    /// Opens an existing database and initializes the in-memory index.
+    /// @param dbPath the location of the database file on disk to open.
+    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
     public FileRecordStore(String dbPath, String accessFlags) throws IOException {
         this(dbPath, accessFlags, false, false);
     }
 
-    /*
-     * Opens an existing database and initializes the in-memory index.
-     * @param dbPath the location of the database file on disk to open.
-     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
-     * @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
-     * will have a CRC check built in so you can safely disable here.
-     */
+    /// Opens an existing database and initializes the in-memory index.
+    /// @param dbPath the location of the database file on disk to open.
+    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+    /// @param disableCrc32 whether to disable explicit CRC32 of record data. If you are writing data you zipped that
+    /// will have a CRC check built in so you can safely disable here.
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32) throws IOException {
         this(dbPath, accessFlags, disableCrc32, false);
     }
 
-    /*
-     * Opens an existing database with optional memory-mapping support.
-     * @param dbPath the location of the database file on disk to open.
-     * @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
-     * @param disableCrc32 whether to disable explicit CRC32 of record data
-     * @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
-     */
+    /// Opens an existing database with optional memory-mapping support.
+    /// @param dbPath the location of the database file on disk to open.
+    /// @param accessFlags the access flags supported by the java java.io.RandomAccessFile e.g. "r" or "rw"
+    /// @param disableCrc32 whether to disable explicit CRC32 of record data
+    /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
     public FileRecordStore(String dbPath, String accessFlags, boolean disableCrc32, boolean useMemoryMapping) throws IOException {
         logger.log(Level.FINE, () -> String.format("opening %s, %s, %s, %s, %s", dbPath, accessFlags, disableCrc32, useMemoryMapping, this));
         File f = new File(dbPath);
@@ -272,9 +254,7 @@ public class FileRecordStore implements AutoCloseable {
         return snapshot.stream().map(ByteSequence::copy).collect(Collectors.toSet());
     }
 
-    /*
-     * Returns the current number of records in the database.
-     */
+    /// Returns the current number of records in the database.
     @Synchronized
     int getNumRecords() {
         return memIndex.size();
@@ -285,9 +265,7 @@ public class FileRecordStore implements AutoCloseable {
         return memIndex.isEmpty();
     }
 
-    /*
-     * Checks if there is a record belonging to the given key.
-     */
+    /// Checks if there is a record belonging to the given key.
     @Synchronized
     public boolean recordExists(ByteSequence key) {
         return memIndex.containsKey(key);
@@ -304,11 +282,9 @@ public class FileRecordStore implements AutoCloseable {
         return h;
     }
 
-    /*
-     * Updates a map of record headers to free space values.
-     *
-     * @param rh Record that has new free space.
-     */
+    /// Updates a map of record headers to free space values.
+    ///
+    /// @param rh Record that has new free space.
     private void updateFreeSpaceIndex(RecordHeader rh) {
         int free = rh.getFreeSpace(disableCrc32);
         if (free > 0) {
@@ -318,10 +294,8 @@ public class FileRecordStore implements AutoCloseable {
         }
     }
 
-    /*
-     * This method searches the free map for free space and then returns a
-     * RecordHeader which uses the space.
-     */
+    /// This method searches the free map for free space and then returns a
+    /// RecordHeader which uses the space.
     private RecordHeader allocateRecord(int dataLength)
             throws IOException {
 
@@ -366,11 +340,9 @@ public class FileRecordStore implements AutoCloseable {
         return newRecord;
     }
 
-    /*
-     * Returns the record to which the target file pointer belongs - meaning the
-     * specified location in the file is part of the record data of the
-     * RecordHeader which is returned.
-     */
+    /// Returns the record to which the target file pointer belongs - meaning the
+    /// specified location in the file is part of the record data of the
+    /// RecordHeader which is returned.
     private Optional<RecordHeader> getRecordAt(long targetFp) {
         final var floor = positionIndex.floorEntry(targetFp);
         Optional<Map.Entry<Long, RecordHeader>> before = (floor != null) ? of(floor) : Optional.empty();
@@ -385,9 +357,7 @@ public class FileRecordStore implements AutoCloseable {
         });
     }
 
-    /*
-     * Closes the database.
-     */
+    /// Closes the database.
     @Synchronized
     public void close() throws IOException {
         logger.log(Level.FINE, () -> String.format("closed called on %s", this));
@@ -408,10 +378,8 @@ public class FileRecordStore implements AutoCloseable {
         }
     }
 
-    /*
-     * Adds the new record to the in-memory index and calls the super class add
-     * the index entry to the file.
-     */
+    /// Adds the new record to the in-memory index and calls the super class add
+    /// the index entry to the file.
     private void addEntryToIndex(ByteSequence key, RecordHeader newRecord,
                                  int currentNumRecords) throws IOException {
         if (key.length() > maxKeyLength) {
@@ -489,10 +457,8 @@ public class FileRecordStore implements AutoCloseable {
         return rh;
     }
 
-    /*
-     * Removes the record from the index. Replaces the target with the entry at
-     * the end of the index.
-     */
+    /// Removes the record from the index. Replaces the target with the entry at
+    /// the end of the index.
     private void deleteEntryFromIndex(RecordHeader header,
                                       int currentNumRecords) throws IOException {
         if (header.indexPosition != currentNumRecords - 1) {
@@ -564,42 +530,32 @@ public class FileRecordStore implements AutoCloseable {
         file.setLength(l);
     }
 
-    /*
-     * Reads the number of records header from the file.
-     */
+    /// Reads the number of records header from the file.
     private int readNumRecordsHeader() throws IOException {
         file.seek(NUM_RECORDS_HEADER_LOCATION);
         return file.readInt();
     }
 
-    /*
-     * Writes the number of records header to the file.
-     */
+    /// Writes the number of records header to the file.
     private void writeNumRecordsHeader(int numRecords) throws IOException {
         file.seek(NUM_RECORDS_HEADER_LOCATION);
         file.writeInt(numRecords);
     }
 
-    /*
-     * Reads the data start pointer header from the file.
-     */
+    /// Reads the data start pointer header from the file.
     private long readDataStartHeader() throws IOException {
         file.seek(DATA_START_HEADER_LOCATION);
         return file.readLong();
     }
 
-    /*
-     * Writes the data start pointer header to the file.
-     */
+    /// Writes the data start pointer header to the file.
     private void writeDataStartPtrHeader(long dataStartPtr)
             throws IOException {
         file.seek(DATA_START_HEADER_LOCATION);
         file.writeLong(dataStartPtr);
     }
 
-    /*
-     * Writes the max key length to the beginning of the file
-     */
+    /// Writes the max key length to the beginning of the file.
     private void writeKeyLengthHeader()
             throws IOException {
         file.seek(0);
@@ -607,18 +563,14 @@ public class FileRecordStore implements AutoCloseable {
         file.write(keyLength);
     }
 
-    /*
-     * Returns a file pointer in the index pointing to the first byte in the key
-     * located at the given index position.
-     */
+    /// Returns a file pointer in the index pointing to the first byte in the key
+    /// located at the given index position.
     private long indexPositionToKeyFp(int pos) {
         return FILE_HEADERS_REGION_LENGTH + ((long) indexEntryLength * pos);
     }
 
-    /*
-     * Returns a file pointer in the index pointing to the first byte in the
-     * record pointer located at the given index position.
-     */
+    /// Returns a file pointer in the index pointing to the first byte in the
+    /// record pointer located at the given index position.
     private long indexPositionToRecordHeaderFp(int pos) {
         return indexPositionToKeyFp(pos) + maxKeyLength;
     }
@@ -649,9 +601,7 @@ public class FileRecordStore implements AutoCloseable {
                         fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, key.toBase64(), print(key.bytes)));
     }
 
-    /*
-     * Reads the ith key from the index.
-     */
+    /// Reads the ith key from the index.
     private ByteSequence readKeyFromIndex(int position) throws IOException {
         final var fp = indexPositionToKeyFp(position);
         file.seek(fp);
@@ -693,30 +643,24 @@ public class FileRecordStore implements AutoCloseable {
         return ByteSequence.of(key);
     }
 
-    /*
-     * Reads the ith record header from the index.
-     */
+    /// Reads the ith record header from the index.
     private RecordHeader readRecordHeaderFromIndex(int index) throws IOException {
         file.seek(indexPositionToRecordHeaderFp(index));
         return read(index, file);
     }
 
-    /*
-     * Writes the ith record header to the index.
-     */
+    /// Writes the ith record header to the index.
     private void writeRecordHeaderToIndex(RecordHeader header)
             throws IOException {
         file.seek(indexPositionToRecordHeaderFp(header.indexPosition));
         write(header, file);
     }
 
-    /*
-     * Inserts a new record. It tries to insert into free space at the end of the index space, or free space between
-     * records, then finally extends the file. If the file has been set to a large initial file it will initially all
-     * be considered space at the end of the index space such that inserts will be prepended into the back of the
-     * file. When there is no more space in the index area the file will be expanded and record(s) will be into the new
-     * space to make space for heders.
-     */
+    /// Inserts a new record. It tries to insert into free space at the end of the index space, or free space between
+    /// records, then finally extends the file. If the file has been set to a large initial file it will initially all
+    /// be considered space at the end of the index space such that inserts will be prepended into the back of the
+    /// file. When there is no more space in the index area the file will be expanded and record(s) will be into the new
+    /// space to make space for headers.
     @Synchronized
     public void insertRecord(ByteSequence key, byte[] value)
             throws IOException {
@@ -738,10 +682,8 @@ public class FileRecordStore implements AutoCloseable {
         return len;
     }
 
-    /*
-     * Updates an existing record. If the new contents do not fit in the original record then the update is handled
-     * like an insert.
-     */
+    /// Updates an existing record. If the new contents do not fit in the original record then the update is handled
+    /// like an insert.
     @Synchronized
     public void updateRecord(ByteSequence key, byte[] value) throws IOException {
         logger.log(Level.FINE, () -> String.format("updateRecord value.len:%d key:%s", value.length, print(key.bytes)));
@@ -812,9 +754,7 @@ public class FileRecordStore implements AutoCloseable {
         throw new AssertionError("this line should be unreachable");
     }
 
-    /*
-     * Reads the data for the record with the given key.
-     */
+    /// Reads the data for the record with the given key.
     @Synchronized
     public byte[] readRecordData(ByteSequence key) throws IOException {
         logger.log(Level.FINE, () -> String.format("updateRecord key:%s", print(key.bytes)));
@@ -822,9 +762,7 @@ public class FileRecordStore implements AutoCloseable {
         return readRecordData(header);
     }
 
-    /*
-     * Reads the record data for the given record header.
-     */
+    /// Reads the record data for the given record header.
     private byte[] readRecordData(RecordHeader header) throws IOException {
         // read the length
         file.seek(header.dataPointer);
@@ -866,11 +804,9 @@ public class FileRecordStore implements AutoCloseable {
         return buf;
     }
 
-    /*
-     * Updates the contents of the given record. A RecordsFileException is
-     * thrown if the new data does not fit in the space allocated to the record.
-     * The header's data count is updated, but not written to the file.
-     */
+    /// Updates the contents of the given record. A RecordsFileException is
+    /// thrown if the new data does not fit in the space allocated to the record.
+    /// The header's data count is updated, but not written to the file.
     private void writeRecordData(RecordHeader header, byte[] data)
             throws IOException {
 
@@ -901,9 +837,7 @@ public class FileRecordStore implements AutoCloseable {
                 header.dataPointer + 4, payload.length, header.dataPointer + payload.length, crc, print(data)));
     }
 
-    /*
-     * Deletes a record.
-     */
+    /// Deletes a record.
     @Synchronized
     public void deleteRecord(ByteSequence key) throws IOException {
         logger.log(Level.FINE, () -> String.format("deleteRecord key:%s", print(key.bytes)));
@@ -938,8 +872,8 @@ public class FileRecordStore implements AutoCloseable {
         }
     }
 
-    // Checks to see if there is space for and additional index entry. If
-    // not, space is created by moving records to the end of the file.
+    /// Checks to see if there is space for and additional index entry. If
+    /// not, space is created by moving records to the end of the file.
     private void ensureIndexSpace(int requiredNumRecords)
             throws IOException {
         long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);

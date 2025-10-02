@@ -8,6 +8,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.FileSystems;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Function;
 import java.util.logging.Level;
@@ -27,11 +28,6 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   static final String TMP = System.getProperty("java.io.tmpdir");
   private final static Logger logger = Logger.getLogger(SimpleRecordStoreTest.class.getName());
 
-  static {
-    final var msg = String.format(">TMP:%s", TMP);
-    logger.info(msg);
-  }
-
   final String string1k = String.join("", Collections.nCopies(1024, "1"));
   private final Function<Date, byte[]> serializerDate = (date) -> ByteUtils.longToBytes(date.getTime());
   private final Function<byte[], Date> deserializerDate = (bytes) -> new Date(ByteUtils.bytesToLong(bytes));
@@ -40,15 +36,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   FileRecordStore recordsFile = null;
 
   public SimpleRecordStoreTest() {
-    logger.setLevel(Level.ALL);
-    init(TMP + FileSystems.getDefault().getSeparator() + "junit.records", 0);
-  }
-
-  public void init(final String fileName, final int initialSize) {
-    this.fileName = fileName;
-    this.initialSize = initialSize;
+    logger.info("SimpleRecordStoreTest constructor");
+    // unique file per test class instance
+    String unique = getClass().getSimpleName() + "_" + System.nanoTime();
+    this.fileName = Paths.get(System.getProperty("java.io.tmpdir"), unique + ".records").toString();
+    this.initialSize = 0;
     File db = new File(this.fileName);
     if (db.exists()) {
+      logger.fine("init deleting " + db);
       //noinspection ResultOfMethodCallIgnored
       db.delete();
     }
@@ -59,14 +54,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   public void deleteDb() {
     File db = new File(this.fileName);
     if (db.exists()) {
+      logger.fine("deleteDb deleting " + db);
       if (!db.delete()) throw new IllegalStateException("could not delete " + db);
     }
   }
 
   /// Taken from <a href="http://www.javaworld.com/jw-01-1999/jw-01-step.html">original source</a>
   @Test
-  public void originalTest() throws Exception {
-
+  public void testOriginalArticle() throws Exception {
     logger.info("creating records file...");
     recordsFile = new FileRecordStore(fileName, initialSize);
 
@@ -151,40 +146,34 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
     WriteCallback collectsWriteStacks = new StackCollectingWriteCallback(writeStacks);
 
-    final List<String> localFileNames = new ArrayList<>();
     final String recordingFile = fileName("record");
-    localFileNames.add(recordingFile);
 
     interceptedOperations.performTestOperations(collectsWriteStacks, recordingFile);
 
-    try {
-      for (int index = 0; index < writeStacks.size(); index++) {
-        final List<String> stack = writeStacks.get(index);
-        final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
-        final String localFileName = fileName("crash" + index);
-        localFileNames.add(localFileName);
-        try {
-          interceptedOperations.performTestOperations(crashAt, localFileName);
-        } catch (Exception ioe) {
-          recordsFile.close();
-          try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
-            int count = possiblyCorruptedFile.getNumRecords();
-            for (var k : possiblyCorruptedFile.keys()) {
-              // readRecordData has a CRC32 check where the payload must match the header
-              possiblyCorruptedFile.readRecordData(k);
-              count--;
-            }
-            assertEquals(0, count);
-          } catch (Exception e) {
-            FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
-            final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
-            throw new RuntimeException(msg, e);
+    for (int index = 0; index < writeStacks.size(); index++) {
+      final List<String> stack = writeStacks.get(index);
+      final CrashAtWriteCallback crashAt = new CrashAtWriteCallback(index);
+      final String localFileName = fileName("crash" + index);
+      try {
+        interceptedOperations.performTestOperations(crashAt, localFileName);
+      } catch (Exception ioe) {
+        recordsFile.close();
+        try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
+          int count = possiblyCorruptedFile.getNumRecords();
+          for (var k : possiblyCorruptedFile.keys()) {
+            // readRecordData has a CRC32 check where the payload must match the header
+            possiblyCorruptedFile.readRecordData(k);
+            count--;
           }
+          assertEquals(0, count);
+        } catch (Exception e) {
+          FileRecordStore.dumpFile(Level.SEVERE, localFileName, true);
+          final String msg = String.format("corrupted file due to exception at write index %s with stack %s", index, stackToString(stack));
+          throw new RuntimeException(msg, e);
         }
       }
-    } finally {
-      removeFiles(localFileNames);
     }
+
   }
 
   private String fileName(String base) {
@@ -201,14 +190,6 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       sb.append(s);
     }
     return sb.toString();
-  }
-
-  private void removeFiles(List<String> localFileNames) {
-    for (String file : localFileNames) {
-      File f = new File(file);
-      //noinspection ResultOfMethodCallIgnored
-      f.delete();
-    }
   }
 
   @Test
@@ -719,7 +700,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   }
 
   @Test
-  public void tesSplitFirstWithIOExceptions() throws Exception {
+  public void testSplitFirstWithIOExceptions() throws Exception {
     final var oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
     final var oneWide = String.join("", Collections.nCopies(1024, "1")).getBytes();
     final var twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();
@@ -774,7 +755,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   }
 
   @Test
-  public void tesSplitMiddleWithIOExceptions() throws Exception {
+  public void testSplitMiddleWithIOExceptions() throws Exception {
     final var oneNarrow = String.join("", Collections.nCopies(38, "1")).getBytes();
     final var twoWide = String.join("", Collections.nCopies(1024, "2")).getBytes();
     final var twoNarrow = String.join("", Collections.nCopies(38, "2")).getBytes();

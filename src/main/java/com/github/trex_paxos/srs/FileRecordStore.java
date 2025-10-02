@@ -86,7 +86,7 @@ public class FileRecordStore implements AutoCloseable {
     /// @param dbPath the location on disk to create the storage file.
     /// @param initialSize an optimization to preallocate the file length in bytes.
     public FileRecordStore(String dbPath, int initialSize) throws IOException {
-        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, false);
+        this(new File(dbPath), initialSize, getMaxKeyLengthOrDefault(), false, false);
     }
 
     /// Creates a new database file using memory mapped files for performance.
@@ -94,7 +94,7 @@ public class FileRecordStore implements AutoCloseable {
     /// @param initialSize an optimization to preallocate the file length in bytes.
     /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
     public FileRecordStore(String dbPath, int initialSize, boolean useMemoryMapping) throws IOException {
-        this(dbPath, initialSize, getMaxKeyLengthOrDefault(), false, useMemoryMapping);
+        this(new File(dbPath), initialSize, getMaxKeyLengthOrDefault(), false, useMemoryMapping);
     }
 
     /// Creates a new database file. The initialSize parameter determines the
@@ -105,39 +105,39 @@ public class FileRecordStore implements AutoCloseable {
     /// @param disableCrc32 whether to disable explicit CRC32 of record data as zipped payloads have built-in integrity checks.
     /// has a CRC check built in so you can safely disable here. Writes of keys and record header data will be unaffected.
     public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32) throws IOException {
-        this(dbPath, initialSize, maxKeyLength, disableCrc32, false);
+        this(new File(dbPath), initialSize, maxKeyLength, disableCrc32, false);
     }
 
-    /// Creates a new database file with optional memory-mapping support.
-    /// @param dbPath the location on disk to create the storage file.
-    /// @param initialSize an optimization to preallocate the file length in bytes.
-    /// @param maxKeyLength maximum key length in bytes
-    /// @param disableCrc32 whether to disable explicit CRC32 of record data
-    /// @param useMemoryMapping if true, use memory-mapped I/O to reduce write amplification
-    public FileRecordStore(String dbPath, int initialSize, int maxKeyLength, boolean disableCrc32, boolean useMemoryMapping) throws IOException {
-        logger.log(Level.FINE, () -> String.format("creating %s, %d, %d, %s, %s, %s", dbPath, initialSize, maxKeyLength, disableCrc32, useMemoryMapping, this));
-        this.disableCrc32 = disableCrc32;
-        this.maxKeyLength = maxKeyLength;
-        this.indexEntryLength = maxKeyLength + Integer.BYTES
-                + RECORD_HEADER_LENGTH;
+    /// Creates a new database file with pre-allocated index space and optional memory-mapped I/O.
+    ///
+    /// @param file              the database file handle
+    /// @param preallocatedRecords number of index entries to pre-allocate; inserts beyond this force record movement to expand the index region.
+    ///                            Set to 0 for testing to force movement on every insert.
+    /// @param maxKeyLength        maximum key length in bytes
+    /// @param disablePayloadCrc32 if true, skips CRC32 on record values (keys and headers always protected)
+    /// @param useMemoryMapping    if true, use memory-mapped file access; does not affect write amplification
+    /// @throws IOException if file cannot be created or pre-allocation fails
+    public FileRecordStore(File file, int preallocatedRecords, int maxKeyLength, boolean disablePayloadCrc32, boolean useMemoryMapping) throws IOException {
 
-        File f = new File(dbPath);
-        if (f.exists()) {
-            throw new IllegalArgumentException("Database already exits: " + dbPath);
-        }
-        RandomAccessFile raf = new RandomAccessFile(f, "rw");
-        if (useMemoryMapping) {
-            file = new MemoryMappedRandomAccessFile(raf);
-        } else {
-            file = new DirectRandomAccessFile(raf);
-        }
-        dataStartPtr = initialSize; // set data region start index
-        setFileLength(dataStartPtr);
-        writeNumRecordsHeader(0);
-        writeKeyLengthHeader();
-        writeDataStartPtrHeader(dataStartPtr);
-        memIndex = new HashMap<>(initialSize);
-        positionIndex = new TreeMap<>();
+      RandomAccessFile raf = new RandomAccessFile(file, "rw");
+
+      logger.log(Level.FINE, () -> String.format("create file=%s preallocatedRecords=%d maxKeyLength=%d disablePayloadCrc32=%b useMemoryMapping=%b", file.toPath(), preallocatedRecords, maxKeyLength, disablePayloadCrc32, useMemoryMapping));
+
+      this.disableCrc32 = disablePayloadCrc32;
+      this.maxKeyLength = maxKeyLength;
+      this.indexEntryLength = maxKeyLength + 1 + CRC32_LENGTH + RECORD_HEADER_LENGTH;
+
+      raf.setLength(FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
+      this.file = useMemoryMapping ? new MemoryMappedRandomAccessFile(raf) : new DirectRandomAccessFile(raf);
+
+      dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
+
+      writeNumRecordsHeader(0);
+      writeKeyLengthHeader();
+      writeDataStartPtrHeader(dataStartPtr);
+
+      memIndex = new HashMap<>(preallocatedRecords);
+      positionIndex = new TreeMap<>();
     }
 
     /// Opens an existing database and initializes the in-memory index.

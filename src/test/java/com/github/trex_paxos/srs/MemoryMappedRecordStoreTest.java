@@ -224,7 +224,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
      * 
      * Note: Memory-mapped files achieve crash safety differently than direct I/O:
      * - Direct I/O: Each write is interceptable and can fail individually
-     * - Memory-mapped: Writes are batched in memory, msync forces to disk
+     * - Memory-mapped: Writes are batched in memory, sync/force writes to disk
      * 
      * The crash safety comes from:
      * 1. Same write ordering and dual-write patterns are preserved

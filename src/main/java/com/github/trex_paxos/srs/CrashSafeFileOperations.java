@@ -2,19 +2,21 @@ package com.github.trex_paxos.srs;
 
 import java.io.IOException;
 
-/// Easier to mock final native class by wrapping it in an interface.
-interface RandomAccessFileInterface {
+/**
+ * Interface for crash-safe file operations with explicit synchronization control.
+ * Wraps file I/O operations to support both direct and memory-mapped implementations
+ * while maintaining crash safety guarantees through coordinated write patterns.
+ */
+interface CrashSafeFileOperations {
 
-	/// Forces the file data to be flushed. This won't use flags to flush file meta-data.
-	void fsync() throws IOException;
+	/**
+	 * Forces all buffered modifications to be written to the storage device.
+	 * For direct I/O, calls FileChannel.force(false). For memory-mapped I/O,
+	 * calls MappedByteBuffer.force() on all mapped regions.
+	 */
+	void sync() throws IOException;
 
 	long getFilePointer() throws IOException;
-
-	int hashCode();
-
-	boolean equals(Object obj);
-
-	String toString();
 
 	@SuppressWarnings("UnusedReturnValue")
   int read(byte[] b) throws IOException;

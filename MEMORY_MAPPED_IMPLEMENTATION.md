@@ -2,7 +2,7 @@
 
 ## Overview
 
-This implementation adds optional memory-mapped file support to Simple Record Store, reducing write amplification from 3-5 disk writes per operation to batched memory operations with a single msync on close or explicit fsync.
+This implementation adds optional memory-mapped file support to Simple Record Store, reducing write amplification from 3-5 disk writes per operation to batched memory operations with a single sync/force on close or explicit fsync.
 
 ## Implementation Details
 
@@ -37,7 +37,7 @@ This implementation adds optional memory-mapped file support to Simple Record St
 
 **Memory-Mapped Mode:**
 - Same number of operations, but to memory instead of disk
-- Single msync operation flushes entire batch
+- Single sync operation flushes entire batch
 - Effective reduction: ~5x for insert-heavy workloads
 
 ## Performance Characteristics
@@ -182,7 +182,7 @@ Possible future enhancements (not implemented):
 
 1. **Adaptive Pre-Allocation**: Automatically grow mapping region beyond file size to reduce remapping
 2. **Configurable Chunk Size**: Allow tuning of 128MB chunk size for different workloads
-3. **Async Sync**: Background thread for periodic msync without blocking operations
+3. **Async Sync**: Background thread for periodic sync/force without blocking operations
 4. **Memory Pressure Monitoring**: Unmapping old chunks when memory is constrained
 
 ## References

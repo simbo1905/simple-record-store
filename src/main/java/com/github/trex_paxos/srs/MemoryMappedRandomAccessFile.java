@@ -9,15 +9,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Memory-mapped implementation of RandomAccessFileInterface that reduces write amplification
+ * Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
  * by batching writes in memory and deferring disk flushes. Preserves crash safety guarantees
  * through the same dual-write patterns used by DirectRandomAccessFile.
  * 
  * This implementation maps the entire file into memory in chunks and performs all writes
- * through the memory-mapped buffers. The msync (force) operation is only called on close()
- * or explicit fsync(), giving the host application control over durability timing.
+ * through the memory-mapped buffers. The force operation is only called on close()
+ * or explicit sync(), giving the host application control over durability timing.
  */
-class MemoryMappedRandomAccessFile implements RandomAccessFileInterface {
+class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     private static final long MAPPING_CHUNK_SIZE = 128 * 1024 * 1024; // 128 MB per chunk
 
@@ -112,7 +112,7 @@ class MemoryMappedRandomAccessFile implements RandomAccessFileInterface {
     }
 
     @Override
-    public void fsync() throws IOException {
+    public void sync() throws IOException {
         // Force all mapped buffers to disk
         for (MappedByteBuffer buffer : mappedBuffers) {
             buffer.force();
@@ -255,7 +255,7 @@ class MemoryMappedRandomAccessFile implements RandomAccessFileInterface {
     public void close() throws IOException {
         try {
             // Force all changes to disk before closing
-            fsync();
+            sync();
         } finally {
             // Clean up mapped buffers
             mappedBuffers.clear();

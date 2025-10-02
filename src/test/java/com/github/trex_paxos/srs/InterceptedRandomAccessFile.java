@@ -4,40 +4,15 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 
 public record InterceptedRandomAccessFile(RandomAccessFile file,
-                                          WriteCallback wc) implements RandomAccessFileInterface {
+                                          WriteCallback wc) implements CrashSafeFileOperations {
 
   @Override
-  public void fsync() {
+  public void sync() {
   }
 
   @Override
   public long getFilePointer() throws IOException {
     return file.getFilePointer();
-  }
-
-  /* (non-Javadoc)
-   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#hashCode()
-   */
-  @Override
-  public int hashCode() {
-    return file.hashCode();
-  }
-
-  /* (non-Javadoc)
-   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#equals(java.lang.Object)
-   */
-  @SuppressWarnings("EqualsDoesntCheckParameterClass")
-  @Override
-  public boolean equals(Object obj) {
-    return file.equals(obj);
-  }
-
-  /* (non-Javadoc)
-   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#toString()
-   */
-  @Override
-  public String toString() {
-    return file.toString();
   }
 
   /* (non-Javadoc)

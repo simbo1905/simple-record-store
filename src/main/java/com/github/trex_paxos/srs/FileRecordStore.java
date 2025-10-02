@@ -56,7 +56,7 @@ public class FileRecordStore implements AutoCloseable {
     // header length and the CRC of the key which is an unsigned 32 bits.
     private final int indexEntryLength;
 
-    /*default*/ RandomAccessFileInterface file;
+    /*default*/ CrashSafeFileOperations file;
 
     /*
      * Hashtable which holds the in-memory index. For efficiency, the entire
@@ -394,7 +394,7 @@ public class FileRecordStore implements AutoCloseable {
         logger.log(Level.FINE, () -> String.format("closed called on %s", this));
         try {
             try {
-                if (file != null) file.fsync();
+                if (file != null) file.sync();
                 if (file != null) file.close();
             } finally {
                 file = null;
@@ -443,7 +443,7 @@ public class FileRecordStore implements AutoCloseable {
                 String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
     }
 
-    private void write(RecordHeader rh, RandomAccessFileInterface out) throws IOException {
+    private void write(RecordHeader rh, CrashSafeFileOperations out) throws IOException {
         if (rh.dataCount < 0) {
             throw new IllegalStateException("dataCount has not been initialized " + this);
         }
@@ -464,7 +464,7 @@ public class FileRecordStore implements AutoCloseable {
                 fp, rh.indexPosition, array.length, fp + array.length, print(array)));
     }
 
-    private static RecordHeader read(int index, RandomAccessFileInterface in) throws IOException {
+    private static RecordHeader read(int index, CrashSafeFileOperations in) throws IOException {
         byte[] header = new byte[RECORD_HEADER_LENGTH];
         val fp = in.getFilePointer();
         in.readFully(header);
@@ -554,7 +554,7 @@ public class FileRecordStore implements AutoCloseable {
     @Synchronized
     public void fsync() throws IOException {
         logger.log(Level.FINE, () -> String.format("fsync called on %s", this));
-        file.fsync();
+        file.sync();
     }
 
     long getFileLength() throws IOException {

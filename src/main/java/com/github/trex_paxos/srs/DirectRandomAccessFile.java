@@ -6,7 +6,7 @@ import java.io.RandomAccessFile;
 /*
  * easier to mock final native class by wrapping it in an interface
  */
-record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements RandomAccessFileInterface {
+record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements CrashSafeFileOperations {
 
   @Override
   public long getFilePointer() throws IOException {
@@ -14,7 +14,7 @@ record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements Rand
   }
 
   @Override
-  public void fsync() throws IOException {
+  public void sync() throws IOException {
     randomAccessFile.getChannel().force(false);
   }
 

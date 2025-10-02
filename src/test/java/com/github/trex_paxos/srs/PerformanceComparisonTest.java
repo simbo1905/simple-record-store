@@ -151,16 +151,16 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
         System.out.println("  (backup header + data + final header)");
         System.out.println("");
         System.out.println("Memory-Mapped - INSERT:");
-        System.out.println("  5 memory writes batched, 1 msync on close/fsync");
+        System.out.println("  5 memory writes batched, 1 sync on close/fsync");
         System.out.println("  Effective: 1 disk flush per batch of operations");
         System.out.println("");
         System.out.println("Memory-Mapped - UPDATE:");
-        System.out.println("  3 memory writes batched, 1 msync on close/fsync");
+        System.out.println("  3 memory writes batched, 1 sync on close/fsync");
         System.out.println("  Effective: 1 disk flush per batch of operations");
         System.out.println("");
         System.out.println("For " + RECORD_COUNT + " operations:");
         System.out.println("  Direct I/O:        ~" + (RECORD_COUNT * 5) + " write operations");
-        System.out.println("  Memory-Mapped I/O: ~" + RECORD_COUNT + " memory writes + 1 msync");
+        System.out.println("  Memory-Mapped I/O: ~" + RECORD_COUNT + " memory writes + 1 sync");
         System.out.println("  Write Amplification Reduction: ~" + (5) + "x");
         System.out.println("====================================\n");
     }

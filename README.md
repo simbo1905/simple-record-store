@@ -82,8 +82,82 @@ Simple Record Store supports an optional **memory-mapped file** mode that reduce
 
 ### Usage
 
-Enable memory-mapping by passing `true` as the `useMemoryMapping` parameter:
+The recommended way to create a `FileRecordStore` is using the builder pattern:
 
+```java
+import java.nio.file.Paths;
+import com.github.trex_paxos.srs.FileRecordStore;
+import com.github.trex_paxos.srs.ByteSequence;
+
+// Create new store with memory-mapping
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .preallocatedRecords(10000)
+    .maxKeyLength(64)
+    .useMemoryMapping(true)
+    .open();
+
+// Open existing store
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .open();
+
+// Temporary store for unit testing
+FileRecordStore store = new FileRecordStore.Builder()
+    .tempFile("test-", ".db")
+    .preallocatedRecords(1000)
+    .open();
+```
+
+### Store State Management
+
+The `FileRecordStore` uses an internal state machine to track its lifecycle and handle error conditions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW: Store created
+    NEW --> OPEN: Successfully validated and opened
+    NEW --> UNKNOWN: Exception during construction
+    OPEN --> CLOSED: Clean close via close()
+    OPEN --> UNKNOWN: Exception during operation
+    CLOSED --> [*]: Finalized
+    UNKNOWN --> [*]: Finalized
+    
+    state OPEN {
+        [*] --> insertRecord
+        [*] --> readRecordData
+        [*] --> updateRecord
+        [*] --> deleteRecord
+        [*] --> keys
+        [*] --> isEmpty
+        [*] --> recordExists
+        [*] --> fsync
+    }
+    
+    note right of UNKNOWN
+        All operations throw IllegalStateException
+        with descriptive message including current state
+    end note
+```
+
+#### Store States:
+- **NEW**: Initial state - store created but not yet validated/opened
+- **OPEN**: Store successfully opened and operational - all methods available
+- **CLOSED**: Store cleanly closed via `close()` method - no further operations allowed
+- **UNKNOWN**: Store encountered an exception - all operations throw `IllegalStateException`
+
+#### State Transitions:
+- **Construction**: NEW → OPEN (success) or NEW → UNKNOWN (failure)
+- **Operations**: OPEN → UNKNOWN (on any exception)
+- **Cleanup**: Any state → CLOSED (via `close()`) or finalization
+
+This state management ensures:
+- Construction failures don't incorrectly mark stores as "closed"
+- Operational exceptions properly prevent further operations
+- Clear error messages indicate the actual state when operations are rejected
+- Proper resource cleanup regardless of failure mode
+
+Legacy constructor-based API (deprecated):
 ```java
 // Create new store with memory-mapping
 FileRecordStore store = new FileRecordStore("data.db", 10000, true);

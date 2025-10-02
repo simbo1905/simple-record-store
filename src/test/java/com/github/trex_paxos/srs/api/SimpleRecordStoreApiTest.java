@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.file.FileSystems;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -56,7 +57,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     @Test
     public void testInsertOneRecordMapEntry() throws Exception {
         // given
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
         String uuid = UUIDGenerator.generateUUID().toString();
         final var key = fromUtf8(uuid);
 
@@ -86,7 +87,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         this.recordsFile.close();
 
         // then
-        recordsFile = new FileRecordStore(fileName, "r", false);
+        recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).open();
         final var updated = this.recordsFile.readRecordData(fromUtf8(uuid));
         Assert.assertEquals("updated", new String(updated));
         Assert.assertEquals(1, recordsFile.size());
@@ -102,7 +103,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
                 FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
                 Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
         // create a store with this key
-        recordsFile = new FileRecordStore(fileName, initialSize);
+        recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
 
         final String longestKey = String.join("", Collections
             .nCopies(recordsFile.maxKeyLength - 5, "1"));
@@ -114,7 +115,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         System.setProperty(String.format("%s.%s",
                 FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
                 Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
-        recordsFile = new FileRecordStore(fileName, "r");
+        recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).open();
 
         String put0 = new String(recordsFile.readRecordData(fromUtf8(longestKey)));
 

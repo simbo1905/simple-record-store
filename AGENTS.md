@@ -38,6 +38,43 @@
 - Tune key length and padding with system properties such as `-Dcom.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH=128` to mirror production limits.
 - Enable `Level.FINEST` logging when investigating disk corruption; redact sensitive keys before sharing traces.
 
+## Documentation Standards
+- Use JEP 467 documentation format with `///` triple-slash comments instead of traditional `/**` javadoc style
+- Place documentation on the line immediately above the element being documented
+- Example: `/// Returns the file path of this record store.` followed by `public Path getFilePath()`
+
+## Logging Standards
+- **CRITICAL**: Never add temporary INFO level logging for debugging purposes
+- Always use appropriate log levels: FINE for normal debugging, FINEST for detailed tracing
+- Use `JulLoggingConfig` system properties to control logging levels: `-Djava.util.logging.config.file=logging.properties`
+- Logging should be permanent and controlled via configuration, not added/removed from code
+- Adding temporary logging and then removing it is considered fraudulent practice
+
+## Critical API Behavior
+
+### maxKeyLength Enforcement
+The `maxKeyLength` parameter is **fundamental and enforced**:
+- Files store their `maxKeyLength` in the header permanently
+- When opening existing files, you **must** use the same `maxKeyLength` that was used to create the file
+- Different `maxKeyLength` values will throw `IllegalArgumentException`
+- This prevents data corruption and maintains file format integrity
+- If you need different key lengths, create a new database and migrate data
+
+## Build Output Analysis
+- Always redirect compile output to a file, then use `tail` and `rg` to analyze errors systematically
+- Never filter expected errors - analyze the complete output to understand all issues
+- Use this pattern for systematic error analysis:
+```shell
+mvn test-compile > compile.log 2>&1; tail -50 compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" compile.log
+```
+- Overwrite a single temp file (`compile.log`) rather than creating multiple log files
+
+## API Design Patterns
+- Follow MVStore (H2 Database) builder pattern design for create vs open auto-detection
+- Builder should automatically handle file existence validation and appropriate constructor selection
+- Provide fluent API that eliminates user confusion about create vs open semantics
+- Credit MVStore inspiration in javadoc: `/// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.`
+
 ## Use Modern CLI Tools When Available
 
 Check for `rg` and `perl` and other power tools and use them if that makes sense. For example to do mechanical refactors
@@ -48,3 +85,14 @@ across many sites perfer things like:
 perl -pi -e 's/\bval\b/final var/g' $(rg -l '\bval\b' --glob '*.java')
 perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var;' --glob '*.java')
 ```
+
+## Logging Policy - CRITICAL
+
+**NEVER DELETE LOGGING LINES** - Once logging is added at the appropriate level (FINE/FINEST), it becomes permanent infrastructure:
+
+- Logging lines are not "temporary debug code" - they are permanent observability features
+- Removing logging lines destroys debugging capability for future issues
+- If a log level feels wrong, adjust the level, but never remove the line
+- All logging must use appropriate levels: FINE for normal debugging, FINEST for detailed tracing
+- System properties control visibility - never remove logging to "clean up" output
+- Deleting logging lines is considered a destructive act that harms future debugging

@@ -7,6 +7,9 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 
 /**
@@ -15,43 +18,60 @@ import java.io.IOException;
  */
 public class MemoryMappedTests extends JulLoggingConfig {
 
+  // Constant for maxKeyLength to ensure consistency across test operations
+  // Use a reasonable value that fits in the file format (max is 252)
+  private static final int MAX_KEY_LENGTH = 64;
+
   @Test
   public void testBasicUsage() throws IOException {
-    // Create a temporary file with a given prefix and suffix
-    File tempFile = File.createTempFile("mydb-", ".tmp");
-
-    // Ensure the file is deleted on JVM exit
-    tempFile.deleteOnExit();
+    java.util.logging.Logger logger = java.util.logging.Logger.getLogger(MemoryMappedTests.class.getName());
+    logger.fine("Starting testBasicUsage with temp file");
+    
+    Path tempFilePath;
 
     // Create a new store with memory-mapping enabled
     // The true parameter enables memory-mapped mode
-    try (FileRecordStore store = new FileRecordStore(tempFile, 128, 10000, false, true)) {
+    logger.fine("Creating FileRecordStore with parameters: tempFile, preallocatedRecords=128, maxKeyLength=" + MAX_KEY_LENGTH + ", disablePayloadCrc32=false, useMemoryMapping=true");
+    try (FileRecordStore store = new FileRecordStore.Builder().tempFile("mydb-", ".tmp").preallocatedRecords(128).maxKeyLength(MAX_KEY_LENGTH).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
+      logger.fine("FileRecordStore created successfully");
+      tempFilePath = store.getFilePath(); // Capture the path for reopening
 
       // Insert records - writes go to memory-mapped buffers
       ByteSequence key1 = ByteSequence.of("user:1".getBytes());
       byte[] userData = "John Doe".getBytes();
+      logger.fine("Inserting record with key: " + new String("user:1".getBytes()) + ", data: " + new String(userData));
       store.insertRecord(key1, userData);
 
       // Multiple operations are batched in memory
       ByteSequence key2 = ByteSequence.of("user:2".getBytes());
+      logger.fine("Inserting record with key: " + new String("user:2".getBytes()) + ", data: Jane Smith");
       store.insertRecord(key2, "Jane Smith".getBytes());
 
       // Read works immediately from memory-mapped buffers
+      logger.fine("Reading record with key: " + new String("user:1".getBytes()));
       byte[] retrieved = store.readRecordData(key1);
       System.out.println("Retrieved: " + new String(retrieved));
 
       // Update also goes to memory
+      logger.fine("Updating record with key: " + new String("user:1".getBytes()) + ", data: John Doe Updated");
       store.updateRecord(key1, "John Doe Updated".getBytes());
 
       // Optional: Force sync to disk before close
+      logger.fine("Calling fsync()");
       store.fsync();
 
       // On close(), all buffered writes are automatically synced to disk
+      logger.fine("Closing store");
     }
+    
+    logger.fine("Store closed, reopening for verification");
 
     // Data persists - reopen and verify
-    try (FileRecordStore store = new FileRecordStore(tempFile, 128, 10000, false, true)) {
+    logger.fine("Reopening FileRecordStore with parameters: tempFile, maxKeyLength=" + MAX_KEY_LENGTH + ", disablePayloadCrc32=false, useMemoryMapping=true");
+    try (FileRecordStore store = new FileRecordStore.Builder().path(tempFilePath).maxKeyLength(MAX_KEY_LENGTH).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
+      logger.fine("FileRecordStore reopened successfully");
       ByteSequence key1 = ByteSequence.of("user:1".getBytes());
+      logger.fine("Reading record with key: " + new String("user:1".getBytes()));
       byte[] data = store.readRecordData(key1);
       System.out.println("After reopen: " + new String(data));
     }
@@ -59,16 +79,14 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
   @Test
   public void batchOperationsWithControlledSync() throws IOException {
-    // Create a temporary file with a given prefix and suffix
-    File tempFile = File.createTempFile("mydb-", ".tmp");
-    tempFile.deleteOnExit();
 
-    try (FileRecordStore store = new FileRecordStore(tempFile,      // path
-        50000,       // pre-allocate 50KB to reduce remapping
-        64,          // max key length
-        false,       // enable CRC32
-        true         // enable memory-mapping
-    )) {
+    try (FileRecordStore store = new FileRecordStore.Builder()
+        .tempFile("mydb-batch-", ".tmp")
+        .preallocatedRecords(50000)    // pre-allocate 50KB to reduce remapping
+        .maxKeyLength(64)              // max key length
+        .disablePayloadCrc32(false)    // enable CRC32
+        .useMemoryMapping(true)        // enable memory-mapping
+        .open()) {
       // Process records in batches
       for (int batch = 0; batch < 5; batch++) {
         // Insert batch of records
@@ -87,14 +105,9 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
   @Test
   public void updateHeavyWorkload() throws IOException {
-    // Create a temporary file with a given prefix and suffix
-    File tempFile = File.createTempFile("mydb-", ".tmp");
-
-    // Ensure the file is deleted on JVM exit
-    tempFile.deleteOnExit();
 
     // For update-heavy workloads, memory-mapping provides significant benefits
-    try (FileRecordStore store = new FileRecordStore(tempFile, 128, 10000, false, true)) {
+    try (FileRecordStore store = new FileRecordStore.Builder().tempFile("mydb-update-", ".tmp").preallocatedRecords(128).maxKeyLength(MAX_KEY_LENGTH).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
 
       // Insert initial data
       for (int i = 0; i < 1000; i++) {
@@ -117,21 +130,22 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
   @Test
   public void mixedDirectAndMemoryMappedAccess() throws IOException {
-    String dbPath = "/tmp/example-mixed.db";
-
+    Path tempFile;
+    
     // Create initial data with direct I/O
-    try (FileRecordStore store = new FileRecordStore(dbPath, 10000, false)) {
+    try (FileRecordStore store = new FileRecordStore.Builder().tempFile("example-mixed-", ".db").preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
+      tempFile = store.getFilePath(); // Get the path from the created temp file
       store.insertRecord(ByteSequence.of("key1".getBytes()), "value1".getBytes());
     }
 
     // Open with memory-mapping for batch updates
-    try (FileRecordStore store = new FileRecordStore(dbPath, "rw", false, true)) {
+    try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
       store.updateRecord(ByteSequence.of("key1".getBytes()), "updated".getBytes());
       store.insertRecord(ByteSequence.of("key2".getBytes()), "value2".getBytes());
     }
 
     // Open with direct I/O again for verification
-    try (FileRecordStore store = new FileRecordStore(dbPath, "r", false, false)) {
+    try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
       byte[] data = store.readRecordData(ByteSequence.of("key1".getBytes()));
       System.out.println("Final value: " + new String(data));
     }

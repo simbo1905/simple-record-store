@@ -34,7 +34,11 @@ public class TracePlayback {
           f.delete();
         System.out.printf("initialLength: %d, keyMax: %d, file: %s%n", initialLength, keyMax, file);
         final var counter = new AtomicInteger(0);
-        try (FileRecordStore recordStore = new FileRecordStore(TMP + "playback", initialLength, keyMax, false);
+        try (FileRecordStore recordStore = new FileRecordStore.Builder()
+                .path(TMP + "playback")
+                .preallocatedRecords(initialLength)
+                .maxKeyLength(keyMax)
+                .open();
              Scanner in = new Scanner(new FileInputStream(file))) {
             while (in.hasNextLine()) {
                 String l = in.nextLine();

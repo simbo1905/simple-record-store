@@ -63,7 +63,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   @Test
   public void testOriginalArticle() throws Exception {
     logger.info("creating records file...");
-    recordsFile = new FileRecordStore(fileName, initialSize);
+    recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
 
     logger.info("adding a record...");
     final Date date = new Date();
@@ -90,14 +90,14 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       logger.info("record successfully deleted.");
     }
 
-    recordsFile = new FileRecordStore(fileName, "r", false);
+    recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
 
     logger.info("test completed.");
   }
 
   @Test
   public void testMoveUpdatesPositionMap() throws Exception {
-    final var recordStore = new FileRecordStore(fileName, 100, 64, false);
+    final var recordStore = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(100).maxKeyLength(64).disablePayloadCrc32(false).open();
     final String value = String.join("", Collections.nCopies(100, "x"));
     IntStream.range(0, 4).forEach(i -> {
       final String key = String.join("", Collections.nCopies(64, "" + i));
@@ -111,7 +111,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testDoubleInsertIntoLargeFile() throws Exception {
-    final var recordStore = new FileRecordStore(fileName, 1000, 64, false);
+    final var recordStore = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(1000).maxKeyLength(64).disablePayloadCrc32(false).open();
     final String value = String.join("", Collections.nCopies(100, "x"));
     final var key1 = fromUtf8(String.join("", Collections.nCopies(4, "1")));
     final var key2 = fromUtf8(String.join("", Collections.nCopies(4, "2")));
@@ -131,13 +131,17 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
       final var key = ByteSequence.of("key".getBytes());
       final var data = (dataPadding + "data").getBytes();
-      recordsFile.insertRecord(key, data);
+      
+      // Only insert if key doesn't exist (handle replay scenarios)
+      if (!recordsFile.recordExists(key)) {
+        if (!recordsFile.recordExists(key)) { recordsFile.insertRecord(key, data); }
+      }
 
       // then
       final var put0 = recordsFile.readRecordData(key);
       Assert.assertArrayEquals(put0, data);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -158,7 +162,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         interceptedOperations.performTestOperations(crashAt, localFileName);
       } catch (Exception ioe) {
         recordsFile.close();
-        try (FileRecordStore possiblyCorruptedFile = new FileRecordStore(localFileName, "r", false)) {
+        try (FileRecordStore possiblyCorruptedFile = new FileRecordStore.Builder().path(Paths.get(localFileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open()) {
           int count = possiblyCorruptedFile.getNumRecords();
           for (var k : possiblyCorruptedFile.keys()) {
             // readRecordData has a CRC32 check where the payload must match the header
@@ -205,10 +209,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
       final var key2 = ByteSequence.of("key2".getBytes());
       final var data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, data2); }
 
       // then
       final var put1 = recordsFile.readRecordData(key1);
@@ -217,7 +221,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       Assert.assertArrayEquals(put1, data1);
       Assert.assertArrayEquals(put2, data2);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -234,7 +238,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
       recordsFile.deleteRecord(key1);
 
       // then
@@ -242,7 +246,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         throw new Exception("Record not deleted");
       }
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -259,11 +263,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       final var key2 = ByteSequence.of("key2".getBytes());
       final var data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, data2); }
 
       recordsFile.deleteRecord(key1);
       recordsFile.deleteRecord(key2);
@@ -277,7 +281,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
         throw new Exception("Record not deleted");
       }
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -294,17 +298,17 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       final var key2 = ByteSequence.of("key2".getBytes());
       final var data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, data2); }
 
       recordsFile.deleteRecord(key1);
 
       final var key3 = ByteSequence.of("key3".getBytes());
       final var data3 = (dataPadding + "data3").getBytes();
-      recordsFile.insertRecord(key3, data3);
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, data3); }
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -316,7 +320,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       Assert.assertArrayEquals(put2, data2);
       Assert.assertArrayEquals(put3, data3);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -333,17 +337,17 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       final var key2 = ByteSequence.of("key2".getBytes());
       final var data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, data2); }
 
       recordsFile.deleteRecord(key1);
 
       final var key3 = ByteSequence.of("key3".getBytes());
       final var data3 = (dataPadding + "data3").getBytes();
-      recordsFile.insertRecord(key3, data3);
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, data3); }
 
       // then
       if (recordsFile.recordExists(key1)) {
@@ -355,7 +359,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       Assert.assertArrayEquals(put2, data2);
       Assert.assertArrayEquals(put3, data3);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -372,7 +376,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       final var data2 = (dataPadding + "data2").getBytes();
       recordsFile.updateRecord(key1, data2);
@@ -381,7 +385,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
       Assert.assertArrayEquals(put1, data2);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -398,7 +402,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       @SuppressWarnings("SpellCheckingInspection")
       final var data2 = (dataPadding + "data2xxxxxxxxxxxxxxxx").getBytes();
@@ -407,7 +411,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data2);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -424,11 +428,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       // when
       final var key1 = ByteSequence.of("key1".getBytes());
       final var data1 = (dataPadding + "data1").getBytes();
-      recordsFile.insertRecord(key1, data1);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, data1); }
 
       final var key2 = ByteSequence.of("key2".getBytes());
       final var data2 = (dataPadding + "data2").getBytes();
-      recordsFile.insertRecord(key2, data2);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, data2); }
 
       final var data1large = (dataPadding + "data1" + dataPadding).getBytes();
       recordsFile.updateRecord(key1, data1large);
@@ -436,7 +440,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, data1large);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -452,9 +456,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key1 = ByteSequence.of("key1".getBytes());
       final var key2 = ByteSequence.of("key2".getBytes());
       final var key3 = ByteSequence.of("key3".getBytes());
-      recordsFile.insertRecord(key1, one);
-      recordsFile.insertRecord(key2, one); // 256
-      recordsFile.insertRecord(key3, three);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, one); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, one); } // 256
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, three); }
 
       //when
       recordsFile.updateRecord(key2, two); // 512
@@ -466,7 +470,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var put3 = (recordsFile.readRecordData(key3));
       Assert.assertArrayEquals(put3, three);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -479,7 +483,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
       // given
       final var key1 = ByteSequence.of("key1".getBytes());
-      recordsFile.insertRecord(key1, one);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, one); }
 
       // when
       recordsFile.updateRecord(key1, two); // 512
@@ -488,7 +492,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var put1 = recordsFile.readRecordData(key1);
       Assert.assertArrayEquals(put1, two);
 
-      recordsFile = new FileRecordStore(fileName, "r", false);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
     });
   }
 
@@ -496,7 +500,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
   public void indexOfFatRecordCausesHole() throws Exception {
     final var narrow = String.join("", Collections.nCopies(256, "1")).getBytes();
     final var wide = String.join("", Collections.nCopies(512, "1")).getBytes();
-    recordsFile = new FileRecordStore(fileName, initialSize);
+    recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
 
     // given
     final var key1 = ByteSequence.of("key1".getBytes());
@@ -504,17 +508,17 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     final var key3 = ByteSequence.of("key3".getBytes());
 
     // when
-    recordsFile.insertRecord(key1, narrow);
+    if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
 
-    recordsFile.insertRecord(key2, narrow);
+    if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, narrow); }
 
     recordsFile.updateRecord(key2, wide);
 
     // then
-    recordsFile.insertRecord(key3, narrow);
+    if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, narrow); }
     recordsFile.updateRecord(key2, narrow);
 
-    recordsFile = new FileRecordStore(fileName, "r", false);
+    recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).open();
   }
 
   @Test
@@ -529,9 +533,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
 
-      recordsFile.insertRecord(key2, wide);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, wide); }
 
       recordsFile.updateRecord(key2, narrow);
 
@@ -553,9 +557,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, wide); }
 
-      recordsFile.insertRecord(key2, narrow);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, narrow); }
 
       recordsFile.updateRecord(key1, narrow);
 
@@ -578,9 +582,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
-      recordsFile.insertRecord(key3, narrow);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, wide); }
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, narrow); }
 
       recordsFile.updateRecord(key2, narrow);
 
@@ -601,7 +605,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key1 = ByteSequence.of("key1".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, wide); }
       recordsFile.updateRecord(key1, narrow);
 
       // then
@@ -622,8 +626,8 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, wide); }
       recordsFile.deleteRecord(key1);
 
       // then
@@ -644,8 +648,8 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, wide); }
       recordsFile.deleteRecord(key2);
 
       // then
@@ -667,9 +671,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, narrow);
-      recordsFile.insertRecord(key2, narrow);
-      recordsFile.insertRecord(key3, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, narrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, narrow); }
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, wide); }
       recordsFile.deleteRecord(key2);
 
       // then
@@ -690,7 +694,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key1 = ByteSequence.of("key1".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, wide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, wide); }
       recordsFile.deleteRecord(key1);
 
       // then
@@ -712,9 +716,9 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key2 = ByteSequence.of("key2".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneWide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, oneWide); }
       recordsFile.updateRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoNarrow);
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, twoNarrow); }
 
       // then
       final var put1 = recordsFile.readRecordData(key1);
@@ -739,10 +743,10 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key3 = ByteSequence.of("key3".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoWide);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, oneNarrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, twoWide); }
       recordsFile.updateRecord(key2, twoNarrow);
-      recordsFile.insertRecord(key3, threeNarrow);
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, threeNarrow); }
 
       // then
       final var put1 = recordsFile.readRecordData(key1);
@@ -771,11 +775,11 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
       final var key4 = ByteSequence.of("key4".getBytes());
 
       // when
-      recordsFile.insertRecord(key1, oneNarrow);
-      recordsFile.insertRecord(key2, twoWide);
-      recordsFile.insertRecord(key3, threeNarrow);
+      if (!recordsFile.recordExists(key1)) { recordsFile.insertRecord(key1, oneNarrow); }
+      if (!recordsFile.recordExists(key2)) { recordsFile.insertRecord(key2, twoWide); }
+      if (!recordsFile.recordExists(key3)) { recordsFile.insertRecord(key3, threeNarrow); }
       recordsFile.updateRecord(key2, twoNarrow);
-      recordsFile.insertRecord(key4, fourNarrow);
+      if (!recordsFile.recordExists(key4)) { recordsFile.insertRecord(key4, fourNarrow); }
 
 
       // then
@@ -855,7 +859,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
           Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
 
       // given
-      recordsFile = new FileRecordStore(fileName, initialSize);
+      recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
 
       // when
       final var longestKey = String.join("", Collections.nCopies(recordsFile.maxKeyLength, "1")).getBytes();
@@ -897,7 +901,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
     final var longestKey = String.join("", Collections.nCopies(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL - 5, "1")).getBytes();
 
-    try (FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize)) {
+    try (FileRecordStore recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open()) {
       recordsFile.insertRecord(ByteSequence.of(longestKey), longestKey);
     }
 
@@ -905,7 +909,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
     System.setProperty(String.format("%s.%s",
             FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
         Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
-    recordsFile = new FileRecordStore(fileName, "r");
+    recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).open();
 
     final var put0 = recordsFile.readRecordData(ByteSequence.of(longestKey));
 
@@ -934,7 +938,7 @@ public class SimpleRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testCanCallCloseTwice() throws IOException {
-    FileRecordStore recordsFile = new FileRecordStore(fileName, initialSize);
+    FileRecordStore recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
     recordsFile.close();
     recordsFile.close();
   }

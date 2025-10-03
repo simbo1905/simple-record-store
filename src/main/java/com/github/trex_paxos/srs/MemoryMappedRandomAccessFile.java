@@ -90,6 +90,9 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         
         long[] regionStarts = starts.stream().mapToLong(Long::longValue).toArray();
         currentEpoch = new Epoch(mappedBuffers, regionStarts, fileSize);
+        
+        // Clear mappedBuffers to prevent memory leak - it now holds references in currentEpoch
+        mappedBuffers.clear();
     }
 
     /**
@@ -124,8 +127,9 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     @Override
     public void sync() throws IOException {
-        // Force all mapped buffers to disk
-        for (MappedByteBuffer buffer : mappedBuffers) {
+        // Force all mapped buffers to disk - use current epoch, not initial mappedBuffers
+        Epoch epoch = currentEpoch;
+        for (MappedByteBuffer buffer : epoch.buffers) {
             buffer.force();
         }
     }

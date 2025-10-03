@@ -32,6 +32,7 @@
   - The pattern is exercised across inserts, updates, deletes, compaction scenarios, and both narrow/padded payloads (see `string1k`) to brute-force every write ordering.
 - Any change that affects write ordering, fsync boundaries, or persistence metadata must be implemented in a crash-safe order and accompanied by updated replay tests.
 - Capture `java.util.logging` at `FINE`/`FINEST` when diagnosing failures; `TracePlayback` can rebuild a store from log traces for reproduction.
+- Run tests with custom log levels using: `-ea -Dcom.github.trex_paxos.srs.testLogLevel=FINEST` (or FINE, FINER, etc.)
 
 ## Commit & Pull Request Guidelines
 - Write present-tense, 72-character subjects (`Update pom.xml to require Java 21`); add context or links in the body when needed.

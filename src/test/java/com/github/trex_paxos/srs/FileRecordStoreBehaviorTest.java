@@ -1,14 +1,13 @@
 package com.github.trex_paxos.srs;
 
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -58,7 +57,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
                 logger.log(Level.FINE, () -> String.format("Got expected exception at operation %d: %s", finalThrowAt, e.getMessage()));
                 
                 // Verify exception was actually thrown by our delegate
-                Assert.assertTrue("Delegate should have thrown exception", exceptionOps.didThrow());
+                Assert.assertTrue("Delegate should have thrown exception", Objects.requireNonNull(exceptionOps).didThrow());
                 Assert.assertEquals("Delegate should have reached target operation", throwAt, exceptionOps.getOperationCount());
                 
                 // Verify subsequent operations fail
@@ -84,40 +83,37 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         logger.log(Level.FINE, "=== Testing successful operations complete normally ===");
         
         // Create normal store without exception injection
-        FileRecordStore store = new FileRecordStore.Builder()
-            .tempFile("success-test-", ".db")
-            .open();
-        
-        try {
-            ByteSequence key = ByteSequence.of("testkey".getBytes());
-            byte[] data = "testdata".getBytes();
-            
-            // Insert record
-            store.insertRecord(key, data);
-            
-            // Verify data can be read back
-            byte[] readData = store.readRecordData(key);
-            Assert.assertArrayEquals("Data should match after insert", data, readData);
-            
-            // Update record
-            byte[] updatedData = "updateddata".getBytes();
-            store.updateRecord(key, updatedData);
-            
-            // Verify updated data
-            byte[] readUpdatedData = store.readRecordData(key);
-            Assert.assertArrayEquals("Data should match after update", updatedData, readUpdatedData);
-            
-            // Delete record
-            store.deleteRecord(key);
-            
-            // Verify record no longer exists
-            Assert.assertFalse("Record should not exist after delete", store.recordExists(key));
-            
-            logger.log(Level.FINE, "=== All successful operations completed normally ===");
-            
-        } finally {
-            store.close();
-        }
+
+      try (FileRecordStore store = new FileRecordStore.Builder()
+          .tempFile("success-test-", ".db")
+          .open()) {
+        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] data = "testdata".getBytes();
+
+        // Insert record
+        store.insertRecord(key, data);
+
+        // Verify data can be read back
+        byte[] readData = store.readRecordData(key);
+        Assert.assertArrayEquals("Data should match after insert", data, readData);
+
+        // Update record
+        byte[] updatedData = "updateddata".getBytes();
+        store.updateRecord(key, updatedData);
+
+        // Verify updated data
+        byte[] readUpdatedData = store.readRecordData(key);
+        Assert.assertArrayEquals("Data should match after update", updatedData, readUpdatedData);
+
+        // Delete record
+        store.deleteRecord(key);
+
+        // Verify record no longer exists
+        Assert.assertFalse("Record should not exist after delete", store.recordExists(key));
+
+        logger.log(Level.FINE, "=== All successful operations completed normally ===");
+
+      }
     }
     
     /// Test data integrity after exceptions
@@ -256,9 +252,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         
         RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
         DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
-        DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAtOperation);
-        
-        store.fileOperations = exceptionOps;
+
+      store.fileOperations = new DelegatingExceptionOperations(directOps, throwAtOperation);
         
         logger.log(Level.FINE, "Store created with exception injection wrapper at specified path");
         return store;
@@ -289,10 +284,10 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         assertOperationFails(() -> store.readRecordData(key), "readRecordData");
         assertOperationFails(() -> store.updateRecord(key, data), "updateRecord");
         assertOperationFails(() -> store.deleteRecord(key), "deleteRecord");
-        assertOperationFails(() -> store.keys(), "keys");
-        assertOperationFails(() -> store.isEmpty(), "isEmpty");
+        assertOperationFails(store::keys, "keys");
+        assertOperationFails(store::isEmpty, "isEmpty");
         assertOperationFails(() -> store.recordExists(key), "recordExists");
-        assertOperationFails(() -> store.fsync(), "fsync");
+        assertOperationFails(store::fsync, "fsync");
     }
     
     /// Helper to assert that an operation fails with IllegalStateException

@@ -30,7 +30,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Testing exception at operation " + throwAt);
         
         FileRecordStore store = null;
-        DelegatingExceptionOperations exceptionOps = null;
+        DelegatingExceptionOperations exceptionOps;
         
         try {
             // Create store with exception injection

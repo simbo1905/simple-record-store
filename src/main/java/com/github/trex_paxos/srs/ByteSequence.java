@@ -29,7 +29,9 @@ public class ByteSequence {
 
   /// This does not take a defensive copy of the passed bytes. This should be
   /// used only if you know that the array cannot be recycled.
+  ///
   /// @param bytes The bytes to copy.
+  /// @return A ByteSequence wrapping the provided bytes without copying.
   public static ByteSequence of(byte[] bytes) {
     return new ByteSequence(bytes);
   }
@@ -73,7 +75,9 @@ public class ByteSequence {
 
   /// This takes a defensive copy of the passed bytes. This should be used if
   /// the array can be recycled by the caller.
+  ///
   /// @param bytes The bytes to copy.
+  /// @return A ByteSequence containing a defensive copy of the provided bytes.
   public static ByteSequence copyOf(byte[] bytes) {
     return new ByteSequence(bytes.clone());
   }
@@ -86,6 +90,9 @@ public class ByteSequence {
     return bytes.clone();
   }
 
+/// Returns the length of the byte sequence.
+  ///
+  /// @return The number of bytes in this sequence.
   public long length() {
     return bytes.length;
   }

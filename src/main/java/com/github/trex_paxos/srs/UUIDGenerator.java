@@ -6,6 +6,9 @@ import java.security.SecureRandom;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
+/// Generator for time-based UUIDs with sub-millisecond ordering within a single JVM.
+/// Provides good time-based ordering while maintaining global uniqueness.
+///
 /// The Java UUID library lets us create a UUID from two longs.
 /// In the most significant long we put the time in milliseconds.
 /// We then bit shift the time left by 20 bits and mask in a counter.
@@ -32,9 +35,13 @@ public class UUIDGenerator {
     return (currentMillis << 20) | counter20bits;
   }
 
+  /// Generates a time-based UUID with sub-millisecond ordering within a single JVM.
+  /// 
   /// There is no guarantee that the time+counter of the most significant long will be unique across JVMs.
   /// In the lower 64 bits we use a random long. This makes it improbably to get any collisions across JVMs.
   /// Within a given JVM we will have good time based ordering.
+  ///
+  /// @return A new UUID with time-based ordering and global uniqueness.
   @SuppressWarnings("unused")
   public static UUID generateUUID() {
     // As the most significant bits use ms time then counter for sub-millisecond ordering.

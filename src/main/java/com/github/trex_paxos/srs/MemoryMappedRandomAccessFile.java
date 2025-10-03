@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  * Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
  * by batching writes in memory and deferring disk flushes. Preserves crash safety guarantees
  * through the same dual-write patterns used by DirectRandomAccessFile.
- * 
+ * <p>
  * This implementation maps the entire file into memory in chunks and performs all writes
  * through the memory-mapped buffers. The force operation is only called on close()
  * or explicit sync(), giving the host application control over durability timing.
@@ -28,23 +28,19 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
     private final FileChannel channel;
     private volatile Epoch currentEpoch;  // Atomic reference to current mapping state
     private long position = 0;
-    private List<MappedByteBuffer> mappedBuffers; // Temporary buffer list during mapping
+    private final List<MappedByteBuffer> mappedBuffers; // Temporary buffer list during mapping
 
-    /**
-     * Immutable holder for a complete memory mapping epoch.
-     * Allows atomic swapping of entire mapping state.
-     */
-    private static final class Epoch {
-        final List<MappedByteBuffer> buffers;
-        final long[] regionStarts;
-        final long mappedSize;
-        
-        Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
-            this.buffers = List.copyOf(buffers);
-            this.regionStarts = regionStarts.clone();
-            this.mappedSize = mappedSize;
-        }
+  /**
+   * Immutable holder for a complete memory mapping epoch.
+   * Allows atomic swapping of entire mapping state.
+   */
+  private record Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
+    private Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
+      this.buffers = List.copyOf(buffers);
+      this.regionStarts = regionStarts.clone();
+      this.mappedSize = mappedSize;
     }
+  }
 
     /**
      * Creates a new memory-mapped file wrapper.
@@ -77,7 +73,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
                 pos += chunkSize;
             } catch (java.nio.channels.NonWritableChannelException e) {
                 // File is read-only, switch to READ_ONLY mode and retry
-                if (!readOnlyMode && mapMode == FileChannel.MapMode.READ_WRITE) {
+                if (!readOnlyMode) {
                     mapMode = FileChannel.MapMode.READ_ONLY;
                     readOnlyMode = true;
                     // Retry current chunk with read-only mode
@@ -122,7 +118,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
     private record BufferLocation(MappedByteBuffer buffer, int offset) {}
 
     @Override
-    public long getFilePointer() throws IOException {
+    public long getFilePointer() {
         return position;
     }
 
@@ -142,7 +138,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         }
         
         int toRead = (int) Math.min(b.length, epoch.mappedSize - position);
-        BufferLocation loc = locate(position);
+      locate(position);
+      BufferLocation loc;
         
         // Handle reads that span multiple buffers
         int remaining = toRead;
@@ -243,10 +240,9 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         
         try {
             // Build new epoch atomically
-            Epoch newEpoch = buildNewEpoch(newLength);
-            
-            // Publish new epoch atomically
-            currentEpoch = newEpoch;
+
+          // Publish new epoch atomically
+            currentEpoch = buildNewEpoch(newLength);
             
             // Clean up old epoch buffers (explicit unmap to prevent memory leak)
             unmapEpoch(current);
@@ -293,7 +289,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
                 newStarts.add(pos);
                 pos += chunkSize;
             } catch (java.nio.channels.NonWritableChannelException e) {
-                if (!readOnlyMode && mapMode == FileChannel.MapMode.READ_WRITE) {
+                if (!readOnlyMode) {
                     mapMode = FileChannel.MapMode.READ_ONLY;
                     readOnlyMode = true;
                     MappedByteBuffer buffer = channel.map(mapMode, pos, chunkSize);

@@ -51,7 +51,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         countingStore.insertRecord(key, data);
         
         // Reset counter before delete
-        countingOps.getOperationCount(); // This resets the count
+        countingOps.resetOperationCount();
         
         // Perform delete
         countingStore.deleteRecord(key);
@@ -63,46 +63,37 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
     }
     
     private void testDeleteWithException(int throwAt) throws Exception {
-        FileRecordStore store = null;
-        DelegatingExceptionOperations exceptionOps = null;
-        
+
+      DelegatingExceptionOperations exceptionOps;
+      try (FileRecordStore store = createStoreWithData()) {
+        // Create store with data
+
+        // Replace with exception delegate
+        RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
+        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
+        store.fileOperations = exceptionOps;
+
+        ByteSequence key = ByteSequence.of("testkey".getBytes());
+
         try {
-            // Create store with data
-            store = createStoreWithData();
-            
-            // Replace with exception delegate
-            RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
-            DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
-            exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
-            store.fileOperations = exceptionOps;
-            
-            ByteSequence key = ByteSequence.of("testkey".getBytes());
-            
-            try {
-                store.deleteRecord(key);
-                logger.log(Level.FINE, "  Delete completed - no exception at operation " + throwAt);
-            } catch (IOException e) {
-                logger.log(Level.FINE, "  Got expected exception at operation " + throwAt + ": " + e.getMessage());
-                logger.log(Level.FINE, "  Store state: " + store.getState());
-                
-                // Verify subsequent operations fail
-                try {
-                    store.recordExists(key);
-                    logger.log(Level.FINE, "  ERROR: recordExists should have failed!");
-                } catch (IllegalStateException ise) {
-                    logger.log(Level.FINE, "  ✓ Subsequent operation correctly failed: " + ise.getMessage());
-                }
-            }
-            
-        } finally {
-            if (store != null) {
-                try {
-                    store.close();
-                } catch (Exception e) {
-                    // Ignore
-                }
-            }
+          store.deleteRecord(key);
+          logger.log(Level.FINE, "  Delete completed - no exception at operation " + throwAt);
+        } catch (IOException e) {
+          logger.log(Level.FINE, "  Got expected exception at operation " + throwAt + ": " + e.getMessage());
+          logger.log(Level.FINE, "  Store state: " + store.getState());
+
+          // Verify subsequent operations fail
+          try {
+            store.recordExists(key);
+            logger.log(Level.FINE, "  ERROR: recordExists should have failed!");
+          } catch (IllegalStateException ise) {
+            logger.log(Level.FINE, "  ✓ Subsequent operation correctly failed: " + ise.getMessage());
+          }
         }
+
+      }
+      // Ignore
     }
     
     private FileRecordStore createStoreWithData() throws IOException {

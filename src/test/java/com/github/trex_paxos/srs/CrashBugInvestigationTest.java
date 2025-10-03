@@ -5,7 +5,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -33,7 +32,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     }
     
     @After
-    public void cleanup() throws IOException {
+    public void cleanup() {
         if (store != null) {
             try {
                 store.close();
@@ -89,7 +88,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     }
     
     /// Systematically test halting at each operation count
-    private void testSystematicHalting(int maxOperations) throws Exception {
+    private void testSystematicHalting(int maxOperations) {
         logger.log(Level.FINE, () -> String.format("=== Starting systematic halting test for %d operations ===", maxOperations));
         
         // Test halt at each operation from 1 to maxOperations
@@ -174,86 +173,5 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Store created with halt wrapper");
         return store;
     }
-    
-    /// Log current file state
-    private void logFileState(String context) throws IOException {
-        logger.log(Level.FINE, () -> String.format("=== File state: %s ===", context));
-        
-        if (store != null) {
-            logger.log(Level.FINE, () -> String.format("Store has %d records", store.getNumRecords()));
-            
-            // Log all keys
-            for (ByteSequence key : store.keys()) {
-                try {
-                    byte[] data = store.readRecordData(key);
-                    logger.log(Level.FINEST, () -> String.format("  Key: %s, Data: %s (len=%d)", 
-                        new String(key.bytes), new String(data), data.length));
-                } catch (Exception e) {
-                    logger.log(Level.FINE, () -> String.format("  Key: %s - ERROR reading data: %s", 
-                        new String(key.bytes), e.getMessage()));
-                }
-            }
-        }
-        
-        // Log raw file info
-        try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "r")) {
-            long fileLength = raf.length();
-            logger.log(Level.FINE, () -> String.format("Raw file length: %d bytes", fileLength));
-            
-            if (fileLength > 0) {
-                // Read key length header
-                raf.seek(0);
-                int keyLength = raf.readByte() & 0xFF;
-                logger.log(Level.FINE, () -> String.format("Key length header: %d", keyLength));
-                
-                // Read number of records
-                raf.seek(1);
-                int numRecords = raf.readInt();
-                logger.log(Level.FINE, () -> String.format("Number of records: %d", numRecords));
-                
-                // Read data start pointer
-                raf.seek(5);
-                long dataStart = raf.readLong();
-                logger.log(Level.FINE, () -> String.format("Data start pointer: %d", dataStart));
-            }
-        }
-    }
-    
-    /// Dump raw file contents for debugging
-    private void dumpFileContents() {
-        logger.log(Level.SEVERE, "=== DUMPING FILE CONTENTS ===");
-        
-        try {
-            byte[] fileBytes = Files.readAllBytes(tempFile);
-            logger.log(Level.SEVERE, () -> String.format("File size: %d bytes", fileBytes.length));
-            
-            // Dump first 100 bytes in hex
-            StringBuilder hex = new StringBuilder();
-            StringBuilder ascii = new StringBuilder();
-            for (int i = 0; i < Math.min(100, fileBytes.length); i++) {
-                byte b = fileBytes[i];
-                hex.append(String.format("%02X ", b));
-                ascii.append((b >= 32 && b <= 126) ? (char) b : '.');
-            }
-            
-            logger.log(Level.SEVERE, "First 100 bytes (hex): " + hex.toString());
-            logger.log(Level.SEVERE, "First 100 bytes (ascii): " + ascii.toString());
-            
-            // Try to parse headers
-            if (fileBytes.length >= 13) {
-                int keyLength = fileBytes[0] & 0xFF;
-                java.nio.ByteBuffer buffer = java.nio.ByteBuffer.wrap(fileBytes, 1, 12);
-                int numRecords = buffer.getInt();
-                long dataStart = buffer.getLong();
-                
-                logger.log(Level.SEVERE, () -> String.format("Parsed headers - KeyLength: %d, NumRecords: %d, DataStart: %d", 
-                    keyLength, numRecords, dataStart));
-            }
-            
-        } catch (IOException e) {
-            logger.log(Level.SEVERE, "Failed to dump file contents", e);
-        }
-        
-        logger.log(Level.SEVERE, "=== END FILE DUMP ===");
-    }
+
 }

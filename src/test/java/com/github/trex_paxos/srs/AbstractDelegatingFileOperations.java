@@ -1,18 +1,26 @@
 package com.github.trex_paxos.srs;
 
+import lombok.Getter;
+
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /// Abstract base class for delegating file operations with operation counting and logging.
 /// Provides the foundation for both exception injection and operation halting scenarios.
-public abstract class AbstractDelegatingFileOperations implements CrashSafeFileOperations {
+abstract class AbstractDelegatingFileOperations implements CrashSafeFileOperations {
     
     private static final Logger logger = Logger.getLogger(AbstractDelegatingFileOperations.class.getName());
     
     protected final CrashSafeFileOperations delegate;
-    protected int operationCount = 0;
-    protected final int targetOperation;
+  /**
+   */
+  @Getter
+  protected int operationCount = 0;
+  /**
+   */
+  @Getter
+  protected final int targetOperation;
     
     public AbstractDelegatingFileOperations(CrashSafeFileOperations delegate, int targetOperation) {
         this.delegate = delegate;
@@ -132,18 +140,9 @@ public abstract class AbstractDelegatingFileOperations implements CrashSafeFileO
         return delegate.readByte();
     }
     
-    /// Get the current operation count
-    public int getOperationCount() {
-        return operationCount;
-    }
-    
-    /// Get the target operation that triggers behavior
-    public int getTargetOperation() {
-        return targetOperation;
-    }
-    
-    /// Check if the target operation has been reached
-    public boolean hasReachedTarget() {
-        return operationCount >= targetOperation;
+    /// Reset the operation count to zero
+    public void resetOperationCount() {
+        this.operationCount = 0;
+        logger.log(Level.FINE, () -> String.format("Reset operation count to 0"));
     }
 }

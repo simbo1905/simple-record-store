@@ -162,7 +162,7 @@ public class BuilderTest extends JulLoggingConfig {
         
         // Test with absolute path
         Path absolutePath = tempFolder.newFile("absolute.db").toPath();
-        try (FileRecordStore store = new FileRecordStore.Builder()
+        try (FileRecordStore ignored = new FileRecordStore.Builder()
                 .path(absolutePath)
                 .open()) {
             // Should work

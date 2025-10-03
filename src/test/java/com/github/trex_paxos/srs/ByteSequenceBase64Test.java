@@ -51,7 +51,7 @@ public class ByteSequenceBase64Test {
     }
 
     @Test
-    public void testUUIDRoundTrip() throws Exception {
+    public void testUUIDRoundTrip() {
         UUID uuid = UUID.randomUUID();
         ByteBuffer bb = ByteBuffer.wrap(new byte[16]);
         bb.putLong(uuid.getMostSignificantBits());

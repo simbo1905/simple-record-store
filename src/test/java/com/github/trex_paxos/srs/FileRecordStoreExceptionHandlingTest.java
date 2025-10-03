@@ -1,24 +1,21 @@
 package com.github.trex_paxos.srs;
 
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /// Comprehensive test for FileRecordStore closed state behavior after exceptions.
 /// This test uses proper resource management and controlled exception injection
 /// to verify that the store correctly handles exceptions and prevents reuse.
+@SuppressWarnings("ResultOfMethodCallIgnored")
 public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     
     private static final Logger logger = Logger.getLogger(FileRecordStoreExceptionHandlingTest.class.getName());
@@ -472,44 +469,40 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             logger.log(Level.FINE, () -> String.format("RECORD AND PLAYBACK: Testing exception at operation %d/%d", finalThrowAt, totalOperations));
             
             // Create store with exception injection
-            FileRecordStore store = null;
-            boolean storeCreated = false;
-            
-            try {
+            FileRecordStore store;
+
+          try {
                 store = createStoreWithException(finalThrowAt);
-                storeCreated = true; // Store was successfully created
-            } catch (IOException e) {
+          } catch (IOException e) {
                 logger.log(Level.FINE, () -> String.format("RECORD AND PLAYBACK: Exception during store creation at operation %d: %s", finalThrowAt, e.getMessage()));
                 // Store failed to construct - this is expected for early operations
                 // No need to test further as store was never properly opened
                 continue;
             }
-            
-            if (storeCreated) {
-                ByteSequence key = ByteSequence.of("testkey".getBytes());
-                byte[] data = "testdata".getBytes();
-                
-                try {
-                    // This should trigger an exception at the specified operation
-                    store.insertRecord(key, data);
-                    // If we get here without exception, that's fine - some operations might not be reached
-                    logger.log(Level.FINE, () -> String.format("Operation %d not reached - that's expected", finalThrowAt));
-                } catch (IOException e) {
-                    logger.log(Level.FINE, () -> String.format("RECORD AND PLAYBACK: Got expected exception at operation %d: %s", finalThrowAt, e.getMessage()));
-                    // Store should now be closed (only if it was successfully created first)
-                    Assert.assertTrue("RECORD AND PLAYBACK: Store should be closed after exception at operation " + finalThrowAt, store.isClosed());
-                    
-                    // All subsequent operations should throw IllegalStateException
-                    verifyStoreIsClosed(store);
-                }
-                
-                // Close the store (whether it failed or not)
-                try {
-                    store.close();
-                } catch (Exception e) {
-                    // Ignore close exceptions
-                }
-            }
+
+          ByteSequence key = ByteSequence.of("testkey".getBytes());
+          byte[] data = "testdata".getBytes();
+
+          try {
+              // This should trigger an exception at the specified operation
+              store.insertRecord(key, data);
+              // If we get here without exception, that's fine - some operations might not be reached
+              logger.log(Level.FINE, () -> String.format("Operation %d not reached - that's expected", finalThrowAt));
+          } catch (IOException e) {
+              logger.log(Level.FINE, () -> String.format("RECORD AND PLAYBACK: Got expected exception at operation %d: %s", finalThrowAt, e.getMessage()));
+              // Store should now be closed (only if it was successfully created first)
+              Assert.assertTrue("RECORD AND PLAYBACK: Store should be closed after exception at operation " + finalThrowAt, store.isClosed());
+
+              // All subsequent operations should throw IllegalStateException
+              verifyStoreIsClosed(store);
+          }
+
+          // Close the store (whether it failed or not)
+          try {
+              store.close();
+          } catch (Exception e) {
+              // Ignore close exceptions
+          }
         }
         
         logger.log(Level.FINE, "=== RECORD AND PLAYBACK: Completed testing all operations 1-" + totalOperations + " ===");
@@ -611,8 +604,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         
         // Test keys() method
         store.insertRecord(key, data);
-        Iterable<ByteSequence> keys = store.keys();
-        Assert.assertFalse("Store should not be closed after keys()", store.isClosed());
+      store.keys();
+      Assert.assertFalse("Store should not be closed after keys()", store.isClosed());
         
         // Test recordExists() method
         Assert.assertTrue("Record should exist", store.recordExists(key));
@@ -788,7 +781,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         for (int op : testOperations) {
             if (op <= totalReadOps) {
                 logger.log(Level.FINE, () -> String.format("Testing read scenario at operation %d/%d", op, totalReadOps));
-                testReadScenarioWithException(op, "read scenario operation " + op, false);
+                testReadScenarioWithException(op, "read scenario operation " + op);
             }
         }
     }
@@ -872,36 +865,30 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         
         // Persistence verification: reopen store and verify data integrity
         if (filePath != null) {
-            FileRecordStore verificationStore = null;
-            try {
-                verificationStore = new FileRecordStore.Builder()
-                    .path(filePath)
-                    .open();
-                
-                // Count valid records in the reopened store
-                int validRecords = 0;
-                for (ByteSequence verificationKey : verificationStore.keys()) {
-                    try {
-                        byte[] verificationData = verificationStore.readRecordData(verificationKey);
-                        if (verificationData != null && verificationData.length > 0) {
-                            validRecords++;
-                        }
-                    } catch (IOException e) {
-                        // Skip invalid records
-                    }
+          try (FileRecordStore verificationStore = new FileRecordStore.Builder()
+              .path(filePath)
+              .open()) {
+
+            // Count valid records in the reopened store
+            int validRecords = 0;
+            for (ByteSequence verificationKey : verificationStore.keys()) {
+              try {
+                byte[] verificationData = verificationStore.readRecordData(verificationKey);
+                if (verificationData != null && verificationData.length > 0) {
+                  validRecords++;
                 }
-                
-                final int finalValidRecords = validRecords;
-                final String finalDescription = description;
-                logger.log(Level.FINE, () -> String.format("Persistence verification for %s: found %d valid records after exception", finalDescription, finalValidRecords));
-                
-            } catch (Exception e) {
-                logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
-            } finally {
-                if (verificationStore != null) {
-                    try { verificationStore.close(); } catch (Exception ignored) {}
-                }
+              } catch (IOException e) {
+                // Skip invalid records
+              }
             }
+
+            final int finalValidRecords = validRecords;
+            final String finalDescription = description;
+            logger.log(Level.FINE, () -> String.format("Persistence verification for %s: found %d valid records after exception", finalDescription, finalValidRecords));
+
+          } catch (Exception e) {
+            logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
+          }
         }
         
         store.close();
@@ -944,51 +931,45 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         Assert.assertTrue("Store should be closed after " + description, testStore.isClosed());
         
         // Persistence verification: verify original data is still intact after exception
-        FileRecordStore verificationStore = null;
-        try {
-            verificationStore = new FileRecordStore.Builder()
-                .path(filePath)
-                .open();
-            
-            // Verify original records are still present and valid
-            int originalRecordsFound = 0;
-            for (int i = 0; i < 5; i++) {
-                if (i == 1 || i == 3) continue; // These were deleted
-                
-                ByteSequence originalKey = ByteSequence.of(("existing" + i).getBytes());
-                String expectedData = "existingdata" + i;
-                
-                try {
-                    if (verificationStore.recordExists(originalKey)) {
-                        byte[] data = verificationStore.readRecordData(originalKey);
-                        if (data != null) {
-                            String actualData = new String(data, StandardCharsets.UTF_8);
-                            if (expectedData.equals(actualData)) {
-                                originalRecordsFound++;
-                            }
-                        }
-                    }
-                } catch (IOException e) {
-                    // Skip corrupted records
+      try (FileRecordStore verificationStore = new FileRecordStore.Builder()
+          .path(filePath)
+          .open()) {
+
+        // Verify original records are still present and valid
+        int originalRecordsFound = 0;
+        for (int i = 0; i < 5; i++) {
+          if (i == 1 || i == 3) continue; // These were deleted
+
+          ByteSequence originalKey = ByteSequence.of(("existing" + i).getBytes());
+          String expectedData = "existingdata" + i;
+
+          try {
+            if (verificationStore.recordExists(originalKey)) {
+              byte[] data = verificationStore.readRecordData(originalKey);
+              if (data != null) {
+                String actualData = new String(data, StandardCharsets.UTF_8);
+                if (expectedData.equals(actualData)) {
+                  originalRecordsFound++;
                 }
+              }
             }
-            
-            // We expect 3 original records (5 created - 2 deleted)
-            final int finalOriginalRecordsFound = originalRecordsFound;
-            final String finalDescription2 = description;
-            Assert.assertEquals("Original data should be intact after exception", 3, finalOriginalRecordsFound);
-            logger.log(Level.FINE, () -> String.format("Persistence verified: %d original records intact after %s", finalOriginalRecordsFound, finalDescription2));
-            
-            // Verify the new insert did NOT happen (store closed before completion)
-            Assert.assertFalse("New insert should not have completed", verificationStore.recordExists(newKey));
-            
-        } catch (Exception e) {
-            logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
-        } finally {
-            if (verificationStore != null) {
-                try { verificationStore.close(); } catch (Exception ignored) {}
-            }
+          } catch (IOException e) {
+            // Skip corrupted records
+          }
         }
+
+        // We expect 3 original records (5 created - 2 deleted)
+        final int finalOriginalRecordsFound = originalRecordsFound;
+        final String finalDescription2 = description;
+        Assert.assertEquals("Original data should be intact after exception", 3, finalOriginalRecordsFound);
+        logger.log(Level.FINE, () -> String.format("Persistence verified: %d original records intact after %s", finalOriginalRecordsFound, finalDescription2));
+
+        // Verify the new insert did NOT happen (store closed before completion)
+        Assert.assertFalse("New insert should not have completed", verificationStore.recordExists(newKey));
+
+      } catch (Exception e) {
+        logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
+      }
         
         testStore.close();
     }
@@ -1068,13 +1049,13 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     }
 
     /// Helper method for read scenario with exception
-    private void testReadScenarioWithException(int throwAt, String description, boolean disableCrc) throws Exception {
+    private void testReadScenarioWithException(int throwAt, String description) throws Exception {
         logger.log(Level.FINE, () -> String.format("Testing read scenario: %s with exception at operation %d", description, throwAt));
         
         // Pre-create store with data and specific CRC setting
         FileRecordStore prepStore = new FileRecordStore.Builder()
             .tempFile("read-scenario-", ".db")
-            .disablePayloadCrc32(disableCrc)
+            .disablePayloadCrc32(false)
             .open();
         
         ByteSequence key = ByteSequence.of("readkey".getBytes());
@@ -1085,14 +1066,13 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         // Test read with exception and same CRC setting
         FileRecordStore testStore = new FileRecordStore.Builder()
             .path(filePath)
-            .disablePayloadCrc32(disableCrc)
+            .disablePayloadCrc32(false)
             .open();
         
         // Replace file operations with exception injection
         RandomAccessFile raf = new RandomAccessFile(testStore.getFilePath().toFile(), "r");
         DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
-        DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
-        testStore.fileOperations = exceptionOps;
+      testStore.fileOperations = new DelegatingExceptionOperations(directOps, throwAt);
         
         try {
             testStore.readRecordData(key);
@@ -1105,26 +1085,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         testStore.close();
     }
 
-    /// Helper method for read non-existent scenario with exception
-    private void testReadNonExistentWithException(int throwAt, String description) throws Exception {
-        logger.log(Level.FINE, () -> String.format("Testing %s with exception at operation %d", description, throwAt));
-        
-        // Create empty store
-        FileRecordStore testStore = createStoreWithException(throwAt);
-        ByteSequence nonExistentKey = ByteSequence.of("nonexistent".getBytes());
-        
-        try {
-            testStore.readRecordData(nonExistentKey);
-            Assert.fail("Expected IOException during " + description);
-        } catch (IOException e) {
-            logger.log(Level.FINE, () -> String.format("Read non-existent failed as expected during %s: %s", description, e.getMessage()));
-        }
-        
-        Assert.assertTrue("Store should be closed after " + description, testStore.isClosed());
-        testStore.close();
-    }
-
-    /// Helper method for max key length scenario
+  /// Helper method for max key length scenario
     private void testMaxKeyLengthScenario(int throwAt) throws Exception {
         logger.log(Level.FINE, "Testing max key length scenario with exception at operation " + throwAt);
         
@@ -1137,8 +1098,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         // Replace file operations with exception injection
         RandomAccessFile raf = new RandomAccessFile(testStore.getFilePath().toFile(), "rw");
         DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
-        DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
-        testStore.fileOperations = exceptionOps;
+      testStore.fileOperations = new DelegatingExceptionOperations(directOps, throwAt);
         
         // Create max length key
         byte[] maxKeyBytes = new byte[248];
@@ -1269,10 +1229,9 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         // Replace file operations with exception injection wrapper
         RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
         DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
-        DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAtOperation);
-        
-        // Replace the file operations with our exception wrapper
-        store.fileOperations = exceptionOps;
+
+      // Replace the file operations with our exception wrapper
+        store.fileOperations = new DelegatingExceptionOperations(directOps, throwAtOperation);
         
         logger.log(Level.FINE, "Store created with exception injection wrapper at specified path");
         return store;
@@ -1281,46 +1240,36 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     /// New behavior-based exception testing method
     private void testExceptionScenarioWithBehaviorVerification(int throwAt, String description) throws Exception {
         logger.log(Level.FINE, () -> String.format("Testing %s with exception at operation %d (behavior-based)", description, throwAt));
-        
-        FileRecordStore store = null;
-        DelegatingExceptionOperations exceptionOps = null;
-        
+
+      DelegatingExceptionOperations exceptionOps;
+      try (FileRecordStore store = createStoreWithException(throwAt)) {
+        exceptionOps = (DelegatingExceptionOperations) store.fileOperations;
+
+        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] data = "testdata".getBytes();
+
         try {
-            store = createStoreWithException(throwAt);
-            exceptionOps = (DelegatingExceptionOperations) store.fileOperations;
-            
-            ByteSequence key = ByteSequence.of("testkey".getBytes());
-            byte[] data = "testdata".getBytes();
-            
-            try {
-                store.insertRecord(key, data);
-                
-                // If no exception, verify store is still operational
-                byte[] readData = store.readRecordData(key);
-                Assert.assertArrayEquals("Data should be intact when no exception thrown", data, readData);
-                logger.log(Level.FINE, () -> String.format("No exception at operation %d - store operational", throwAt));
-                
-            } catch (IOException e) {
-                // Exception occurred as expected
-                logger.log(Level.FINE, () -> String.format("Got expected exception at operation %d: %s", throwAt, e.getMessage()));
-                
-                // Verify exception was actually thrown by our delegate
-                Assert.assertTrue("Delegate should have thrown exception", exceptionOps.didThrow());
-                Assert.assertEquals("Delegate should have reached target operation", throwAt, exceptionOps.getOperationCount());
-                
-                // Verify subsequent operations fail appropriately
-                verifySubsequentOperationsFail(store);
-            }
-            
-        } finally {
-            if (store != null) {
-                try {
-                    store.close();
-                } catch (Exception e) {
-                    // Ignore close exceptions in test cleanup
-                }
-            }
+          store.insertRecord(key, data);
+
+          // If no exception, verify store is still operational
+          byte[] readData = store.readRecordData(key);
+          Assert.assertArrayEquals("Data should be intact when no exception thrown", data, readData);
+          logger.log(Level.FINE, () -> String.format("No exception at operation %d - store operational", throwAt));
+
+        } catch (IOException e) {
+          // Exception occurred as expected
+          logger.log(Level.FINE, () -> String.format("Got expected exception at operation %d: %s", throwAt, e.getMessage()));
+
+          // Verify exception was actually thrown by our delegate
+          Assert.assertTrue("Delegate should have thrown exception", exceptionOps.didThrow());
+          Assert.assertEquals("Delegate should have reached target operation", throwAt, exceptionOps.getOperationCount());
+
+          // Verify subsequent operations fail appropriately
+          verifySubsequentOperationsFail(store);
         }
+
+      }
+      // Ignore close exceptions in test cleanup
     }
 
     /// Helper method to verify all public methods throw IllegalStateException
@@ -1447,8 +1396,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             }
         }, "deleteRecord");
         
-        assertOperationFails(() -> store.keys(), "keys");
-        assertOperationFails(() -> store.isEmpty(), "isEmpty");
+        assertOperationFails(store::keys, "keys");
+        assertOperationFails(store::isEmpty, "isEmpty");
         assertOperationFails(() -> store.recordExists(key), "recordExists");
         assertOperationFails(() -> {
             try {
@@ -1495,7 +1444,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     
             Iterable<ByteSequence> keys = store.keys();
             int actualCount = 0;
-            for (ByteSequence key : keys) {
+            for (ByteSequence ignored : keys) {
                 actualCount++;
             }
     
@@ -1544,8 +1493,6 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
                 () -> String.format("%s: Verified %d records successfully",
                                     description, finalActualCount));
     
-        } catch (AssertionError ae) {
-            throw ae;
         } catch (Exception e) {
             throw new AssertionError(description +
                 ": Unexpected error during verification: " + e.getMessage(), e);
@@ -1624,36 +1571,26 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             // Now verify persistence by opening a fresh store
             final int finalSuccessfulWrites = successfulWrites;
             final Path finalStorePath = storePath;
-            final Map<ByteSequence, String> finalExpectedData = expectedData;
-            
-            if (finalStorePath != null && finalSuccessfulWrites > 0) {
+
+          if (finalStorePath != null && finalSuccessfulWrites > 0) {
                 logger.log(Level.FINE, () -> String.format("Verifying persistence: reopening store with %d expected records", finalSuccessfulWrites));
-                
-                FileRecordStore freshStore = null;
-                try {
-                    freshStore = new FileRecordStore.Builder()
-                        .path(finalStorePath)
-                        .open();
-                    
-                    // Use our hybrid validation helper
-                    final String verificationDescription = String.format("Persistence check after exception at operation %d", finalThrowAt);
-                    verifyStoreIntegrity(freshStore, finalSuccessfulWrites, finalExpectedData, verificationDescription);
-                    
-                    logger.log(Level.FINE, () -> String.format("Persistence verified: %d records correctly stored", finalSuccessfulWrites));
-                    
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, () -> String.format("Persistence verification failed: %s", e.getMessage()));
-                    throw new AssertionError("Persistence verification failed: " + e.getMessage(), e);
-                } finally {
-                    if (freshStore != null) {
-                        try {
-                            freshStore.close();
-                        } catch (Exception e) {
-                            // Ignore close exceptions
-                        }
-                    }
-                }
-            } else if (finalStorePath != null) {
+
+            try (FileRecordStore freshStore = new FileRecordStore.Builder()
+                .path(finalStorePath)
+                .open()) {
+
+              // Use our hybrid validation helper
+              final String verificationDescription = String.format("Persistence check after exception at operation %d", finalThrowAt);
+              verifyStoreIntegrity(freshStore, finalSuccessfulWrites, expectedData, verificationDescription);
+
+              logger.log(Level.FINE, () -> String.format("Persistence verified: %d records correctly stored", finalSuccessfulWrites));
+
+            } catch (Exception e) {
+              logger.log(Level.SEVERE, () -> String.format("Persistence verification failed: %s", e.getMessage()));
+              throw new AssertionError("Persistence verification failed: " + e.getMessage(), e);
+            }
+            // Ignore close exceptions
+          } else if (finalStorePath != null) {
                 logger.log(Level.FINE, () -> String.format("No successful writes to verify for operation %d", finalThrowAt));
             }
         }

@@ -18,10 +18,13 @@ import java.util.zip.CRC32;
 
 import static java.util.Optional.of;
 
+/// A persistent record store that maps keys to values with crash-safe guarantees.
+/// Provides ACID properties with durable writes and supports both direct I/O and memory-mapped access modes.
 public class FileRecordStore implements AutoCloseable {
 
-  // this can be overridden up to 2^8 - 4
+  /// Default maximum key length in bytes. Can be overridden up to 2^8 - 4.
   public static final int DEFAULT_MAX_KEY_LENGTH = 64;
+  /// Theoretical maximum key length based on file format constraints (2^8 - 4).
   public static final int MAX_KEY_LENGTH_THEORETICAL = Double.valueOf(Math.pow(2, 8)).intValue() - Integer.BYTES;
   private final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
   // Number of bytes in the record header.
@@ -38,12 +41,14 @@ public class FileRecordStore implements AutoCloseable {
   private static final int FILE_HEADERS_REGION_LENGTH = 13;
   // this is an unsigned 32 int
   private static final int CRC32_LENGTH = 4;
+  /// System property name for configuring the maximum key length.
   public static String MAX_KEY_LENGTH_PROPERTY = "MAX_KEY_LENGTH";
   private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
   // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
   // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of anything
   // unique about your data. You can also set it to be a max of 248 bytes. Note we store binary keys with a header byte
   // and a CRC32 which is an unsigned 32 stored as a long.
+  /// The maximum key length this store was configured with. Immutable after creation.
   public final int maxKeyLength;
   // The total length of one index entry - the key length plus the record
   // header length and the CRC of the key which is an unsigned 32 bits.
@@ -347,6 +352,10 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
+  /// Command-line utility to dump the contents of a record store file.
+  ///
+  /// @param args command line arguments: filename
+  /// @throws Exception if an error occurs during file processing
   public static void main(String[] args) throws Exception {
     if (args.length < 1) {
       System.err.println("no file passed");
@@ -403,6 +412,12 @@ public class FileRecordStore implements AutoCloseable {
     return memIndex.size();
   }
 
+  /// Reads the data for the record with the specified key.
+  ///
+  /// @param key the key of the record to read
+  /// @return the data stored for the specified key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
   public byte[] readRecordData(ByteSequence key) throws IOException {
     ensureOpen();
     try {
@@ -480,6 +495,8 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Checks if the store has been closed due to an error.
+  ///
+  /// @return true if the store is closed, false if it's open
   public boolean isClosed() {
     return state != StoreState.OPEN;
   }
@@ -494,6 +511,8 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Generates a defensive copy of all the keys in a thread safe manner.
+  ///
+  /// @return an iterable collection of all keys in the store
   public Iterable<ByteSequence> keys() {
     ensureOpen();
     final var snapshot = snapshotKeys();
@@ -505,6 +524,9 @@ public class FileRecordStore implements AutoCloseable {
     return new HashSet<>(memIndex.keySet());
   }
 
+  /// Checks if the store contains no records.
+  ///
+  /// @return true if the store is empty, false otherwise
   @Synchronized
   public boolean isEmpty() {
     ensureOpen();
@@ -512,6 +534,9 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Checks if there is a record belonging to the given key.
+  ///
+  /// @param key the key to check
+  /// @return true if a record exists for the key, false otherwise
   @Synchronized
   public boolean recordExists(ByteSequence key) {
     ensureOpen();
@@ -679,6 +704,9 @@ public class FileRecordStore implements AutoCloseable {
     writeNumRecordsHeader(currentNumRecords - 1);
   }
 
+  /// Forces all buffered writes to be written to disk.
+  ///
+  /// @throws IOException if an I/O error occurs during sync
   @Synchronized
   public void fsync() throws IOException {
     ensureOpen();
@@ -729,6 +757,11 @@ public class FileRecordStore implements AutoCloseable {
   /// be considered space at the end of the index space such that inserts will be prepended into the back of the
   /// fileOperations. When there is no more space in the index area the file will be expanded and record(s) will be into the new
   /// space to make space for headers.
+  ///
+  /// @param key the key for the new record
+  /// @param value the data to store for the key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key already exists
   @Synchronized
   public void insertRecord(ByteSequence key, byte[] value)
       throws IOException {
@@ -757,6 +790,12 @@ public class FileRecordStore implements AutoCloseable {
     return len;
   }
 
+  /// Updates an existing record with new data.
+  ///
+  /// @param key the key of the record to update
+  /// @param value the new data to store for the key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
   public void updateRecord(ByteSequence key, byte[] value) throws IOException {
     ensureOpen();
     try {
@@ -860,6 +899,11 @@ public class FileRecordStore implements AutoCloseable {
         header.dataPointer + 4, payload.length, header.dataPointer + payload.length, crc, print(data)));
   }
 
+  /// Deletes the record with the specified key.
+  ///
+  /// @param key the key of the record to delete
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
   public void deleteRecord(ByteSequence key) throws IOException {
     ensureOpen();
     try {
@@ -932,6 +976,10 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
+  /// Logs detailed information about all records in the store.
+  ///
+  /// @param level the logging level to use
+  /// @param disableCrc32 whether to disable CRC32 validation during logging
   @SneakyThrows
   @Synchronized
   @SuppressWarnings("unused")
@@ -966,6 +1014,9 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
+  /// Returns the number of records in the store.
+  ///
+  /// @return the number of records currently stored
   public int size() {
     return getNumRecords();
   }
@@ -984,7 +1035,7 @@ public class FileRecordStore implements AutoCloseable {
     return filePath;
   }
 
-  /// Builder for creating FileRecordStore instances with a fluent API.
+  /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
   /// This provides a secure, explicit way to configure and create stores.
   public static class Builder {
     private Path path;
@@ -1197,8 +1248,11 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     /// Access mode for opening FileRecordStore instances
+    /// Access mode for opening a FileRecordStore.
     public enum AccessMode {
+      /// Read-only access mode - files are opened for reading only.
       READ_ONLY("r"),
+      /// Read-write access mode - files can be read and modified.
       READ_WRITE("rw");
 
       private final String mode;

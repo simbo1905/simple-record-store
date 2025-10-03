@@ -1,16 +1,21 @@
 package com.github.trex_paxos.srs;
 
+import lombok.Getter;
+
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /// A delegating CrashSafeFileOperations that counts operations and can halt at a specific count.
 /// This allows controlled testing of file operations without throwing exceptions.
-public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
+@Getter
+class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     private static final Logger logger = Logger.getLogger(DelegatingHaltOperations.class.getName());
-    
-    private boolean halted = false;
+
+  /**
+   */
+  private boolean halted = false;
     
     public DelegatingHaltOperations(CrashSafeFileOperations delegate, int haltAtOperation) {
         super(delegate, haltAtOperation);
@@ -18,17 +23,12 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     }
     
     @Override
-    protected void handleTargetOperation() throws IOException {
+    protected void handleTargetOperation() {
         halted = true;
         logger.log(Level.FINE, () -> String.format("HALTING at operation %d - all subsequent operations will be silently ignored", operationCount));
     }
-    
-    /// Check if operations have been halted
-    public boolean isHalted() {
-        return halted;
-    }
-    
-    @Override
+
+  @Override
     public long getFilePointer() throws IOException {
         checkOperation();
         if (halted) {

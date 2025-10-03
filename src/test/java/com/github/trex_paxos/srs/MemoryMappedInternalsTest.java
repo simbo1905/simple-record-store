@@ -11,14 +11,11 @@ import java.lang.reflect.Method;
 import java.nio.MappedByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -171,27 +168,9 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         }
         
         // Start a background thread that periodically remaps the file
-        Thread remapThread = new Thread(() -> {
-            try {
-                startLatch.await();
-                for (int i = 0; i < 5; i++) {  // Reduced number of remaps
-                    Thread.sleep(100); // Longer delay between remaps
-                    try {
-                        // Trigger remap by growing file
-                        long newSize = 1024 * 1024 + (i * 512 * 1024); // Smaller increments
-                        mmFile.setLength(newSize);
-                        logger.log(Level.FINE, "Remapped file to size: " + newSize);
-                    } catch (Exception e) {
-                        logger.log(Level.FINE, "Remap failed", e);
-                    }
-                }
-            } catch (Exception e) {
-                logger.log(Level.SEVERE, "Remap thread failed", e);
-            }
-        });
-        remapThread.start();
-        
-        // Start the test
+      Thread remapThread = launch(startLatch);
+
+      // Start the test
         startLatch.countDown();
         
         // Wait for completion
@@ -209,8 +188,31 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         Assert.assertTrue("Should have minimal errors during concurrent access", errors.get() < 10);
         Assert.assertTrue("Should have many successful reads", successfulReads.get() > 200);
     }
-    
-    /**
+
+  private Thread launch(CountDownLatch startLatch) {
+    Thread remapThread = new Thread(() -> {
+        try {
+            startLatch.await();
+            for (int i = 0; i < 5; i++) {  // Reduced number of remaps
+                Thread.sleep(100); // Longer delay between remaps
+                try {
+                    // Trigger remap by growing file
+                    long newSize = 1024 * 1024 + (i * 512 * 1024); // Smaller increments
+                    mmFile.setLength(newSize);
+                    logger.log(Level.FINE, "Remapped file to size: " + newSize);
+                } catch (Exception e) {
+                    logger.log(Level.FINE, "Remap failed", e);
+                }
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Remap thread failed", e);
+        }
+    });
+    remapThread.start();
+    return remapThread;
+  }
+
+  /**
      * Test that remap failures restore the old epoch.
      * Verifies fail-closed behavior when remapping fails.
      */

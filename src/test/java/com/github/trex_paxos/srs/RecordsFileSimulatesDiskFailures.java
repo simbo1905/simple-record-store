@@ -3,7 +3,6 @@ package com.github.trex_paxos.srs;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Paths;
 
 public class RecordsFileSimulatesDiskFailures extends FileRecordStore {
 

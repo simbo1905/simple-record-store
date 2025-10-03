@@ -28,52 +28,49 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
         Path mmapFile = Files.createTempFile("perf-mmap-", ".db");
         directFile.toFile().deleteOnExit();
         mmapFile.toFile().deleteOnExit();
-        
-        try {
-            // Test direct I/O
-            long directStart = System.nanoTime();
-            try (FileRecordStore store = new FileRecordStore.Builder().path(directFile).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
-                for (int i = 0; i < RECORD_COUNT; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
-                    byte[] value = new byte[RECORD_SIZE];
-                    Arrays.fill(value, (byte) ('A' + (i % 26)));
-                    store.insertRecord(key, value);
-                }
-            }
-            long directTime = System.nanoTime() - directStart;
-            
-            // Test memory-mapped I/O
-            long mmapStart = System.nanoTime();
-            try (FileRecordStore store = new FileRecordStore.Builder().path(mmapFile).preallocatedRecords(10000).useMemoryMapping(true).open()) {
-                for (int i = 0; i < RECORD_COUNT; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
-                    byte[] value = new byte[RECORD_SIZE];
-                    Arrays.fill(value, (byte) ('A' + (i % 26)));
-                    store.insertRecord(key, value);
-                }
-            }
-            long mmapTime = System.nanoTime() - mmapStart;
-            
-            // Report results
-            logger.log(Level.FINE, "\n=== Insert Performance Comparison ===");
-            logger.log(Level.FINE, "Records: " + RECORD_COUNT + ", Size: " + RECORD_SIZE + " bytes each");
-            logger.log(Level.FINE, "Direct I/O:        " + (directTime / 1_000_000) + " ms");
-            logger.log(Level.FINE, "Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
-            
-            double speedup = (double) directTime / mmapTime;
-            logger.log(Level.FINE, "Speedup: " + String.format("%.2f", speedup) + "x");
-            
-            if (mmapTime < directTime) {
-                double reduction = (1.0 - (double) mmapTime / directTime) * 100;
-                logger.log(Level.FINE, "Time reduction: " + String.format("%.1f", reduction) + "%");
-            }
-            logger.log(Level.FINE, "=====================================\n");
-            
-        } finally {
-            // Files are automatically cleaned up by deleteOnExit()
-        }
+
+      // Test direct I/O
+      long directStart = System.nanoTime();
+      try (FileRecordStore store = new FileRecordStore.Builder().path(directFile).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
+          for (int i = 0; i < RECORD_COUNT; i++) {
+              final var key = ByteSequence.of(("key" + i).getBytes());
+              byte[] value = new byte[RECORD_SIZE];
+              Arrays.fill(value, (byte) ('A' + (i % 26)));
+              store.insertRecord(key, value);
+          }
+      }
+      long directTime = System.nanoTime() - directStart;
+
+      // Test memory-mapped I/O
+      long mmapStart = System.nanoTime();
+      try (FileRecordStore store = new FileRecordStore.Builder().path(mmapFile).preallocatedRecords(10000).useMemoryMapping(true).open()) {
+          for (int i = 0; i < RECORD_COUNT; i++) {
+              final var key = ByteSequence.of(("key" + i).getBytes());
+              byte[] value = new byte[RECORD_SIZE];
+              Arrays.fill(value, (byte) ('A' + (i % 26)));
+              store.insertRecord(key, value);
+          }
+      }
+      long mmapTime = System.nanoTime() - mmapStart;
+
+      // Report results
+      logger.log(Level.FINE, "\n=== Insert Performance Comparison ===");
+      logger.log(Level.FINE, "Records: " + RECORD_COUNT + ", Size: " + RECORD_SIZE + " bytes each");
+      logger.log(Level.FINE, "Direct I/O:        " + (directTime / 1_000_000) + " ms");
+      logger.log(Level.FINE, "Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
+
+      double speedup = (double) directTime / mmapTime;
+      logger.log(Level.FINE, "Speedup: " + String.format("%.2f", speedup) + "x");
+
+      if (mmapTime < directTime) {
+          double reduction = (1.0 - (double) mmapTime / directTime) * 100;
+          logger.log(Level.FINE, "Time reduction: " + String.format("%.1f", reduction) + "%");
+      }
+      logger.log(Level.FINE, "=====================================\n");
+
     }
 
+    @SuppressWarnings("ResultOfMethodCallIgnored")
     @Test
     public void compareUpdatePerformance() throws Exception {
         String directFile = TEST_DIR + "/perf-update-direct-" + System.nanoTime() + ".db";
@@ -87,7 +84,8 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             Arrays.fill(value2, (byte) 'B');
             
             // Test direct I/O updates
-            try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(directFile)).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
+          Path path = Paths.get(directFile);
+          try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
                     final var key = ByteSequence.of(("key" + i).getBytes());
                     store.insertRecord(key, value1);
@@ -95,7 +93,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             }
             
             long directStart = System.nanoTime();
-            try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(directFile)).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
+            try (FileRecordStore store = new FileRecordStore.Builder().path(path).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
                     final var key = ByteSequence.of(("key" + i).getBytes());
                     store.updateRecord(key, value2);
@@ -104,7 +102,8 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long directTime = System.nanoTime() - directStart;
             
             // Test memory-mapped I/O updates
-            try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(mmapFile)).preallocatedRecords(10000).useMemoryMapping(true).open()) {
+          Path path1 = Paths.get(mmapFile);
+          try (FileRecordStore store = new FileRecordStore.Builder().path(path1).preallocatedRecords(10000).useMemoryMapping(true).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
                     final var key = ByteSequence.of(("key" + i).getBytes());
                     store.insertRecord(key, value1);
@@ -112,7 +111,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             }
             
             long mmapStart = System.nanoTime();
-            try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(mmapFile)).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
+            try (FileRecordStore store = new FileRecordStore.Builder().path(path1).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
                     final var key = ByteSequence.of(("key" + i).getBytes());
                     store.updateRecord(key, value2);
@@ -142,7 +141,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     }
 
     @Test
-    public void compareWriteAmplification() throws Exception {
+    public void compareWriteAmplification() {
         logger.log(Level.FINE, "\n=== Write Amplification Analysis ===");
         logger.log(Level.FINE, "Based on code analysis:");
         logger.log(Level.FINE, "");

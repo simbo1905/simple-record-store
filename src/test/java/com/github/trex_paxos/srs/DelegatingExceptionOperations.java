@@ -6,7 +6,7 @@ import java.util.logging.Logger;
 
 /// A delegating CrashSafeFileOperations that throws exceptions at a specific operation count.
 /// This allows controlled testing of exception handling and closed state behavior.
-public class DelegatingExceptionOperations extends AbstractDelegatingFileOperations {
+class DelegatingExceptionOperations extends AbstractDelegatingFileOperations {
     
     private static final Logger logger = Logger.getLogger(DelegatingExceptionOperations.class.getName());
     private boolean didThrow = false;

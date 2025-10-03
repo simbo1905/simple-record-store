@@ -38,14 +38,14 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
             try {
                 store.close();
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Error closing store during cleanup", e);
+                logger.log(Level.FINE, "Error closing store during cleanup", e);
             }
         }
         try {
             Files.deleteIfExists(tempFile);
             logger.log(Level.FINE, () -> "Cleanup: Deleted temp file " + tempFile);
         } catch (IOException e) {
-            logger.log(Level.WARNING, "Error deleting temp file", e);
+            logger.log(Level.FINE, "Error deleting temp file", e);
         }
     }
     
@@ -129,7 +129,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                         Assert.assertArrayEquals("Data should match after halt at operation " + haltAt, data, readData);
                         logger.log(Level.FINE, () -> String.format("✓ Data integrity verified for halt at operation %d", haltAt));
                     } else {
-                        logger.log(Level.WARNING, () -> String.format("Key not found after halt at operation %d", haltAt));
+                        logger.log(Level.FINE, () -> String.format("Key not found after halt at operation %d", haltAt));
                     }
                     
                     reopenedStore.close();
@@ -189,7 +189,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                     logger.log(Level.FINEST, () -> String.format("  Key: %s, Data: %s (len=%d)", 
                         new String(key.bytes), new String(data), data.length));
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, () -> String.format("  Key: %s - ERROR reading data: %s", 
+                    logger.log(Level.FINE, () -> String.format("  Key: %s - ERROR reading data: %s", 
                         new String(key.bytes), e.getMessage()));
                 }
             }

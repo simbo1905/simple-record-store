@@ -54,7 +54,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             countingStore.insertRecord(key, data);
         } catch (IOException e) {
             // Should not happen with Integer.MAX_VALUE
-            logger.log(Level.WARNING, "Unexpected exception during operation count discovery", e);
+            logger.log(Level.FINE, "Unexpected exception during operation count discovery", e);
         }
         
         // Get the operation count from the delegating operations
@@ -896,7 +896,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
                 logger.log(Level.FINE, () -> String.format("Persistence verification for %s: found %d valid records after exception", finalDescription, finalValidRecords));
                 
             } catch (Exception e) {
-                logger.log(Level.WARNING, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
+                logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
             } finally {
                 if (verificationStore != null) {
                     try { verificationStore.close(); } catch (Exception ignored) {}
@@ -983,7 +983,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             Assert.assertFalse("New insert should not have completed", verificationStore.recordExists(newKey));
             
         } catch (Exception e) {
-            logger.log(Level.WARNING, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
+            logger.log(Level.FINE, () -> String.format("Persistence verification failed for %s: %s", description, e.getMessage()));
         } finally {
             if (verificationStore != null) {
                 try { verificationStore.close(); } catch (Exception ignored) {}

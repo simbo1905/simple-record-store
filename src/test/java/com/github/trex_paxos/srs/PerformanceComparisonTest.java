@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.logging.Level;
 
 /**
  * Performance comparison tests demonstrating the write amplification reduction
@@ -54,19 +55,19 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long mmapTime = System.nanoTime() - mmapStart;
             
             // Report results
-            System.out.println("\n=== Insert Performance Comparison ===");
-            System.out.println("Records: " + RECORD_COUNT + ", Size: " + RECORD_SIZE + " bytes each");
-            System.out.println("Direct I/O:        " + (directTime / 1_000_000) + " ms");
-            System.out.println("Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
+            logger.log(Level.FINE, "\n=== Insert Performance Comparison ===");
+            logger.log(Level.FINE, "Records: " + RECORD_COUNT + ", Size: " + RECORD_SIZE + " bytes each");
+            logger.log(Level.FINE, "Direct I/O:        " + (directTime / 1_000_000) + " ms");
+            logger.log(Level.FINE, "Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
             
             double speedup = (double) directTime / mmapTime;
-            System.out.println("Speedup: " + String.format("%.2f", speedup) + "x");
+            logger.log(Level.FINE, "Speedup: " + String.format("%.2f", speedup) + "x");
             
             if (mmapTime < directTime) {
                 double reduction = (1.0 - (double) mmapTime / directTime) * 100;
-                System.out.println("Time reduction: " + String.format("%.1f", reduction) + "%");
+                logger.log(Level.FINE, "Time reduction: " + String.format("%.1f", reduction) + "%");
             }
-            System.out.println("=====================================\n");
+            logger.log(Level.FINE, "=====================================\n");
             
         } finally {
             // Files are automatically cleaned up by deleteOnExit()
@@ -120,19 +121,19 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long mmapTime = System.nanoTime() - mmapStart;
             
             // Report results
-            System.out.println("\n=== Update Performance Comparison ===");
-            System.out.println("Records: " + (RECORD_COUNT / 2) + ", Size: " + RECORD_SIZE + " bytes each");
-            System.out.println("Direct I/O:        " + (directTime / 1_000_000) + " ms");
-            System.out.println("Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
+            logger.log(Level.FINE, "\n=== Update Performance Comparison ===");
+            logger.log(Level.FINE, "Records: " + (RECORD_COUNT / 2) + ", Size: " + RECORD_SIZE + " bytes each");
+            logger.log(Level.FINE, "Direct I/O:        " + (directTime / 1_000_000) + " ms");
+            logger.log(Level.FINE, "Memory-Mapped I/O: " + (mmapTime / 1_000_000) + " ms");
             
             double speedup = (double) directTime / mmapTime;
-            System.out.println("Speedup: " + String.format("%.2f", speedup) + "x");
+            logger.log(Level.FINE, "Speedup: " + String.format("%.2f", speedup) + "x");
             
             if (mmapTime < directTime) {
                 double reduction = (1.0 - (double) mmapTime / directTime) * 100;
-                System.out.println("Time reduction: " + String.format("%.1f", reduction) + "%");
+                logger.log(Level.FINE, "Time reduction: " + String.format("%.1f", reduction) + "%");
             }
-            System.out.println("====================================\n");
+            logger.log(Level.FINE, "====================================\n");
             
         } finally {
             new File(directFile).delete();
@@ -142,29 +143,29 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
 
     @Test
     public void compareWriteAmplification() throws Exception {
-        System.out.println("\n=== Write Amplification Analysis ===");
-        System.out.println("Based on code analysis:");
-        System.out.println("");
-        System.out.println("Direct I/O - INSERT (gap available):");
-        System.out.println("  5 disk writes per operation");
-        System.out.println("  (dataStartPtr header + record data + key to index + record header + numRecords header)");
-        System.out.println("");
-        System.out.println("Direct I/O - UPDATE (in-place):");
-        System.out.println("  3 disk writes per operation");
-        System.out.println("  (backup header + data + final header)");
-        System.out.println("");
-        System.out.println("Memory-Mapped - INSERT:");
-        System.out.println("  5 memory writes batched, 1 sync on close/fsync");
-        System.out.println("  Effective: 1 disk flush per batch of operations");
-        System.out.println("");
-        System.out.println("Memory-Mapped - UPDATE:");
-        System.out.println("  3 memory writes batched, 1 sync on close/fsync");
-        System.out.println("  Effective: 1 disk flush per batch of operations");
-        System.out.println("");
-        System.out.println("For " + RECORD_COUNT + " operations:");
-        System.out.println("  Direct I/O:        ~" + (RECORD_COUNT * 5) + " write operations");
-        System.out.println("  Memory-Mapped I/O: ~" + RECORD_COUNT + " memory writes + 1 sync");
-        System.out.println("  Write Amplification Reduction: ~" + (5) + "x");
-        System.out.println("====================================\n");
+        logger.log(Level.FINE, "\n=== Write Amplification Analysis ===");
+        logger.log(Level.FINE, "Based on code analysis:");
+        logger.log(Level.FINE, "");
+        logger.log(Level.FINE, "Direct I/O - INSERT (gap available):");
+        logger.log(Level.FINE, "  5 disk writes per operation");
+        logger.log(Level.FINE, "  (dataStartPtr header + record data + key to index + record header + numRecords header)");
+        logger.log(Level.FINE, "");
+        logger.log(Level.FINE, "Direct I/O - UPDATE (in-place):");
+        logger.log(Level.FINE, "  3 disk writes per operation");
+        logger.log(Level.FINE, "  (backup header + data + final header)");
+        logger.log(Level.FINE, "");
+        logger.log(Level.FINE, "Memory-Mapped - INSERT:");
+        logger.log(Level.FINE, "  5 memory writes batched, 1 sync on close/fsync");
+        logger.log(Level.FINE, "  Effective: 1 disk flush per batch of operations");
+        logger.log(Level.FINE, "");
+        logger.log(Level.FINE, "Memory-Mapped - UPDATE:");
+        logger.log(Level.FINE, "  3 memory writes batched, 1 sync on close/fsync");
+        logger.log(Level.FINE, "  Effective: 1 disk flush per batch of operations");
+        logger.log(Level.FINE, "");
+        logger.log(Level.FINE, "For " + RECORD_COUNT + " operations:");
+        logger.log(Level.FINE, "  Direct I/O:        ~" + (RECORD_COUNT * 5) + " write operations");
+        logger.log(Level.FINE, "  Memory-Mapped I/O: ~" + RECORD_COUNT + " memory writes + 1 sync");
+        logger.log(Level.FINE, "  Write Amplification Reduction: ~" + (5) + "x");
+        logger.log(Level.FINE, "====================================\n");
     }
 }

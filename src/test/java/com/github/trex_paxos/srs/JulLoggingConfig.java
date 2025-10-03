@@ -8,9 +8,11 @@ import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
 import java.util.logging.StreamHandler;
 
-/// Sets up JUL console logging to use stdout so Maven doesn’t flag FINE/FINEST
+/// Sets up JUL console logging to use stdout so Maven doesn't flag FINE/FINEST
 /// output as warnings. All tests extend this class to inherit the configuration.
 public abstract class JulLoggingConfig {
+
+    protected final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(getClass().getName());
 
     static {
         configureJulLogging();

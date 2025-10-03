@@ -1,15 +1,17 @@
 package com.github.trex_paxos.srs;
 
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 public class TracePlayback {
+    private static final Logger logger = Logger.getLogger(TracePlayback.class.getName());
     static final String TMP = System.getProperty("java.io.tmpdir")+ FileSystems.getDefault().getSeparator();
 
     //static Pattern insertPattern = Pattern.compile("value.len:([0-9]+) key:\\[ ([x0-9A-F ]+) \\]");
@@ -32,7 +34,7 @@ public class TracePlayback {
         final var f = new File(TMP+"playback");
         if( f.exists() ) //noinspection ResultOfMethodCallIgnored
           f.delete();
-        System.out.printf("initialLength: %d, keyMax: %d, file: %s%n", initialLength, keyMax, file);
+        logger.log(Level.FINE, String.format("initialLength: %d, keyMax: %d, file: %s%n", initialLength, keyMax, file));
         final var counter = new AtomicInteger(0);
         try (FileRecordStore recordStore = new FileRecordStore.Builder()
                 .path(TMP + "playback")
@@ -80,7 +82,7 @@ public class TracePlayback {
                     counter.incrementAndGet();
                 }
             }
-            System.err.println("fine counter "+counter.get());
+            logger.log(Level.FINE, "fine counter "+counter.get());
         }
     }
 }

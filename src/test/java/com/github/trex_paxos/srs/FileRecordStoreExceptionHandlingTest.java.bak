@@ -54,7 +54,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             countingStore.insertRecord(key, data);
         } catch (IOException e) {
             // Should not happen with Integer.MAX_VALUE
-            logger.log(Level.WARNING, "Unexpected exception during operation count discovery", e);
+            logger.log(Level.FINE, "Unexpected exception during operation count discovery", e);
         }
         
         // Get the operation count from the delegating operations

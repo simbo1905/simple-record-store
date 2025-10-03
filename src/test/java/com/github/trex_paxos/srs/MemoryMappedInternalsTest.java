@@ -69,7 +69,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testUnmapBuffer() throws Exception {
-        logger.log(Level.INFO, "Testing explicit buffer unmapping");
+        logger.log(Level.FINE, "Testing explicit buffer unmapping");
         
         // Create a small mapped buffer
         MappedByteBuffer buffer = raf.getChannel().map(
@@ -84,7 +84,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         
         // Buffer should still exist as Java object but underlying memory released
         Assert.assertNotNull("Buffer object should still exist", buffer);
-        logger.log(Level.INFO, "Buffer unmapping completed successfully");
+        logger.log(Level.FINE, "Buffer unmapping completed successfully");
     }
     
     /**
@@ -93,7 +93,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testEpochPublish_isAtomic() throws Exception {
-        logger.log(Level.INFO, "Testing atomic epoch publishing under concurrency");
+        logger.log(Level.FINE, "Testing atomic epoch publishing under concurrency");
         
         // Create memory mapped file
         mmFile = new MemoryMappedRandomAccessFile(raf);
@@ -133,7 +133,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
                                 successfulReads.incrementAndGet();
                             } else if (value != 42 && value != 84) {
                                 errors.incrementAndGet();
-                                logger.log(Level.WARNING, "Thread " + threadId + " saw unexpected value: " + value);
+                                logger.log(Level.FINE, "Thread " + threadId + " saw unexpected value: " + value);
                             } else {
                                 successfulReads.incrementAndGet();
                             }
@@ -148,7 +148,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
                                 unknownStateCount.incrementAndGet();
                             } else {
                                 errors.incrementAndGet();
-                                logger.log(Level.WARNING, "Unexpected IllegalStateException in thread " + threadId, e);
+                                logger.log(Level.FINE, "Unexpected IllegalStateException in thread " + threadId, e);
                             }
                         } catch (Exception e) {
                             // Other exceptions during remap operations
@@ -157,7 +157,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
                                 successfulReads.incrementAndGet(); // Count as acceptable
                             } else {
                                 errors.incrementAndGet();
-                                logger.log(Level.WARNING, "Unexpected error in thread " + threadId, e);
+                                logger.log(Level.FINE, "Unexpected error in thread " + threadId, e);
                             }
                         }
                     }
@@ -182,7 +182,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
                         mmFile.setLength(newSize);
                         logger.log(Level.FINE, "Remapped file to size: " + newSize);
                     } catch (Exception e) {
-                        logger.log(Level.WARNING, "Remap failed", e);
+                        logger.log(Level.FINE, "Remap failed", e);
                     }
                 }
             } catch (Exception e) {
@@ -201,9 +201,9 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         executor.shutdown();
         remapThread.join(5000);
         
-        logger.log(Level.INFO, "Successful reads: " + successfulReads.get());
-        logger.log(Level.INFO, "Unknown state encounters: " + unknownStateCount.get());
-        logger.log(Level.INFO, "Errors: " + errors.get());
+        logger.log(Level.FINE, "Successful reads: " + successfulReads.get());
+        logger.log(Level.FINE, "Unknown state encounters: " + unknownStateCount.get());
+        logger.log(Level.FINE, "Errors: " + errors.get());
         
         // Be more lenient with errors - some are expected during heavy remap
         Assert.assertTrue("Should have minimal errors during concurrent access", errors.get() < 10);
@@ -216,12 +216,12 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testRemapFailure_restoresOldEpoch() throws Exception {
-        logger.log(Level.INFO, "Testing remap failure recovery");
+        logger.log(Level.FINE, "Testing remap failure recovery");
         
         // Create initial file
         mmFile = new MemoryMappedRandomAccessFile(raf);
         long originalSize = mmFile.length();
-        logger.log(Level.INFO, "Original file size: " + originalSize);
+        logger.log(Level.FINE, "Original file size: " + originalSize);
         
         // Write some data to verify it survives
         mmFile.writeInt(12345);
@@ -236,7 +236,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
             mmFile.setLength(originalSize * 2);
             Assert.fail("Should have thrown IOException");
         } catch (IOException e) {
-            logger.log(Level.INFO, "Expected remap failure: " + e.getMessage());
+            logger.log(Level.FINE, "Expected remap failure: " + e.getMessage());
         }
         
         // Verify original epoch is still intact
@@ -245,10 +245,10 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
             mmFile.seek(0);
             int value = mmFile.readInt();
             Assert.assertEquals("Original data should still be readable", 12345, value);
-            logger.log(Level.INFO, "Data integrity maintained after remap failure");
+            logger.log(Level.FINE, "Data integrity maintained after remap failure");
         } catch (IOException e) {
             // This is also acceptable - the store should be in UNKNOWN state
-            logger.log(Level.INFO, "Store correctly transitioned to UNKNOWN state after failure");
+            logger.log(Level.FINE, "Store correctly transitioned to UNKNOWN state after failure");
         }
     }
     
@@ -258,7 +258,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testNativeMemory_flatAfter1000Cycles() throws Exception {
-        logger.log(Level.INFO, "Testing native memory usage over many cycles");
+        logger.log(Level.FINE, "Testing native memory usage over many cycles");
         
         mmFile = new MemoryMappedRandomAccessFile(raf);
         long initialSize = mmFile.length();
@@ -272,7 +272,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
             mmFile.setLength(initialSize);
             
             if (i % 20 == 0) {
-                logger.log(Level.INFO, "Completed " + (i + 1) + " cycles");
+                logger.log(Level.FINE, "Completed " + (i + 1) + " cycles");
                 // Force GC to help with cleanup
                 System.gc();
                 Thread.sleep(100);
@@ -287,7 +287,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         mmFile.seek(0);
         Assert.assertEquals("File should still be functional", 99999, mmFile.readInt());
         
-        logger.log(Level.INFO, "Native memory test completed successfully");
+        logger.log(Level.FINE, "Native memory test completed successfully");
     }
     
     /**
@@ -296,7 +296,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testUnmapBuffersBeyond_exactChunkBoundary() throws Exception {
-        logger.log(Level.INFO, "Testing selective buffer unmapping");
+        logger.log(Level.FINE, "Testing selective buffer unmapping");
         
         // Create a file that spans multiple chunks
         long chunkSize = 128 * 1024 * 1024; // 128MB per the constant
@@ -320,7 +320,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         mmFile.seek(0);
         Assert.assertEquals("Data should be readable after shrink", 0xDEADBEEFCAFEBABEL, mmFile.readLong());
         
-        logger.log(Level.INFO, "Selective buffer unmapping test completed");
+        logger.log(Level.FINE, "Selective buffer unmapping test completed");
     }
     
     /**
@@ -328,7 +328,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testUnmapBuffer_packagePrivateAccess() throws Exception {
-        logger.log(Level.INFO, "Testing package-private unmapBuffer access");
+        logger.log(Level.FINE, "Testing package-private unmapBuffer access");
         
         // Verify the method exists and is accessible
         Method unmapMethod = MemoryMappedRandomAccessFile.class.getDeclaredMethod("unmapBuffer", MappedByteBuffer.class);
@@ -342,7 +342,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         // Call the method - should not throw
         unmapMethod.invoke(null, buffer);
         
-        logger.log(Level.INFO, "Package-private method access verified");
+        logger.log(Level.FINE, "Package-private method access verified");
     }
     
     /**
@@ -350,7 +350,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test 
     public void testExposeCurrentEpoch_reflectionAccess() throws Exception {
-        logger.log(Level.INFO, "Testing epoch reflection access");
+        logger.log(Level.FINE, "Testing epoch reflection access");
         
         mmFile = new MemoryMappedRandomAccessFile(raf);
         
@@ -371,7 +371,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         long size = (Long) sizeField.get(epoch);
         Assert.assertTrue("Epoch size should be positive", size > 0);
         
-        logger.log(Level.INFO, "Epoch reflection access verified, size: " + size);
+        logger.log(Level.FINE, "Epoch reflection access verified, size: " + size);
     }
     
     /**
@@ -380,13 +380,13 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
      */
     @Test
     public void testMemoryLeakFix_demonstration() throws Exception {
-        logger.log(Level.INFO, "Demonstrating memory leak fix");
+        logger.log(Level.FINE, "Demonstrating memory leak fix");
         
         mmFile = new MemoryMappedRandomAccessFile(raf);
         
         // Get initial state
         long initialSize = mmFile.length();
-        logger.log(Level.INFO, "Initial file size: " + initialSize);
+        logger.log(Level.FINE, "Initial file size: " + initialSize);
         
         // Perform a grow/shrink cycle
         long largerSize = initialSize * 2;
@@ -398,6 +398,6 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         
         // The key fix is that old buffers are explicitly unmapped
         // In the old implementation, they would remain mapped forever
-        logger.log(Level.INFO, "Memory leak fix demonstration completed");
+        logger.log(Level.FINE, "Memory leak fix demonstration completed");
     }
 }

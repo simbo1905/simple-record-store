@@ -111,7 +111,9 @@ public class FileRecordStore implements AutoCloseable {
       dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
 
       // Initialize data structures before any file operations that might fail
-      memIndex = new HashMap<>(wasEmpty ? preallocatedRecords : Math.max((int) (readNumRecordsHeader() * 1.2), 16));
+      int numRecords = readNumRecordsHeader();
+      
+      memIndex = new HashMap<>(wasEmpty ? preallocatedRecords : Math.max((int) (numRecords * 1.2), 16));
       positionIndex = new TreeMap<>();
 
       // Only initialize headers for new files - existing files should already have headers

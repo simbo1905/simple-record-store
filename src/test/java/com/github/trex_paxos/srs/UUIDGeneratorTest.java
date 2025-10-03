@@ -18,7 +18,7 @@ public class UUIDGeneratorTest extends JulLoggingConfig {
 
     @Test
     public void testGenerateUUIDsAreUnique() {
-        LOGGER.info("testGenerateUUIDsAreUnique starting");
+        LOGGER.fine("testGenerateUUIDsAreUnique starting");
         final var uuids = new HashSet<UUID>();
         IntStream.range(0, 10000).forEach(i -> {
             final var uuid = UUIDGenerator.generateUUID();
@@ -31,7 +31,7 @@ public class UUIDGeneratorTest extends JulLoggingConfig {
 
     @Test
     public void testGenerateUUIDsAreTimeOrdered() {
-        LOGGER.info("testGenerateUUIDsAreTimeOrdered starting");
+        LOGGER.fine("testGenerateUUIDsAreTimeOrdered starting");
         // Generate UUIDs and verify they are generally increasing (time-ordered)
         final var previous = new AtomicReference<>(UUIDGenerator.generateUUID());
         final var ascendingCount = new AtomicInteger(0);
@@ -53,7 +53,7 @@ public class UUIDGeneratorTest extends JulLoggingConfig {
 
     @Test
     public void testGenerateUUIDsAtHighRate() {
-        LOGGER.info("testGenerateUUIDsAtHighRate starting");
+        LOGGER.fine("testGenerateUUIDsAtHighRate starting");
         // Test that we can generate many UUIDs quickly without collisions
         final var uuids = new HashSet<UUID>();
         

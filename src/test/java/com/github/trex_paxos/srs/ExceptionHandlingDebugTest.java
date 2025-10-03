@@ -14,7 +14,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
     
     @Test
     public void testExceptionHandlingDebug() throws Exception {
-        logger.log(Level.INFO, "=== Exception Handling Debug Test ===");
+        logger.log(Level.FINE, "=== Exception Handling Debug Test ===");
         
         // Test operation 1 (should trigger during construction)
         testOperationWithException(1);
@@ -27,7 +27,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
     }
     
     private void testOperationWithException(int throwAt) throws Exception {
-        logger.log(Level.INFO, "Testing exception at operation " + throwAt);
+        logger.log(Level.FINE, "Testing exception at operation " + throwAt);
         
         FileRecordStore store = null;
         DelegatingExceptionOperations exceptionOps = null;
@@ -37,26 +37,26 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
             store = createStoreWithException(throwAt);
             exceptionOps = (DelegatingExceptionOperations) store.fileOperations;
             
-            logger.log(Level.INFO, "Store created successfully, state: " + store.getState());
-            logger.log(Level.INFO, "Exception delegate created, target: " + exceptionOps.getTargetOperation() + ", current count: " + exceptionOps.getOperationCount());
+            logger.log(Level.FINE, "Store created successfully, state: " + store.getState());
+            logger.log(Level.FINE, "Exception delegate created, target: " + exceptionOps.getTargetOperation() + ", current count: " + exceptionOps.getOperationCount());
             
             ByteSequence key = ByteSequence.of("testkey".getBytes());
             byte[] data = "testdata".getBytes();
             
             try {
-                logger.log(Level.INFO, "Attempting insertRecord...");
+                logger.log(Level.FINE, "Attempting insertRecord...");
                 store.insertRecord(key, data);
-                logger.log(Level.INFO, "insertRecord completed successfully");
+                logger.log(Level.FINE, "insertRecord completed successfully");
                 
                 // Verify data
                 byte[] readData = store.readRecordData(key);
-                logger.log(Level.INFO, "Data verification: " + new String(readData));
+                logger.log(Level.FINE, "Data verification: " + new String(readData));
                 
             } catch (IOException e) {
-                logger.log(Level.INFO, "IOException caught: " + e.getMessage());
-                logger.log(Level.INFO, "Delegate threw exception: " + exceptionOps.didThrow());
-                logger.log(Level.INFO, "Delegate operation count: " + exceptionOps.getOperationCount());
-                logger.log(Level.INFO, "Store state after exception: " + store.getState());
+                logger.log(Level.FINE, "IOException caught: " + e.getMessage());
+                logger.log(Level.FINE, "Delegate threw exception: " + exceptionOps.didThrow());
+                logger.log(Level.FINE, "Delegate operation count: " + exceptionOps.getOperationCount());
+                logger.log(Level.FINE, "Store state after exception: " + store.getState());
                 
                 // Test if subsequent operations fail
                 testSubsequentOperation(store, key);
@@ -65,25 +65,25 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         } finally {
             if (store != null) {
                 try {
-                    logger.log(Level.INFO, "Closing store...");
+                    logger.log(Level.FINE, "Closing store...");
                     store.close();
-                    logger.log(Level.INFO, "Store closed successfully");
+                    logger.log(Level.FINE, "Store closed successfully");
                 } catch (Exception e) {
-                    logger.log(Level.INFO, "Exception during close: " + e.getMessage());
+                    logger.log(Level.FINE, "Exception during close: " + e.getMessage());
                 }
             }
         }
     }
     
     private void testSubsequentOperation(FileRecordStore store, ByteSequence key) {
-        logger.log(Level.INFO, "Testing subsequent operation after exception...");
+        logger.log(Level.FINE, "Testing subsequent operation after exception...");
         try {
             store.recordExists(key);
-            logger.log(Level.INFO, "recordExists succeeded - store is still operational");
+            logger.log(Level.FINE, "recordExists succeeded - store is still operational");
         } catch (IllegalStateException e) {
-            logger.log(Level.INFO, () -> "recordExists correctly threw IllegalStateException: " + e.getMessage());
+            logger.log(Level.FINE, () -> "recordExists correctly threw IllegalStateException: " + e.getMessage());
         } catch (Exception e) {
-            logger.log(Level.INFO, () -> "recordExists threw unexpected exception: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            logger.log(Level.FINE, () -> "recordExists threw unexpected exception: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
     

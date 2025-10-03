@@ -2,14 +2,13 @@ package com.github.trex_paxos.srs.api;
 
 import com.github.trex_paxos.srs.ByteSequence;
 import com.github.trex_paxos.srs.FileRecordStore;
+import java.util.logging.Level;
+
 import com.github.trex_paxos.srs.JulLoggingConfig;
 import org.junit.Test;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 
 
 /**
@@ -24,7 +23,6 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
   @Test
   public void testBasicUsage() throws IOException {
-    java.util.logging.Logger logger = java.util.logging.Logger.getLogger(MemoryMappedTests.class.getName());
     logger.fine("Starting testBasicUsage with temp file");
     
     Path tempFilePath;
@@ -50,7 +48,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
       // Read works immediately from memory-mapped buffers
       logger.fine("Reading record with key: " + new String("user:1".getBytes()));
       byte[] retrieved = store.readRecordData(key1);
-      System.out.println("Retrieved: " + new String(retrieved));
+      logger.log(Level.FINE, "Retrieved: " + new String(retrieved));
 
       // Update also goes to memory
       logger.fine("Updating record with key: " + new String("user:1".getBytes()) + ", data: John Doe Updated");
@@ -73,7 +71,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
       ByteSequence key1 = ByteSequence.of("user:1".getBytes());
       logger.fine("Reading record with key: " + new String("user:1".getBytes()));
       byte[] data = store.readRecordData(key1);
-      System.out.println("After reopen: " + new String(data));
+      logger.log(Level.FINE, "After reopen: " + new String(data));
     }
   }
 
@@ -98,7 +96,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
         // Optionally sync after each batch for durability checkpoint
         store.fsync();
-        System.out.println("Batch " + batch + " synced to disk");
+        logger.log(Level.FINE, "Batch " + batch + " synced to disk");
       }
     }
   }
@@ -125,7 +123,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
       // All updates are synced on close
     }
 
-    System.out.println("Update-heavy workload completed with memory-mapping");
+    logger.log(Level.FINE, "Update-heavy workload completed with memory-mapping");
   }
 
   @Test
@@ -147,7 +145,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
     // Open with direct I/O again for verification
     try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
       byte[] data = store.readRecordData(ByteSequence.of("key1".getBytes()));
-      System.out.println("Final value: " + new String(data));
+      logger.log(Level.FINE, "Final value: " + new String(data));
     }
   }
 }

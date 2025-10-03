@@ -14,19 +14,19 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         // Set FINER logging for detailed operation tracking
         java.util.logging.Logger.getLogger("com.github.trex_paxos.srs").setLevel(Level.FINER);
         
-        System.out.println("=== Simple Delete Debug Test ===");
+        logger.log(Level.FINE, "=== Simple Delete Debug Test ===");
         
         // First, discover the actual operation count for a simple delete
         int totalOps = discoverDeleteOperationCount();
-        System.out.println("Discovered " + totalOps + " operations for simple delete");
+        logger.log(Level.FINE, "Discovered " + totalOps + " operations for simple delete");
         
         // Now test exceptions at each operation
         for (int throwAt = 1; throwAt <= totalOps; throwAt++) {
-            System.out.println("Testing exception at operation " + throwAt + "/" + totalOps);
+            logger.log(Level.FINE, "Testing exception at operation " + throwAt + "/" + totalOps);
             testDeleteWithException(throwAt);
         }
         
-        System.out.println("=== Completed simple delete debug ===");
+        logger.log(Level.FINE, "=== Completed simple delete debug ===");
     }
     
     private int discoverDeleteOperationCount() throws Exception {
@@ -80,17 +80,17 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
             
             try {
                 store.deleteRecord(key);
-                System.out.println("  Delete completed - no exception at operation " + throwAt);
+                logger.log(Level.FINE, "  Delete completed - no exception at operation " + throwAt);
             } catch (IOException e) {
-                System.out.println("  Got expected exception at operation " + throwAt + ": " + e.getMessage());
-                System.out.println("  Store state: " + store.getState());
+                logger.log(Level.FINE, "  Got expected exception at operation " + throwAt + ": " + e.getMessage());
+                logger.log(Level.FINE, "  Store state: " + store.getState());
                 
                 // Verify subsequent operations fail
                 try {
                     store.recordExists(key);
-                    System.out.println("  ERROR: recordExists should have failed!");
+                    logger.log(Level.FINE, "  ERROR: recordExists should have failed!");
                 } catch (IllegalStateException ise) {
-                    System.out.println("  ✓ Subsequent operation correctly failed: " + ise.getMessage());
+                    logger.log(Level.FINE, "  ✓ Subsequent operation correctly failed: " + ise.getMessage());
                 }
             }
             

@@ -65,7 +65,7 @@ public class ByteSequence {
     return Base64.getEncoder().encodeToString(bytes);
   }
 
-  /// This returns a defensive copy.:x
+  /// This returns a defensive copy.
   /// @return A deep copy of this sequence.
   public ByteSequence copy() {
     return ByteSequence.copyOf(bytes);

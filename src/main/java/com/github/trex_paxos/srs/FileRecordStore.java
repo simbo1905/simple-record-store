@@ -110,34 +110,42 @@ public class FileRecordStore implements AutoCloseable {
 
       dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
 
+      // Initialize data structures before any file operations that might fail
+      memIndex = new HashMap<>(wasEmpty ? preallocatedRecords : Math.max((int) (readNumRecordsHeader() * 1.2), 16));
+      positionIndex = new TreeMap<>();
+
       // Only initialize headers for new files - existing files should already have headers
       if (wasEmpty) {
         writeNumRecordsHeader(0);
         writeKeyLengthHeader();
         writeDataStartPtrHeader(dataStartPtr);
-        memIndex = new HashMap<>(preallocatedRecords);
-        positionIndex = new TreeMap<>();
       } else {
-        // Existing file - read headers and existing data
+        // Existing file - validate headers before loading data
         int existingRecords = readNumRecordsHeader();
         int existingKeyLength = readKeyLengthHeader();
-        dataStartPtr = readDataStartHeader();
-
-        // Validate key length matches
+        
+        // Validate key length matches before proceeding
         if (existingKeyLength != maxKeyLength) {
           throw new IllegalArgumentException(String.format(
               "File has key length %d but builder specified %d",
               existingKeyLength, maxKeyLength));
         }
+        
+        dataStartPtr = readDataStartHeader();
+        
+        // Validate file has minimum required size for existing records
+        long requiredFileSize = FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
+        if (fileOperations.length() < requiredFileSize) {
+          throw new IOException(String.format(
+              "File too small for %d records. Required: %d bytes, Actual: %d bytes",
+              existingRecords, requiredFileSize, fileOperations.length()));
+        }
 
-        memIndex = new HashMap<>(Math.max((int) (existingRecords * 1.2), 16)); // Add 20% buffer with minimum 16
-        positionIndex = new TreeMap<>();
-
-        // Load existing index into memory
+        // Load existing index into memory - this may throw if data is corrupted
         loadExistingIndex(existingRecords);
       }
       
-      // Store successfully constructed - transition to OPEN state
+      // Only transition to OPEN after successful initialization
       state = StoreState.OPEN;
     } catch (Exception e) {
       // Construction failed - transition to UNKNOWN state
@@ -593,10 +601,9 @@ public class FileRecordStore implements AutoCloseable {
       positionIndex = null;
       if (freeMap != null) freeMap.clear();
       freeMap = null;
-      // Only set to CLOSED if no exception occurred
-      if (state == StoreState.OPEN) {
-        state = StoreState.CLOSED;
-      }
+      // Always transition to CLOSED after cleanup, regardless of previous state
+      // This ensures consistent state even if exception occurred during close
+      state = StoreState.CLOSED;
     }
   }
 
@@ -1097,15 +1104,15 @@ public class FileRecordStore implements AutoCloseable {
         // File exists - try to validate and open existing store
         try {
           // Check if it's a valid FileRecordStore file
-          boolean isValid = isValidFileRecordStore(path);
+          boolean isValid = isValidFileRecordStore(path, maxKeyLength);
           logger.log(Level.FINE, "File validation for " + path + ": " + isValid);
-
 
           if (isValid) {
             // Open existing - use preallocatedRecords=0 for existing files
             return new FileRecordStore(path.toFile(), 0, maxKeyLength, disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
           } else {
             // File exists but isn't a valid store - create new store (overwrite)
+            // This preserves backward compatibility with tests that expect overwrite behavior
             return new FileRecordStore(path.toFile(), preallocatedRecords, maxKeyLength,
                 disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
           }
@@ -1123,12 +1130,13 @@ public class FileRecordStore implements AutoCloseable {
 
     /// Validates that a file contains a valid FileRecordStore format.
     /// Checks file size and header structure to determine if it's a valid store.
-    /// A valid store must have proper headers and key length > 0.
+    /// A valid store must have proper headers and key length matching expected value.
     ///
     /// @param path the path to validate
+    /// @param expectedMaxKeyLength the expected max key length for validation
     /// @return true if the file appears to be a valid FileRecordStore
     /// @throws IOException if the file cannot be read
-    private boolean isValidFileRecordStore(Path path) throws IOException {
+    private boolean isValidFileRecordStore(Path path, int expectedMaxKeyLength) throws IOException {
       try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
         // Empty files are never valid stores
         if (raf.length() == 0) {
@@ -1153,11 +1161,18 @@ public class FileRecordStore implements AutoCloseable {
           return false;
         }
 
-        // Key length must be positive and within reasonable bounds
-        // CRITICAL: keyLength == 0 is INVALID - this is what was causing the error
-        logger.log(Level.FINEST, "Validation: keyLength=" + keyLength);
-        if (keyLength <= 0 || keyLength > MAX_KEY_LENGTH_THEORETICAL) {
+        // Key length must be non-negative and within reasonable bounds
+        // Allow keyLength == 0 as valid (maxKeyLength could be 0)
+        logger.log(Level.FINEST, "Validation: keyLength=" + keyLength + " expected=" + expectedMaxKeyLength);
+        if (keyLength < 0 || keyLength > MAX_KEY_LENGTH_THEORETICAL) {
           logger.log(Level.FINE, "Validation failed: invalid key length " + keyLength);
+          return false;
+        }
+        
+        // Validate that file's key length matches expected maxKeyLength
+        if (keyLength != expectedMaxKeyLength) {
+          logger.log(Level.FINE, "Validation failed: file key length " + keyLength + 
+                    " does not match expected " + expectedMaxKeyLength);
           return false;
         }
 

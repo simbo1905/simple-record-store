@@ -7,6 +7,8 @@ import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
@@ -20,13 +22,29 @@ import java.util.List;
 class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     private static final long MAPPING_CHUNK_SIZE = 128 * 1024 * 1024; // 128 MB per chunk
+    private static final Logger logger = Logger.getLogger(MemoryMappedRandomAccessFile.class.getName());
 
     private final RandomAccessFile randomAccessFile;
     private final FileChannel channel;
-    private List<MappedByteBuffer> mappedBuffers;
-    private long[] mappedRegionStarts;
-    private long mappedSize;
+    private volatile Epoch currentEpoch;  // Atomic reference to current mapping state
     private long position = 0;
+    private List<MappedByteBuffer> mappedBuffers; // Temporary buffer list during mapping
+
+    /**
+     * Immutable holder for a complete memory mapping epoch.
+     * Allows atomic swapping of entire mapping state.
+     */
+    private static final class Epoch {
+        final List<MappedByteBuffer> buffers;
+        final long[] regionStarts;
+        final long mappedSize;
+        
+        Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
+            this.buffers = List.copyOf(buffers);
+            this.regionStarts = regionStarts.clone();
+            this.mappedSize = mappedSize;
+        }
+    }
 
     /**
      * Creates a new memory-mapped file wrapper.
@@ -46,6 +64,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         
         // Start with READ_WRITE mode; will switch to READ_ONLY if channel is not writable
         FileChannel.MapMode mapMode = FileChannel.MapMode.READ_WRITE;
+        boolean readOnlyMode = false;
         
         // Map the file in chunks to avoid issues with very large files
         long pos = 0;
@@ -58,39 +77,42 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
                 pos += chunkSize;
             } catch (java.nio.channels.NonWritableChannelException e) {
                 // File is read-only, switch to READ_ONLY mode and retry
-                if (mapMode == FileChannel.MapMode.READ_WRITE) {
+                if (!readOnlyMode && mapMode == FileChannel.MapMode.READ_WRITE) {
                     mapMode = FileChannel.MapMode.READ_ONLY;
-                    // Retry with read-only mode
+                    readOnlyMode = true;
+                    // Retry current chunk with read-only mode
                     MappedByteBuffer buffer = channel.map(mapMode, pos, chunkSize);
                     mappedBuffers.add(buffer);
                     starts.add(pos);
                     pos += chunkSize;
                 } else {
-                    throw e;
+                    // Already in read-only mode or other error - throw exception
+                    throw new IOException("Failed to map file chunk at position " + pos + " in " + mapMode + " mode", e);
                 }
             }
         }
         
-        mappedRegionStarts = starts.stream().mapToLong(Long::longValue).toArray();
-        mappedSize = fileSize;
+        long[] regionStarts = starts.stream().mapToLong(Long::longValue).toArray();
+        currentEpoch = new Epoch(mappedBuffers, regionStarts, fileSize);
     }
 
     /**
      * Finds the mapped buffer and offset for a given file position.
      */
     private BufferLocation locate(long pos) {
-        if (pos < 0 || pos > mappedSize) {
-            throw new IllegalArgumentException("Position " + pos + " out of range [0, " + mappedSize + "]");
+        Epoch epoch = currentEpoch;
+        if (pos < 0 || pos > epoch.mappedSize) {
+            throw new IllegalArgumentException("Position " + pos + " out of range [0, " + epoch.mappedSize + "]");
         }
         
         // Binary search for the correct buffer
-        for (int i = 0; i < mappedRegionStarts.length; i++) {
-            long start = mappedRegionStarts[i];
-            long end = (i + 1 < mappedRegionStarts.length) ? mappedRegionStarts[i + 1] : mappedSize;
+        for (int i = 0; i < epoch.regionStarts.length; i++) {
+            long start = epoch.regionStarts[i];
+            long end = (i + 1 < epoch.regionStarts.length) ? epoch.regionStarts[i + 1] : epoch.mappedSize;
             
             if (pos >= start && pos < end) {
                 int offset = (int) (pos - start);
-                return new BufferLocation(mappedBuffers.get(i), offset);
+                return new BufferLocation(epoch.buffers.get(i), offset);
             }
         }
         
@@ -114,11 +136,12 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     @Override
     public int read(byte[] b) throws IOException {
-        if (position >= mappedSize) {
+        Epoch epoch = currentEpoch;
+        if (position >= epoch.mappedSize) {
             return -1;
         }
         
-        int toRead = (int) Math.min(b.length, mappedSize - position);
+        int toRead = (int) Math.min(b.length, epoch.mappedSize - position);
         BufferLocation loc = locate(position);
         
         // Handle reads that span multiple buffers
@@ -203,44 +226,120 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     @Override
     public long length() throws IOException {
-        return mappedSize;
+        return currentEpoch.mappedSize;
     }
 
     @Override
-    public void setLength(long newLength) throws IOException {
-        if (newLength == mappedSize) {
+    public synchronized void setLength(long newLength) throws IOException {
+        Epoch current = currentEpoch;
+        if (newLength == current.mappedSize) {
             return;
         }
         
-        // If shrinking or growing within current mapping, just update the logical size
-        if (newLength <= mappedSize) {
-            // Shrinking - just update file length, keep mapping
-            randomAccessFile.setLength(newLength);
-            mappedSize = newLength;
+        // Validate new length
+        if (newLength < 0) {
+            throw new IllegalArgumentException("New length must be non-negative: " + newLength);
+        }
+        
+        try {
+            // Build new epoch atomically
+            Epoch newEpoch = buildNewEpoch(newLength);
+            
+            // Publish new epoch atomically
+            currentEpoch = newEpoch;
+            
+            // Clean up old epoch buffers (explicit unmap to prevent memory leak)
+            unmapEpoch(current);
+            
+            // Ensure position is still valid
             if (position > newLength) {
                 position = newLength;
             }
-            return;
+        } catch (Exception e) {
+            // If anything goes wrong, don't leave object in inconsistent state
+            // Current epoch remains valid
+            throw new IOException("Failed to set file length to " + newLength, e);
         }
-        
-        // Growing beyond current mapping - need to remap
-        // Force all changes to disk before unmapping
-        for (MappedByteBuffer buffer : mappedBuffers) {
+    }
+    
+    /**
+     * Builds a new epoch with the specified file length.
+     * This method creates a completely new mapping state without modifying the current one.
+     */
+    private Epoch buildNewEpoch(long newLength) throws IOException {
+        // Force all changes to disk before remapping
+        Epoch current = currentEpoch;
+        for (MappedByteBuffer buffer : current.buffers) {
             buffer.force();
         }
-        
-        // Clear existing buffers
-        mappedBuffers.clear();
         
         // Resize the underlying file
         randomAccessFile.setLength(newLength);
         
-        // Remap the file with new size
-        mapFile();
+        // Create new mapping for the resized file
+        List<MappedByteBuffer> newBuffers = new ArrayList<>();
+        List<Long> newStarts = new ArrayList<>();
         
-        // Ensure position is still valid
-        if (position > newLength) {
-            position = newLength;
+        long fileSize = channel.size();
+        FileChannel.MapMode mapMode = FileChannel.MapMode.READ_WRITE;
+        boolean readOnlyMode = false;
+        
+        long pos = 0;
+        while (pos < fileSize) {
+            long chunkSize = Math.min(MAPPING_CHUNK_SIZE, fileSize - pos);
+            try {
+                MappedByteBuffer buffer = channel.map(mapMode, pos, chunkSize);
+                newBuffers.add(buffer);
+                newStarts.add(pos);
+                pos += chunkSize;
+            } catch (java.nio.channels.NonWritableChannelException e) {
+                if (!readOnlyMode && mapMode == FileChannel.MapMode.READ_WRITE) {
+                    mapMode = FileChannel.MapMode.READ_ONLY;
+                    readOnlyMode = true;
+                    MappedByteBuffer buffer = channel.map(mapMode, pos, chunkSize);
+                    newBuffers.add(buffer);
+                    newStarts.add(pos);
+                    pos += chunkSize;
+                } else {
+                    throw new IOException("Failed to map file chunk at position " + pos + " in " + mapMode + " mode", e);
+                }
+            }
+        }
+        
+        long[] regionStarts = newStarts.stream().mapToLong(Long::longValue).toArray();
+        return new Epoch(newBuffers, regionStarts, fileSize);
+    }
+    
+    /**
+     * Explicitly unmaps all buffers in an epoch to prevent native memory leaks.
+     * Uses reflection to access the Cleaner for proper cleanup.
+     */
+    private void unmapEpoch(Epoch epoch) {
+        for (MappedByteBuffer buffer : epoch.buffers) {
+            unmapBuffer(buffer);
+        }
+    }
+    
+    /**
+     * Explicitly unmaps a single MappedByteBuffer to prevent native memory leaks.
+     * This is package-private for testing purposes.
+     */
+    static void unmapBuffer(MappedByteBuffer buffer) {
+        try {
+            // Try to use Cleaner for explicit unmapping
+            // Use reflection to access the cleaner to avoid module system issues
+            java.lang.reflect.Method cleanerMethod = buffer.getClass().getMethod("cleaner");
+            cleanerMethod.setAccessible(true);
+            Object cleaner = cleanerMethod.invoke(buffer);
+            if (cleaner != null) {
+                java.lang.reflect.Method cleanMethod = cleaner.getClass().getMethod("clean");
+                cleanMethod.setAccessible(true);
+                cleanMethod.invoke(cleaner);
+                logger.log(Level.FINEST, "Explicitly unmapped buffer");
+            }
+        } catch (Exception e) {
+            // Fall back to relying on GC if Cleaner is not available
+            logger.log(Level.FINEST, "Could not explicitly unmap buffer, relying on GC: " + e.getMessage());
         }
     }
 
@@ -250,8 +349,10 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
             // Force all changes to disk before closing
             sync();
         } finally {
-            // Clean up mapped buffers
-            mappedBuffers.clear();
+            // Clean up mapped buffers from current epoch
+            if (currentEpoch != null) {
+                unmapEpoch(currentEpoch);
+            }
             
             // Close the underlying file
             randomAccessFile.close();
@@ -260,7 +361,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     @Override
     public byte readByte() throws IOException {
-        if (position >= mappedSize) {
+        Epoch epoch = currentEpoch;
+        if (position >= epoch.mappedSize) {
             throw new IOException("EOF");
         }
         BufferLocation loc = locate(position);
@@ -302,7 +404,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
      * If not, extends the file and remaps.
      */
     private void ensureCapacity(long requiredSize) throws IOException {
-        if (requiredSize > mappedSize) {
+        Epoch epoch = currentEpoch;
+        if (requiredSize > epoch.mappedSize) {
             setLength(requiredSize);
         }
     }

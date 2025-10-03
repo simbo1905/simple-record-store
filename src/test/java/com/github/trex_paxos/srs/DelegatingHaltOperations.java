@@ -50,7 +50,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public long length() throws IOException {
-        // Note: length() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, "HALTED: length() returning 0");
             return 0;
@@ -120,7 +120,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public int read(byte[] b) throws IOException {
-        // Note: read() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, () -> String.format("HALTED: read(%d bytes) returning -1", b.length));
             return -1;
@@ -130,7 +130,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public void readFully(byte[] b) throws IOException {
-        // Note: readFully() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, "HALTED: readFully() ignored");
             return;
@@ -140,7 +140,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public int readInt() throws IOException {
-        // Note: readInt() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, "HALTED: readInt() returning 0");
             return 0;
@@ -150,7 +150,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public long readLong() throws IOException {
-        // Note: readLong() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, "HALTED: readLong() returning 0");
             return 0;
@@ -180,7 +180,7 @@ public class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
     
     @Override
     public byte readByte() throws IOException {
-        // Note: readByte() doesn't call checkOperation() because it's used for checking halt state
+        checkOperation();
         if (halted) {
             logger.log(Level.FINEST, "HALTED: readByte() returning 0");
             return 0;

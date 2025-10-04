@@ -250,7 +250,58 @@ The implementation uses an **atomic epoch-swap protocol** to prevent native memo
 3. **Explicit Cleanup**: Old epoch buffers are explicitly unmapped after transition
 4. **Fail-Closed Design**: Failed remaps leave current epoch unchanged
 
+#### Epoch-Remap Process
+
+```mermaid
+sequenceDiagram
+    participant Thread as "Remap Thread"
+    participant Epoch as "Current Epoch"
+    participant File as "Underlying File"
+    participant Cleaner as "Buffer Cleaner"
+    
+    Thread->>Epoch: Read current epoch
+    Thread->>File: Force buffers to disk
+    Thread->>File: Resize file
+    Thread->>Thread: Build new epoch (off-side)
+    Thread->>Epoch: CAS publish: currentEpoch = newEpoch
+    Thread->>Cleaner: Unmap old epoch buffers
+    Thread->>Thread: Update position if needed
+```
+
+#### Concurrency Model
+
+```mermaid
+graph TD
+    A[Multiple Reader Threads] --> B[Volatile currentEpoch]
+    C[Single Remap Thread] --> D[Synchronized setLength]
+    B --> E[Immutable Epoch Objects]
+    D --> E
+    E --> F[Lock-free Read Access]
+```
+
 The implementation ensures robust native memory management during file growth operations.
+
+### Monitoring and Debugging
+
+Monitor native memory usage with these commands:
+
+```bash
+# Monitor native memory usage
+jcmd <pid> VM.native_memory summary
+
+# Track mapped buffer count
+jcmd <pid> GC.class_histogram | grep DirectByteBuffer
+```
+
+Enable detailed memory mapping logging:
+
+```properties
+# Enable detailed memory mapping logging
+java.util.logging.config.file=logging.properties
+
+# In logging.properties:
+com.github.trex_paxos.srs.MemoryMappedRandomAccessFile.level = FINEST
+```
 
 ## Thread Safety
 

@@ -95,7 +95,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.insertRecord(key, data);
 
     // Reset counter before delete
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform delete
     countingStore.deleteRecord(key);
@@ -153,7 +153,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.deleteRecord(key4);
 
     // Reset counter before insert
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform insert into free space
     byte[] newKey = "newkey".getBytes();
@@ -201,7 +201,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.insertRecord(key, initialData);
 
     // Reset counter before update
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform update (same size)
     countingStore.updateRecord(key, updatedData);
@@ -247,7 +247,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.insertRecord(key, data);
 
     // Reset counter before read
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform read
     byte[] readData = countingStore.readRecordData(key);
@@ -300,7 +300,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     byte[] data = "maxkeydata".getBytes();
 
     // Reset counter before insert
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform insert with max key length
     countingStore.insertRecord(maxKey, data);
@@ -345,7 +345,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     byte[] emptyData = new byte[0];
 
     // Reset counter before insert
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform insert with empty data
     countingStore.insertRecord(key, emptyData);
@@ -392,7 +392,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.insertRecord(key, data);
 
     // Reset counter before fsync
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform fsync - this should trigger sync operations
     countingStore.fsync();
@@ -440,7 +440,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.insertRecord(key, largeData);
 
     // Reset counter before another insert that should cause growth
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform another insert that should cause file growth
     byte[] key2 = "anotherkey".getBytes();
@@ -478,7 +478,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingStore.fileOperations = countingOps;
 
     // Reset counter before insert
-    countingOps.getOperationCount(); // This resets the count
+    countingOps.resetOperationCount();
 
     // Perform insert into existing store (this will manipulate indexes)
     byte[] newKey = "newkey".getBytes();

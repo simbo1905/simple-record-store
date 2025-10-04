@@ -221,7 +221,6 @@ public class FileRecordStore implements AutoCloseable {
         fileOperations.seek(0);
         int firstFourBytes = fileOperations.readInt();
 
-        boolean isOldFormat = false;
         int existingKeyLength;
         int existingRecords;
 
@@ -245,18 +244,11 @@ public class FileRecordStore implements AutoCloseable {
                   existingKeyLength, maxKeyLength));
         }
 
-        // Read dataStartPtr based on format
-        if (isOldFormat) {
-          fileOperations.seek(5); // Old DATA_START_HEADER_LOCATION
-          dataStartPtr = fileOperations.readLong();
-        } else {
-          dataStartPtr = readDataStartHeader();
-        }
+        // Read dataStartPtr for new format
+        dataStartPtr = readDataStartHeader();
 
         // Validate file has minimum required size for existing records
-        // For old format, use old header length (13), for new format use new header length (17)
-        long headerLength = isOldFormat ? 13 : FILE_HEADERS_REGION_LENGTH;
-        long requiredFileSize = headerLength + ((long) existingRecords * indexEntryLength);
+        long requiredFileSize = FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
         if (fileOperations.length() < requiredFileSize) {
           throw new IOException(
               String.format(
@@ -1882,22 +1874,37 @@ public class FileRecordStore implements AutoCloseable {
           return false;
         }
 
-        // Read and validate the key length header (first byte)
+        // First check the magic number to determine file format
         raf.seek(0);
-        int keyLength;
+        int magicNumber;
         try {
-          keyLength = raf.readByte() & 0xFF;
+          magicNumber = raf.readInt();
         } catch (EOFException e) {
-          // File is too short to read header
-          logger.log(Level.FINE, "Validation failed: EOF reading key length");
+          logger.log(Level.FINE, "Validation failed: EOF reading magic number");
           return false;
         }
 
-        // Key length must be non-negative and within reasonable bounds
-        // Allow keyLength == 0 as valid (maxKeyLength could be 0)
-        logger.log(
-            Level.FINEST,
-            "Validation: keyLength=" + keyLength + " expected=" + expectedMaxKeyLength);
+        int keyLength;
+        int numRecords;
+        
+        if (magicNumber == MAGIC_NUMBER) {
+          // New format with magic number
+          try {
+            raf.seek(KEY_LENGTH_HEADER_LOCATION);
+            keyLength = raf.readByte() & 0xFF;
+            raf.seek(NUM_RECORDS_HEADER_LOCATION);
+            numRecords = raf.readInt();
+          } catch (EOFException e) {
+            logger.log(Level.FINE, "Validation failed: EOF reading new format headers");
+            return false;
+          }
+        } else {
+          // Old format without magic number - reject it
+          logger.log(Level.FINE, "Validation failed: old format file without magic number");
+          return false;
+        }
+
+        // Validate key length
         if (keyLength > MAX_KEY_LENGTH_THEORETICAL) {
           logger.log(Level.FINE, "Validation failed: invalid key length " + keyLength);
           return false;
@@ -1914,17 +1921,9 @@ public class FileRecordStore implements AutoCloseable {
           return false;
         }
 
-        // Additional validation: check if we can read the number of records header
-        try {
-          raf.seek(NUM_RECORDS_HEADER_LOCATION);
-          int numRecords = raf.readInt();
-          // Number of records should be non-negative and reasonable
-          if (numRecords < 0 || numRecords > 1000000) { // Arbitrary reasonable upper bound
-            logger.log(Level.FINE, "Validation failed: invalid numRecords " + numRecords);
-            return false;
-          }
-        } catch (EOFException e) {
-          logger.log(Level.FINE, "Validation failed: EOF reading numRecords");
+        // Validate number of records (no upper bound, only non-negative)
+        if (numRecords < 0) {
+          logger.log(Level.FINE, "Validation failed: negative numRecords " + numRecords);
           return false;
         }
 

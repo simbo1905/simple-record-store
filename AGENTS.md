@@ -19,7 +19,7 @@
 
 ## Testing Guidelines
 - New scenarios belong in `FileRecordStoreExceptionHandlingTest` or a sibling test class; name files `*Test` so Surefire picks them up.
-- **Note**: `SimpleRecordStoreTest` has been deleted - all exception handling and persistence testing is now covered by `FileRecordStoreExceptionHandlingTest` which includes:
+- All exception handling and persistence testing is covered by `FileRecordStoreExceptionHandlingTest` which includes:
   - Comprehensive persistence verification after exceptions
   - verifyStoreIntegrity() helper for data validation
   - Enhanced scenario testing with persistence checks
@@ -60,9 +60,12 @@
 
 ### maxKeyLength Enforcement
 The `maxKeyLength` parameter is **fundamental and enforced**:
-- Files store their `maxKeyLength` in the header permanently
+- Must be between 1 and 252 bytes (validated with `Objects.requireNonNull` and range check)
+- Files store their `maxKeyLength` in the header with magic number validation permanently
+- File format: 4-byte magic number (0xBEEBBEEB) followed by 1-byte key length
 - When opening existing files, you **must** use the same `maxKeyLength` that was used to create the file
 - Different `maxKeyLength` values will throw `IllegalArgumentException`
+- Invalid magic number throws `IllegalStateException` indicating corrupted or incompatible file
 - This prevents data corruption and maintains file format integrity
 - If you need different key lengths, create a new database and migrate data
 

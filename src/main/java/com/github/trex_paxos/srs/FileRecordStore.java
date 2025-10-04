@@ -22,6 +22,9 @@ import static java.util.Optional.of;
 /// Provides ACID properties with durable writes and supports both direct I/O and memory-mapped access modes.
 public class FileRecordStore implements AutoCloseable {
 
+  /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
+  /// Placed at the start of every file to detect corruption and incompatible formats.
+  private static final int MAGIC_NUMBER = 0xBEEBBEEB;
   /// Default maximum key length in bytes. Can be overridden up to 2^8 - 4.
   public static final int DEFAULT_MAX_KEY_LENGTH = 64;
   /// Theoretical maximum key length based on file format constraints (2^8 - 4).
@@ -29,16 +32,21 @@ public class FileRecordStore implements AutoCloseable {
   private final static Logger logger = Logger.getLogger(FileRecordStore.class.getName());
   // Number of bytes in the record header.
   private static final int RECORD_HEADER_LENGTH = 20;
+  // File index to the magic number header.
+  private static final long MAGIC_NUMBER_HEADER_LOCATION = 0;
+  // File index to the key length header (after magic number).
+  private static final long KEY_LENGTH_HEADER_LOCATION = 4;
   // File index to the num records header.
-  private static final long NUM_RECORDS_HEADER_LOCATION = 1;
+  private static final long NUM_RECORDS_HEADER_LOCATION = 5;
   // File index to the start of the data region beyond the index region
-  private static final long DATA_START_HEADER_LOCATION = 5;
+  private static final long DATA_START_HEADER_LOCATION = 9;
   /// Total length in bytes of the global database headers:
-  /// 1. 1 byte stores the key length the file was created with. (This cannot
+  /// 1. 4-byte magic number (0xBEEBBEEB) for file format validation
+  /// 2. 1 byte stores the key length the file was created with. (This cannot
   ///    be changed; copy into a new store to adjust the limit.)
-  /// 2. 4-byte int tracking the number of records.
-  /// 3. 8-byte long pointing to the start of the data region.
-  private static final int FILE_HEADERS_REGION_LENGTH = 13;
+  /// 3. 4-byte int tracking the number of records.
+  /// 4. 8-byte long pointing to the start of the data region.
+  private static final int FILE_HEADERS_REGION_LENGTH = 17;
   // this is an unsigned 32 int
   private static final int CRC32_LENGTH = 4;
   /// System property name for configuring the maximum key length.
@@ -105,6 +113,14 @@ public class FileRecordStore implements AutoCloseable {
   
   FileRecordStore(File file, int preallocatedRecords, int maxKeyLength, boolean disablePayloadCrc32, boolean useMemoryMapping, String accessMode, KeyType keyType, boolean defensiveCopy) throws IOException {
     try {
+      // Validate maxKeyLength early
+      Objects.requireNonNull(maxKeyLength, "maxKeyLength cannot be null");
+      if (maxKeyLength < 1 || maxKeyLength > MAX_KEY_LENGTH_THEORETICAL) {
+        throw new IllegalArgumentException(String.format(
+            "maxKeyLength must be between 1 and %d, got %d",
+            MAX_KEY_LENGTH_THEORETICAL, maxKeyLength));
+      }
+      
       RandomAccessFile raf = new RandomAccessFile(file, accessMode);
 
       logger.log(Level.FINE, () -> String.format("create file=%s preallocatedRecords=%d maxKeyLength=%d disablePayloadCrc32=%b useMemoryMapping=%b", file.toPath(), preallocatedRecords, maxKeyLength, disablePayloadCrc32, useMemoryMapping));
@@ -141,13 +157,33 @@ public class FileRecordStore implements AutoCloseable {
 
       // Only initialize headers for new files - existing files should already have headers
       if (wasEmpty) {
-        writeNumRecordsHeader(0);
+        writeMagicNumberHeader();
         writeKeyLengthHeader();
+        writeNumRecordsHeader(0);
         writeDataStartPtrHeader(dataStartPtr);
       } else {
         // Existing file - validate headers before loading data
-        int existingRecords = readNumRecordsHeader();
-        int existingKeyLength = readKeyLengthHeader();
+        // First check if this is an old format file (without magic number)
+        fileOperations.seek(0);
+        int firstFourBytes = fileOperations.readInt();
+        
+        boolean isOldFormat = false;
+        int existingKeyLength;
+        int existingRecords;
+        
+        if (firstFourBytes == MAGIC_NUMBER) {
+          // New format with magic number
+          existingKeyLength = readKeyLengthHeader();
+          existingRecords = readNumRecordsHeader();
+        } else {
+          // Old format - first byte is key length
+          isOldFormat = true;
+          logger.log(Level.WARNING, "Opening old format file without magic number. Consider migrating to new format.");
+          fileOperations.seek(0);
+          existingKeyLength = fileOperations.readByte() & 0xFF;
+          fileOperations.seek(1);  // Old NUM_RECORDS_HEADER_LOCATION
+          existingRecords = fileOperations.readInt();
+        }
         
         // Validate key length matches before proceeding
         if (existingKeyLength != maxKeyLength) {
@@ -156,10 +192,18 @@ public class FileRecordStore implements AutoCloseable {
               existingKeyLength, maxKeyLength));
         }
         
-        dataStartPtr = readDataStartHeader();
+        // Read dataStartPtr based on format
+        if (isOldFormat) {
+          fileOperations.seek(5);  // Old DATA_START_HEADER_LOCATION
+          dataStartPtr = fileOperations.readLong();
+        } else {
+          dataStartPtr = readDataStartHeader();
+        }
         
         // Validate file has minimum required size for existing records
-        long requiredFileSize = FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
+        // For old format, use old header length (13), for new format use new header length (17)
+        long headerLength = isOldFormat ? 13 : FILE_HEADERS_REGION_LENGTH;
+        long requiredFileSize = headerLength + ((long) existingRecords * indexEntryLength);
         if (fileOperations.length() < requiredFileSize) {
           throw new IOException(String.format(
               "File too small for %d records. Required: %d bytes, Actual: %d bytes",
@@ -179,26 +223,41 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
-  /// Writes the number of records header to the fileOperations.
-  private void writeNumRecordsHeader(int numRecords) throws IOException {
-    fileOperations.seek(NUM_RECORDS_HEADER_LOCATION);
-    fileOperations.writeInt(numRecords);
+  /// Writes the magic number header to the beginning of the fileOperations.
+  private void writeMagicNumberHeader() throws IOException {
+    fileOperations.seek(MAGIC_NUMBER_HEADER_LOCATION);
+    fileOperations.writeInt(MAGIC_NUMBER);
+    logger.log(Level.FINEST, () -> String.format("Writing magic number header: 0x%08X", MAGIC_NUMBER));
   }
 
-  /// Writes the max key length to the beginning of the fileOperations.
-  private void writeKeyLengthHeader()
-      throws IOException {
-    fileOperations.seek(0);
+  /// Reads the magic number header from the beginning of the fileOperations.
+  private int readMagicNumberHeader() throws IOException {
+    fileOperations.seek(MAGIC_NUMBER_HEADER_LOCATION);
+    int magic = fileOperations.readInt();
+    logger.log(Level.FINEST, () -> String.format("Reading magic number header: 0x%08X", magic));
+    return magic;
+  }
+
+  /// Writes the max key length to the fileOperations (after magic number).
+  private void writeKeyLengthHeader() throws IOException {
+    fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
     final var keyLength = (byte) maxKeyLength;
     logger.log(Level.FINEST, "Writing key length header: " + keyLength + " (from maxKeyLength=" + maxKeyLength + ")");
     fileOperations.write(keyLength);
   }
 
-  /// Writes the data start pointer header to the fileOperations.
-  private void writeDataStartPtrHeader(long dataStartPtr)
-      throws IOException {
-    fileOperations.seek(DATA_START_HEADER_LOCATION);
-    fileOperations.writeLong(dataStartPtr);
+  /// Reads the max key length from the fileOperations (after magic number).
+  private int readKeyLengthHeader() throws IOException {
+    fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
+    int keyLength = fileOperations.readByte() & 0xFF;
+    logger.log(Level.FINEST, "Reading key length header: " + keyLength);
+    return keyLength;
+  }
+
+  /// Writes the number of records header to the fileOperations.
+  private void writeNumRecordsHeader(int numRecords) throws IOException {
+    fileOperations.seek(NUM_RECORDS_HEADER_LOCATION);
+    fileOperations.writeInt(numRecords);
   }
 
   /// Reads the number of records header from the fileOperations.
@@ -207,12 +266,10 @@ public class FileRecordStore implements AutoCloseable {
     return fileOperations.readInt();
   }
 
-  /// Reads the max key length from the beginning of the fileOperations.
-  private int readKeyLengthHeader() throws IOException {
-    fileOperations.seek(0);
-    int keyLength = fileOperations.readByte() & 0xFF;
-    logger.log(Level.FINEST, "Reading key length header: " + keyLength);
-    return keyLength;
+  /// Writes the data start pointer header to the fileOperations.
+  private void writeDataStartPtrHeader(long dataStartPtr) throws IOException {
+    fileOperations.seek(DATA_START_HEADER_LOCATION);
+    fileOperations.writeLong(dataStartPtr);
   }
 
   /// Reads the data start pointer header from the fileOperations.

@@ -14,7 +14,7 @@ The latest release on Maven Central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC6</version>
+	<version>1.0.0-RC7</version>
 </dependency>
 ```
 
@@ -173,8 +173,8 @@ The recommended way to create a `FileRecordStore` is using the builder pattern:
 
 ```java
 import java.nio.file.Paths;
-import com.github.trex_paxos.srs.FileRecordStore;
-import com.github.trex_paxos.srs.ByteSequence;
+import com.github.simbo1905.nfp.srs.FileRecordStore;
+import com.github.simbo1905.nfp.srs.ByteSequence;
 
 // Create new store with memory-mapping
 FileRecordStore store = new FileRecordStore.Builder()
@@ -387,7 +387,7 @@ Enable detailed memory mapping logging:
 java.util.logging.config.file=logging.properties
 
 # In logging.properties:
-com.github.trex_paxos.srs.MemoryMappedRandomAccessFile.level = FINEST
+com.github.simbo1905.nfp.srs.MemoryMappedRandomAccessFile.level = FINEST
 ```
 
 ## Thread Safety

@@ -3,12 +3,11 @@ package com.github.simbo1905.nfp.srs;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
-public record InterceptedRandomAccessFile(RandomAccessFile file,
-                                          WriteCallback wc) implements FileOperations {
+public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback wc)
+    implements FileOperations {
 
   @Override
-  public void sync() {
-  }
+  public void sync() {}
 
   @Override
   public long getFilePointer() throws IOException {
@@ -32,7 +31,6 @@ public record InterceptedRandomAccessFile(RandomAccessFile file,
     wc.onWrite();
     file.readFully(b);
   }
-
 
   /* (non-Javadoc)
    * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#write(int)
@@ -141,6 +139,4 @@ public record InterceptedRandomAccessFile(RandomAccessFile file,
     wc.onWrite();
     file.writeLong(v);
   }
-
-
 }

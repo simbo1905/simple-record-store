@@ -69,5 +69,4 @@ record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements Fi
   public void writeLong(long v) throws IOException {
     randomAccessFile.writeLong(v);
   }
-
 }

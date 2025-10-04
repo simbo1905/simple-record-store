@@ -4,6 +4,5 @@ import java.io.IOException;
 
 public interface WriteCallback {
 
-	void onWrite() throws IOException;
-
+  void onWrite() throws IOException;
 }

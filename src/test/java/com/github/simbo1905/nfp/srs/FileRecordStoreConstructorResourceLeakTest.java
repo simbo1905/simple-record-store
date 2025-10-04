@@ -25,7 +25,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
       // Corrupt the key length header to trigger validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(0);
+        raf.seek(4); // Key length position in new format (after magic number)
         raf.writeByte(32); // Change key length from 64 to 32
       }
 
@@ -67,12 +67,15 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     Path tempFile = Files.createTempFile("resource-leak-size", ".dat");
 
     try {
-      // Create a minimal file with headers but insufficient size for claimed records
+      // Create a valid store first, then corrupt it to have invalid record count
+      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+        store.insertRecord("testkey".getBytes(), "testdata".getBytes());
+      }
+
+      // Corrupt the record count to be much higher than actual
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.setLength(13); // Just header size
-        raf.writeByte(64); // key length = 64
-        raf.writeInt(100); // numRecords = 100 (but file too small)
-        raf.writeLong(13); // dataStart = 13
+        raf.seek(5); // numRecords position in new format
+        raf.writeInt(100); // Claim 100 records when we only have 1
       }
 
       logger.log(Level.FINE, "Attempting to open store with file too small for claimed records...");
@@ -107,18 +110,16 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     Path tempFile = Files.createTempFile("early-init", ".dat");
 
     try {
-      // Create a file that will pass initial validation but fail later
-      try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.setLength(13); // Header size
-        raf.writeByte(64); // Valid key length
-        raf.writeInt(1); // Valid numRecords (1)
-        raf.writeLong(13); // Valid dataStart
+      // Create a valid store first, then corrupt the record data
+      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+        store.insertRecord("testkey".getBytes(), "testdata".getBytes());
+      }
 
-        // Write some invalid data that will cause loadExistingIndex to fail
-        raf.seek(13); // Position for first record (after header)
-        raf.writeByte(10); // Key length
-        raf.write(new byte[10]); // Key data
-        raf.writeInt(999999); // Invalid CRC32
+      // Corrupt the record data to cause CRC validation failure during index loading
+      try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
+        // Navigate to the key CRC position in the first record
+        raf.seek(17 + 64 + 10); // Skip header (17) + key (64) + record header (10) to key CRC
+        raf.writeInt(999999); // Invalid CRC32 for key
       }
 
       logger.log(Level.FINE, "Attempting to open store that will fail during index loading...");

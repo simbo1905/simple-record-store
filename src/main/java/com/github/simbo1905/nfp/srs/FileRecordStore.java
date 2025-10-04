@@ -84,6 +84,12 @@ public class FileRecordStore implements AutoCloseable {
   /// Whether to use defensive copying for byte array keys
   private final boolean defensiveCopy;
 
+  /// Whether to allow in-place updates for smaller records regardless of CRC32 setting
+  private volatile boolean allowInPlaceUpdates = true;
+
+  /// Whether to allow header region expansion during operations
+  private volatile boolean allowHeaderExpansion = true;
+
   /// Store state tracking for proper lifecycle management
   enum StoreState {
     NEW, // Initial state - store created but not yet validated/opened
@@ -224,15 +230,11 @@ public class FileRecordStore implements AutoCloseable {
           existingKeyLength = readKeyLengthHeader();
           existingRecords = readNumRecordsHeader();
         } else {
-          // Old format - first byte is key length
-          isOldFormat = true;
-          logger.log(
-              Level.WARNING,
-              "Opening old format file without magic number. Consider migrating to new format.");
-          fileOperations.seek(0);
-          existingKeyLength = fileOperations.readByte() & 0xFF;
-          fileOperations.seek(1); // Old NUM_RECORDS_HEADER_LOCATION
-          existingRecords = fileOperations.readInt();
+          // Old format - reject with exception instead of warning
+          throw new IllegalStateException(
+              "Invalid file format: File does not contain required magic number 0xBEEBBEEB. " +
+              "This appears to be an old format file or corrupted data. " +
+              "Only files created with FileRecordStore.Builder are supported.");
         }
 
         // Validate key length matches before proceeding
@@ -733,12 +735,11 @@ public class FileRecordStore implements AutoCloseable {
       final var capacity = updateMeHeader.getDataCapacity();
 
       final var recordIsSameSize = value.length == capacity;
-      final var recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
+      final var recordIsSmaller = value.length < capacity;
 
       // can update in place if the record is same size no matter whether CRC32 is enabled.
-      // if record is smaller than we can only update in place if we have a CRC32 to validate which
-      // data length is valid
-      if (recordIsSameSize || recordIsSmallerAndCrcEnabled) {
+      // for smaller records, allow in-place updates based on the allowInPlaceUpdates setting
+      if (recordIsSameSize || (recordIsSmaller && allowInPlaceUpdates)) {
         // write with the backup crc so one of the two CRCs will be valid after a crash
         writeRecordHeaderToIndex(updateMeHeader);
         updateMeHeader.dataCount = value.length;
@@ -747,7 +748,7 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordData(updateMeHeader, value);
         // write the header with the main CRC
         writeRecordHeaderToIndex(updateMeHeader);
-      } else { // if last record expand or contract the file
+      } else { // Handle cases where in-place update is not possible
         final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
         final var fileLength =
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
@@ -788,7 +789,34 @@ public class FileRecordStore implements AutoCloseable {
             writeDataStartPtrHeader(updateMeHeader.dataPointer);
           }
         } else {
-          throw new AssertionError("this line should be unreachable");
+          // Not last record - need to move to new location
+          // This handles both larger records and smaller records when in-place updates are disabled
+          RecordHeader newRecord = allocateRecord(value.length);
+          // new record is expanded/moved old record
+          newRecord.dataCount = value.length;
+          writeRecordData(newRecord, value);
+          writeRecordHeaderToIndex(newRecord);
+          memIndex.put(keyWrapper, newRecord);
+          positionIndex.remove(updateMeHeader.dataPointer);
+          positionIndex.put(newRecord.dataPointer, newRecord);
+          assert memIndex.size() == positionIndex.size()
+              : String.format(
+                  "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
+
+          // if there is a previous record add space to it
+          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousOptional = getRecordAt(previousIndex);
+
+          if (previousOptional.isPresent()) {
+            RecordHeader previous = previousOptional.get();
+            // append space of deleted record onto previous record
+            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            updateFreeSpaceIndex(previous);
+            writeRecordHeaderToIndex(previous);
+          } else {
+            // record free space at the end of the index area
+            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+          }
         }
       }
 
@@ -1238,12 +1266,11 @@ public class FileRecordStore implements AutoCloseable {
       final var capacity = updateMeHeader.getDataCapacity();
 
       final var recordIsSameSize = value.length == capacity;
-      final var recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
+      final var recordIsSmaller = value.length < capacity;
 
       // can update in place if the record is same size no matter whether CRC32 is enabled.
-      // if record is smaller than we can only update in place if we have a CRC32 to validate which
-      // data length is valid
-      if (recordIsSameSize || recordIsSmallerAndCrcEnabled) {
+      // for smaller records, allow in-place updates based on the allowInPlaceUpdates setting
+      if (recordIsSameSize || (recordIsSmaller && allowInPlaceUpdates)) {
         // write with the backup crc so one of the two CRCs will be valid after a crash
         writeRecordHeaderToIndex(updateMeHeader);
         updateMeHeader.dataCount = value.length;
@@ -1252,7 +1279,7 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordData(updateMeHeader, value);
         // write the header with the main CRC
         writeRecordHeaderToIndex(updateMeHeader);
-      } else { // if last record expand or contract the file
+      } else { // Handle cases where in-place update is not possible
         final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
         final var fileLength =
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
@@ -1293,7 +1320,34 @@ public class FileRecordStore implements AutoCloseable {
             writeDataStartPtrHeader(updateMeHeader.dataPointer);
           }
         } else {
-          throw new AssertionError("this line should be unreachable");
+          // Not last record - need to move to new location
+          // This handles both larger records and smaller records when in-place updates are disabled
+          RecordHeader newRecord = allocateRecord(value.length);
+          // new record is expanded/moved old record
+          newRecord.dataCount = value.length;
+          writeRecordData(newRecord, value);
+          writeRecordHeaderToIndex(newRecord);
+          memIndex.put(keyWrapper, newRecord);
+          positionIndex.remove(updateMeHeader.dataPointer);
+          positionIndex.put(newRecord.dataPointer, newRecord);
+          assert memIndex.size() == positionIndex.size()
+              : String.format(
+                  "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
+
+          // if there is a previous record add space to it
+          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousOptional = getRecordAt(previousIndex);
+
+          if (previousOptional.isPresent()) {
+            RecordHeader previous = previousOptional.get();
+            // append space of deleted record onto previous record
+            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            updateFreeSpaceIndex(previous);
+            writeRecordHeaderToIndex(previous);
+          } else {
+            // record free space at the end of the index area
+            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+          }
         }
       }
 
@@ -1400,6 +1454,23 @@ public class FileRecordStore implements AutoCloseable {
   /// not, space is created by moving records to the end of the fileOperations.
   private void ensureIndexSpace(int requiredNumRecords) throws IOException {
     long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
+    
+    // Check if header expansion is disabled
+    if (!allowHeaderExpansion) {
+      // Verify we have sufficient pre-allocated space
+      if (endIndexPtr > dataStartPtr) {
+        int currentRecords = getNumRecords();
+        throw new IllegalStateException(
+            String.format(
+                "Header expansion disabled and insufficient pre-allocated space. " +
+                "Required: %d records, Current: %d records, Pre-allocated header space exhausted. " +
+                "Consider increasing preallocatedRecords or enabling header expansion.",
+                requiredNumRecords, currentRecords));
+      }
+      // Sufficient space available, no expansion needed
+      return;
+    }
+    
     if (isEmpty() && endIndexPtr > getFileLength()) {
       setFileLength(endIndexPtr);
       dataStartPtr = endIndexPtr;
@@ -1491,6 +1562,54 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
+  /// Sets whether to allow in-place updates for smaller records regardless of CRC32 setting.
+  /// When true (default), smaller records can be updated in-place even when CRC32 is disabled.
+  /// When false, smaller records will use the dual-write pattern (old behavior).
+  /// Same-size records can always be updated in-place regardless of this setting.
+  ///
+  /// This is a runtime operational mode toggle primarily intended for snapshotting scenarios.
+  /// The feature enables append-only behavior during sequential scans to prevent record movement.
+  ///
+  /// @param allow true to allow in-place updates for smaller records, false to force dual-write
+  /// @throws UnsupportedOperationException if the store is read-only
+  /// @throws IllegalStateException if the store is not in OPEN state
+  public void setAllowInPlaceUpdates(boolean allow) {
+    ensureOpen();
+    ensureNotReadOnly();
+    this.allowInPlaceUpdates = allow;
+  }
+
+  /// Sets whether to allow header region expansion during operations.
+  /// When true (default), the header region can expand to accommodate more records.
+  /// When false, header expansion is disabled and operations will fail if pre-allocated
+  /// space is exceeded. This is useful for snapshotting to maintain stable memory layout.
+  ///
+  /// This is a runtime operational mode toggle primarily intended for snapshotting scenarios.
+  /// The feature prevents header/index expansion during sequential scans to maintain memory stability.
+  ///
+  /// @param allow true to allow header expansion, false to disable it
+  /// @throws UnsupportedOperationException if the store is read-only
+  /// @throws IllegalStateException if the store is not in OPEN state
+  public void setAllowHeaderExpansion(boolean allow) {
+    ensureOpen();
+    ensureNotReadOnly();
+    this.allowHeaderExpansion = allow;
+  }
+
+  /// Returns whether header region expansion is allowed.
+  ///
+  /// @return true if header region expansion is allowed
+  public boolean isAllowHeaderExpansion() {
+    return allowHeaderExpansion;
+  }
+
+  /// Returns whether in-place updates are allowed for smaller records.
+  ///
+  /// @return true if in-place updates are allowed for smaller records
+  public boolean isAllowInPlaceUpdates() {
+    return allowInPlaceUpdates;
+  }
+
   /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
   /// This provides a secure, explicit way to configure and create stores.
   public static class Builder {
@@ -1504,6 +1623,8 @@ public class FileRecordStore implements AutoCloseable {
     private AccessMode accessMode = AccessMode.READ_WRITE;
     private KeyType keyType = KeyType.BYTE_ARRAY;
     private boolean defensiveCopy = true;
+    private boolean allowInPlaceUpdates = true;
+    private boolean allowHeaderExpansion = true;
 
     /// Sets the path for the database fileOperations.
     ///
@@ -1616,12 +1737,36 @@ public class FileRecordStore implements AutoCloseable {
       return this;
     }
 
+    /// Sets whether to allow header region expansion during operations.
+    /// When true (default), the header region can expand to accommodate more records.
+    /// When false, header expansion is disabled and operations will fail if pre-allocated
+    /// space is exceeded. This is useful for snapshotting to maintain stable memory layout.
+    ///
+    /// @param allow true to allow header expansion, false to disable it
+    /// @return this builder for chaining
+    public Builder allowHeaderExpansion(boolean allow) {
+      this.allowHeaderExpansion = allow;
+      return this;
+    }
+
     /// Sets the access mode for the store.
     ///
     /// @param accessMode the access mode (READ_ONLY or READ_WRITE)
     /// @return this builder for chaining
     public Builder accessMode(AccessMode accessMode) {
       this.accessMode = accessMode;
+      return this;
+    }
+
+    /// Sets whether to allow in-place updates for smaller records regardless of CRC32 setting.
+    /// When true (default), smaller records can be updated in-place even when CRC32 is disabled.
+    /// When false, smaller records will use the dual-write pattern (old behavior).
+    /// Same-size records can always be updated in-place regardless of this setting.
+    ///
+    /// @param allow true to allow in-place updates for smaller records, false to force dual-write
+    /// @return this builder for chaining
+    public Builder allowInPlaceUpdates(boolean allow) {
+      this.allowInPlaceUpdates = allow;
       return this;
     }
 

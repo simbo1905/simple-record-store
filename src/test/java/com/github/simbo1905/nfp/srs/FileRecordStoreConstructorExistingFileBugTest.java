@@ -52,7 +52,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Corrupt the key length header to trigger validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(0);
+        raf.seek(4); // Key length position in new format (after magic number)
         raf.writeByte(128); // Write invalid key length (larger than theoretical max)
       }
 

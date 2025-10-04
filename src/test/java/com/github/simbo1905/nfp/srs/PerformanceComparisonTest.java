@@ -1,9 +1,7 @@
 package com.github.simbo1905.nfp.srs;
 
-import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.logging.Level;
 import org.junit.Test;
@@ -74,8 +72,10 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
   @SuppressWarnings("ResultOfMethodCallIgnored")
   @Test
   public void compareUpdatePerformance() throws Exception {
-    String directFile = TEST_DIR + "/perf-update-direct-" + System.nanoTime() + ".db";
-    String mmapFile = TEST_DIR + "/perf-update-mmap-" + System.nanoTime() + ".db";
+    Path directPath = Files.createTempFile("perf-update-direct-", ".db");
+    Path mmapPath = Files.createTempFile("perf-update-mmap-", ".db");
+    directPath.toFile().deleteOnExit();
+    mmapPath.toFile().deleteOnExit();
 
     try {
       // Prepare test data
@@ -85,7 +85,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       Arrays.fill(value2, (byte) 'B');
 
       // Test direct I/O updates
-      Path path = Paths.get(directFile);
+      Path path = directPath;
       try (FileRecordStore store =
           new FileRecordStore.Builder()
               .path(path)
@@ -113,7 +113,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long directTime = System.nanoTime() - directStart;
 
       // Test memory-mapped I/O updates
-      Path path1 = Paths.get(mmapFile);
+      Path path1 = mmapPath;
       try (FileRecordStore store =
           new FileRecordStore.Builder()
               .path(path1)
@@ -157,8 +157,8 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       logger.log(Level.FINE, "====================================\n");
 
     } finally {
-      new File(directFile).delete();
-      new File(mmapFile).delete();
+      Files.deleteIfExists(directPath);
+      Files.deleteIfExists(mmapPath);
     }
   }
 

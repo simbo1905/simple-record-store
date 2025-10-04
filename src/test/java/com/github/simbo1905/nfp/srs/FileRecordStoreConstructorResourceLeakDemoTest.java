@@ -18,12 +18,15 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     Path tempFile = Files.createTempFile("actual-resource-leak", ".dat");
 
     try {
-      // Create a file that will pass initial validation but fail later
+      // Create a valid store first, then corrupt the key length to trigger validation failure
+      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+        store.insertRecord("testkey".getBytes(), "testdata".getBytes());
+      }
+
+      // Corrupt the key length header to trigger validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.setLength(13); // Header size
-        raf.writeByte(32); // key length = 32 (different from expected 64)
-        raf.writeInt(0); // numRecords = 0
-        raf.writeLong(13); // dataStart = 13
+        raf.seek(4); // Key length position in new format (after magic number)
+        raf.writeByte(32); // Change key length from 64 to 32
       }
 
       logger.log(
@@ -74,13 +77,15 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     Path tempFile = Files.createTempFile("direct-constructor-leak", ".dat");
 
     try {
-      // Create a file that will fail validation
+      // Create a valid store first, then corrupt it to fail validation
+      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+        store.insertRecord("testkey".getBytes(), "testdata".getBytes());
+      }
+
+      // Corrupt the file to cause validation failure by writing invalid record count
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.setLength(13);
-        raf.writeByte(64); // Valid key length
-        raf.writeInt(1); // numRecords = 1
-        raf.writeLong(13); // dataStart = 13
-        // Don't write any actual record data - this will cause file size validation to fail
+        raf.seek(5); // numRecords position in new format
+        raf.writeInt(999); // Write invalid record count that doesn't match actual records
       }
 
       logger.log(
@@ -111,11 +116,16 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
           // The real test: try to create many failing constructors and see if we exhaust resources
           for (int i = 0; i < 100; i++) {
             Path testFile = Files.createTempFile("resource-test-" + i, ".dat");
+            
+            // Create valid store first
+            try (FileRecordStore store = new FileRecordStore.Builder().path(testFile).maxKeyLength(64).open()) {
+              store.insertRecord("testkey".getBytes(), "testdata".getBytes());
+            }
+            
+            // Corrupt it to cause validation failure
             try (RandomAccessFile raf = new RandomAccessFile(testFile.toFile(), "rw")) {
-              raf.setLength(13);
-              raf.writeByte(64);
-              raf.writeInt(1); // Will cause file size validation failure
-              raf.writeLong(13);
+              raf.seek(5); // numRecords position
+              raf.writeInt(999); // Invalid record count
             }
 
             try {
@@ -148,12 +158,9 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     Path tempFile = Files.createTempFile("early-field-init", ".dat");
 
     try {
-      // Create a file that will help us understand the constructor flow
-      try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.setLength(13);
-        raf.writeByte(64); // key length = 64
-        raf.writeInt(0); // numRecords = 0 (empty)
-        raf.writeLong(13); // dataStart = 13
+      // Create a valid store to understand constructor flow
+      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+        // Store is empty but valid
       }
 
       logger.log(Level.FINE, "Opening valid store to understand constructor flow...");

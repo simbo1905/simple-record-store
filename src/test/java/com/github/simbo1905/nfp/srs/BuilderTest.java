@@ -5,7 +5,6 @@ import static org.junit.Assert.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -140,7 +139,8 @@ public class BuilderTest extends JulLoggingConfig {
   @Test
   public void testBuilderPathValidation() throws IOException {
     // Test with relative path
-    Path relativePath = Paths.get("relative.db");
+    Path relativePath = Files.createTempFile("test-relative-", ".db");
+    relativePath.toFile().deleteOnExit();
     try {
       FileRecordStore store = new FileRecordStore.Builder().path(relativePath).open();
 

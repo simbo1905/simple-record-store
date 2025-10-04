@@ -156,6 +156,26 @@ FileRecordStore store = new FileRecordStore.Builder()
     .open();
 ```
 
+### Runtime Operational Mode Toggles (Little-Known Features)
+
+FileRecordStore provides two runtime toggles primarily intended for snapshotting scenarios:
+
+```java
+// Disable in-place updates for smaller records (forces dual-write pattern)
+store.setAllowInPlaceUpdates(false);
+
+// Disable header region expansion (prevents index growth during operations)
+store.setAllowHeaderExpansion(false);
+
+// ... perform snapshotting operations ...
+
+// Return to normal operation
+store.setAllowInPlaceUpdates(true);
+store.setAllowHeaderExpansion(true);
+```
+
+These toggles enable temporary operational modes for specialized use cases but are not generally needed for typical usage.
+
 ## Memory-Mapped File Optimisation
 
 Simple Record Store supports an optional **memory-mapped file** mode that reduces seek write costs while preserving all crash safety guarantees. This mode batches multiple write operations in memory and defers disk synchronisation.
@@ -295,7 +315,6 @@ Memory-mapped mode maintains the same crash safety guarantees as direct I/O:
 
 - **Dual-Write Pattern**: Critical updates still write backup → data → final header
 - **Header CRC32 Validation**: All headers includes CRC32 checksums validated on read
-- **Optional Date CRC32 Validation**: Record data has CRC32 checksums validated on read which may be disabled
 - **Structural Invariants**: File structure remains consistent after crashes
 - **OS Guarantees**: The operating system ensures memory-mapped file consistency
 
@@ -416,8 +435,8 @@ com.github.simbo1905.nfp.srs.MemoryMappedFile.level = FINEST
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
 which shows how to create a simple key-value storage file. That code isn't safe under crashes due to the ordering 
 of writes. This code base has tests that use a brute force search to throw exceptions on every file operation, then 
-validate that the data on disk is always left in a consistent state. It also adds CRC32 checks to the data that are 
-validated upon read from disk. **Note** If an IOException is thrown, it does _not_ mean that the write is known to have 
+validate that the data on disk is always left in a consistent state. **Note** If an IOException is thrown, it does _not_ 
+mean that the write is known to have 
 failed. It means that the write _may_ have failed and that the in-memory state *might* be inconsistent with what is on 
 disk. The way to fix this is to close the store and open a fresh one to reload all the headers from disk. 
 
@@ -462,9 +481,8 @@ offset, data and checksum. This makes locating a record by key an `O(1)` lookup.
    1. Else will create some free space in the middle of the file, which is updated to the header of the previous record. 
    1. Will overwrite the deleted header by moving the last header over it, then decrementing the headers count, creating 
    free space at the end of the index space.    
-1. Record headers contain a CRC32 checksum, which is checked when the data is loaded. If you write zip data that has a 
-built-in CRC32, you can disable this in the constructor. So that you know, disabling CRC32 checks will prevent updates in situ when 
-records shrink. In which case, the update with less data will write to a free location.  
+1. Record headers contain a CRC32 checksum, which is checked when the data is loaded. There is an option to enable CRC32 
+on the data. Yet many messages formats such ZIP have integrity built in. Most applications can probably skip this extra integrity check.
 1. The order of writes to the records is designed so that if there is a crash, there isn't any corruption. This is confirmed 
 by the unit tests, which for every functional test record every file operation. The test then performs a brute force 
 replay, crashing at every file operation and verifying the integrity of the data on disk after each crash. 

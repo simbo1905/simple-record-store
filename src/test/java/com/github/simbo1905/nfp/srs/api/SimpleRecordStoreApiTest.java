@@ -30,7 +30,9 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   @Before
   public void setup() throws Exception {
     LOGGER.setLevel(Level.ALL);
-    fileName = TMP + "junit.records";
+    Path tempFile = Files.createTempFile("junit-records-", ".db");
+    tempFile.toFile().deleteOnExit();
+    fileName = tempFile.toString();
     initialSize = 0;
     cleanupFiles();
   }
@@ -41,13 +43,14 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   }
 
   private void cleanupFiles() throws Exception {
-    File db = new File(fileName);
-    if (db.exists()) {
-      if (!db.delete()) {
-        throw new IllegalStateException("Failed to delete " + db);
+    if (fileName != null) {
+      File db = new File(fileName);
+      if (db.exists()) {
+        if (!db.delete()) {
+          throw new IllegalStateException("Failed to delete " + db);
+        }
       }
     }
-    db.deleteOnExit();
   }
 
   @Test

@@ -95,6 +95,32 @@ perl -pi -e 's/\bval\b/final var/g' $(rg -l '\bval\b' --glob '*.java')
 perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var;' --glob '*.java')
 ```
 
+## File Format Specification and Validation
+
+### File Format Structure
+
+| Offset | Size (bytes) | Field | Description | Validation |
+|--------|-------------|--------|-------------|------------|
+| 0 | 4 | Magic Number | `0xBEEBBEEB` - File format identifier | Must equal `0xBEEBBEEB` or throw `IllegalStateException` |
+| 4 | 1 | Key Length | Maximum key length (1-252) | Range validated, must match constructor parameter |
+| 5 | 4 | Record Count | Number of records in store | Must be non-negative, validated against file size |
+| 9 | 8 | Data Start Ptr | File offset to start of data region | Must be ≥ header size, validated against file size |
+| 17 | - | Index Region | Record headers and keys | Size = `recordCount * (keyLength + 25)` |
+| Data Start Ptr | - | Data Region | Record data with length prefixes | Each record: 4-byte length + data + optional CRC32 |
+
+### Validation Checks
+
+1. **Magic Number Check**: First 4 bytes must be `0xBEEBBEEB`
+   - **Failure**: `IllegalStateException` - "Invalid file format: File does not contain required magic number"
+2. **Key Length Validation**: Must be between 1-252 and match constructor parameter
+   - **Failure**: `IllegalArgumentException` - "File has key length X but builder specified Y"
+3. **File Size Validation**: File must be large enough for claimed record count
+   - **Failure**: `IOException` - "File too small for X records"
+4. **Header CRC Validation**: Each key and record header includes CRC32 checksum
+   - **Failure**: `IllegalStateException` - "invalid key CRC32" or "invalid header CRC32"
+5. **Data CRC Validation**: Optional record payload CRC32 (when enabled)
+   - **Failure**: `IllegalStateException` - "CRC32 check failed"
+
 ## Logging Policy - CRITICAL
 
 **NEVER DELETE LOGGING LINES** - Once logging is added at the appropriate level (FINE/FINEST), it becomes permanent infrastructure:

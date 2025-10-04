@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.logging.Level;
 import org.junit.Test;
 
-
 public class MemoryMappedTests extends JulLoggingConfig {
 
   // Constant for maxKeyLength to ensure consistency across test operations

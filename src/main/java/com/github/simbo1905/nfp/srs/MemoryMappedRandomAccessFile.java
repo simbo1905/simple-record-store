@@ -10,15 +10,13 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
- * by batching writes in memory and deferring disk flushes. Preserves crash safety guarantees
- * through the same dual-write patterns used by DirectRandomAccessFile.
- * <p>
- * This implementation maps the entire file into memory in chunks and performs all writes
- * through the memory-mapped buffers. The force operation is only called on close()
- * or explicit sync(), giving the host application control over durability timing.
- */
+/// Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
+/// by batching writes in memory and deferring disk flushes. Preserves crash safety guarantees
+/// through the same dual-write patterns used by DirectRandomAccessFile.
+///
+/// This implementation maps the entire file into memory in chunks and performs all writes
+/// through the memory-mapped buffers. The force operation is only called on close()
+/// or explicit sync(), giving the host application control over durability timing.
 class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     static final long MAPPING_CHUNK_SIZE = 128 * 1024 * 1024; // 128 MB per chunk
@@ -30,10 +28,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
     final List<MappedByteBuffer> mappedBuffers; // Temporary buffer list during mapping
   private long position = 0;
 
-  /**
-   * Immutable holder for a complete memory mapping epoch.
-   * Allows atomic swapping of entire mapping state.
-   */
+  /// Immutable holder for a complete memory mapping epoch.
+  /// Allows atomic swapping of entire mapping state.
   record Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
     Epoch(List<MappedByteBuffer> buffers, long[] regionStarts, long mappedSize) {
       this.buffers = List.copyOf(buffers);
@@ -42,7 +38,9 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
     }
   }
 
-    /**
+    /// Creates a new memory-mapped file wrapper.
+    /// @param file The underlying RandomAccessFile
+    /// @throws IOException if mapping fails/**
      * Creates a new memory-mapped file wrapper.
      * @param file The underlying RandomAccessFile
      * @throws IOException if mapping fails
@@ -95,9 +93,7 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         mappedBuffers.clear();
     }
 
-    /**
-     * Finds the mapped buffer and offset for a given file position.
-     */
+    /// Finds the mapped buffer and offset for a given file position.
     private BufferLocation locate(long pos) {
         Epoch epoch = currentEpoch;
         if (pos < 0 || pos > epoch.mappedSize) {
@@ -262,10 +258,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         }
     }
     
-    /**
-     * Builds a new epoch with the specified file length.
-     * This method creates a completely new mapping state without modifying the current one.
-     */
+    /// Builds a new epoch with the specified file length.
+    /// This method creates a completely new mapping state without modifying the current one.
     private Epoch buildNewEpoch(long newLength) throws IOException {
         // Force all changes to disk before remapping
         Epoch current = currentEpoch;
@@ -310,20 +304,16 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         return new Epoch(newBuffers, regionStarts, fileSize);
     }
     
-    /**
-     * Explicitly unmaps all buffers in an epoch to prevent native memory leaks.
-     * Uses reflection to access the Cleaner for proper cleanup.
-     */
+    /// Explicitly unmaps all buffers in an epoch to prevent native memory leaks.
+    /// Uses reflection to access the Cleaner for proper cleanup.
     private void unmapEpoch(Epoch epoch) {
         for (MappedByteBuffer buffer : epoch.buffers) {
             unmapBuffer(buffer);
         }
     }
     
-    /**
-     * Explicitly unmaps a single MappedByteBuffer to prevent native memory leaks.
-     * This is package-private for testing purposes.
-     */
+    /// Explicitly unmaps a single MappedByteBuffer to prevent native memory leaks.
+    /// This is package-private for testing purposes.
     static void unmapBuffer(MappedByteBuffer buffer) {
         try {
             // Try to use Cleaner for explicit unmapping
@@ -399,10 +389,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
         write(bytes);
     }
 
-    /**
-     * Ensures that the mapped region is large enough to accommodate the given position.
-     * If not, extends the file and remaps.
-     */
+    /// Ensures that the mapped region is large enough to accommodate the given position.
+    /// If not, extends the file and remaps.
     private void ensureCapacity(long requiredSize) throws IOException {
         Epoch epoch = currentEpoch;
         if (requiredSize > epoch.mappedSize) {

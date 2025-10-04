@@ -19,10 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * White-box tests for MemoryMappedRandomAccessFile internals.
- * These tests exercise package-private methods and verify memory management correctness.
- */
+/// * White-box tests for MemoryMappedRandomAccessFile internals.
+/// * These tests exercise package-private methods and verify memory management correctness.
 public class MemoryMappedInternalsTest extends JulLoggingConfig {
     
     private static final Logger logger = Logger.getLogger(MemoryMappedInternalsTest.class.getName());
@@ -60,10 +58,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         }
     }
     
-    /**
-     * Test that unmapBuffer properly releases native memory.
-     * This test verifies the reflection-based unmapping works correctly.
-     */
+    /// * Test that unmapBuffer properly releases native memory.
+    /// * This test verifies the reflection-based unmapping works correctly.
     @Test
     public void testUnmapBuffer() throws Exception {
         logger.log(Level.FINE, "Testing explicit buffer unmapping");
@@ -84,10 +80,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Buffer unmapping completed successfully");
     }
     
-    /**
-     * Test atomic epoch publishing during concurrent reads.
-     * Verifies that readers never see inconsistent state during remap.
-     */
+    /// Test atomic epoch publishing during concurrent reads.
+    /// Verifies that readers never see inconsistent state during remap.
     @Test
     public void testEpochPublish_isAtomic() throws Exception {
         logger.log(Level.FINE, "Testing atomic epoch publishing under concurrency");
@@ -212,10 +206,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
     return remapThread;
   }
 
-  /**
-     * Test that remap failures restore the old epoch.
-     * Verifies fail-closed behavior when remapping fails.
-     */
+  /// Test that remap failures restore the old epoch.
+  /// Verifies fail-closed behavior when remapping fails.
     @Test
     public void testRemapFailure_restoresOldEpoch() throws Exception {
         logger.log(Level.FINE, "Testing remap failure recovery");
@@ -254,10 +246,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         }
     }
     
-    /**
-     * Test native memory usage after multiple grow/shrink cycles.
-     * This is a basic test - full native memory monitoring requires JVMTI.
-     */
+    /// Test native memory usage after multiple grow/shrink cycles.
+    /// This is a basic test - full native memory monitoring requires JVMTI.
     @Test
     public void testNativeMemory_flatAfter1000Cycles() throws Exception {
         logger.log(Level.FINE, "Testing native memory usage over many cycles");
@@ -292,10 +282,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Native memory test completed successfully");
     }
     
-    /**
-     * Test unmapping specific buffer ranges.
-     * Verifies selective buffer cleanup during shrinking operations.
-     */
+    /// Test unmapping specific buffer ranges.
+    /// Verifies selective buffer cleanup during shrinking operations.
     @Test
     public void testUnmapBuffersBeyond_exactChunkBoundary() throws Exception {
         logger.log(Level.FINE, "Testing selective buffer unmapping");
@@ -325,9 +313,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Selective buffer unmapping test completed");
     }
     
-    /**
-     * Test that package-private unmapBuffer method is accessible for testing.
-     */
+    /// Test that package-private unmapBuffer method is accessible for testing.
     @Test
     public void testUnmapBuffer_packagePrivateAccess() throws Exception {
         logger.log(Level.FINE, "Testing package-private unmapBuffer access");
@@ -347,9 +333,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Package-private method access verified");
     }
     
-    /**
-     * Test reflection-based epoch access for white-box testing.
-     */
+    /// Test reflection-based epoch access for white-box testing.
     @Test 
     public void testExposeCurrentEpoch_reflectionAccess() throws Exception {
         logger.log(Level.FINE, "Testing epoch reflection access");
@@ -376,10 +360,8 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Epoch reflection access verified, size: " + size);
     }
     
-    /**
-     * Test that demonstrates the memory leak fix.
-     * This test would be more comprehensive with native memory monitoring tools.
-     */
+    /// Test that demonstrates the memory leak fix.
+    /// This test would be more comprehensive with native memory monitoring tools.
     @Test
     public void testMemoryLeakFix_demonstration() throws Exception {
         logger.log(Level.FINE, "Demonstrating memory leak fix");

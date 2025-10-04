@@ -1,12 +1,8 @@
-package com.github.trex_paxos.srs;
+package com.github.simbo1905.nfp.srs;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 
-/*
- * easier to mock final native class by wrapping it in an interface
- */
-record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements RandomAccessFileInterface {
+record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements FileOperations {
 
   @Override
   public long getFilePointer() throws IOException {
@@ -14,7 +10,7 @@ record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements Rand
   }
 
   @Override
-  public void fsync() throws IOException {
+  public void sync() throws IOException {
     randomAccessFile.getChannel().force(false);
   }
 
@@ -73,5 +69,4 @@ record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements Rand
   public void writeLong(long v) throws IOException {
     randomAccessFile.writeLong(v);
   }
-
 }

@@ -18,8 +18,13 @@
 - Encode keys deterministically; prefer `ByteSequence.stringToUtf8` over `String#getBytes` to prevent charset drift.
 
 ## Testing Guidelines
-- New scenarios belong in `SimpleRecordStoreTest` or a sibling test class; name files `*Test` so Surefire picks them up.
-- Crash-safety coverage uses the replay harness built into `SimpleRecordStoreTest`:
+- New scenarios belong in `FileRecordStoreExceptionHandlingTest` or a sibling test class; name files `*Test` so Surefire picks them up.
+- All exception handling and persistence testing is covered by `FileRecordStoreExceptionHandlingTest` which includes:
+  - Comprehensive persistence verification after exceptions
+  - verifyStoreIntegrity() helper for data validation
+  - Enhanced scenario testing with persistence checks
+  - Behavior-based verification instead of internal state inspection
+- Crash-safety coverage uses the replay harness built into `FileRecordStoreExceptionHandlingTest`:
   - `RecordsFileSimulatesDiskFailures` swaps the production `RandomAccessFile` for an `InterceptedRandomAccessFile` so every I/O call flows through a `WriteCallback`.
   - `verifyWorkWithIOExceptions` first runs the scenario with a `StackCollectingWriteCallback` to capture the full sequence of file operations (stack traces trimmed once the call exits `com.github.simbo1905`).
   - It then replays the exact same scenario once per recorded call, using `CrashAtWriteCallback` to throw an `IOException` at that call index. Each run mimics a crash right after the intercepted disk operation.
@@ -27,6 +32,7 @@
   - The pattern is exercised across inserts, updates, deletes, compaction scenarios, and both narrow/padded payloads (see `string1k`) to brute-force every write ordering.
 - Any change that affects write ordering, fsync boundaries, or persistence metadata must be implemented in a crash-safe order and accompanied by updated replay tests.
 - Capture `java.util.logging` at `FINE`/`FINEST` when diagnosing failures; `TracePlayback` can rebuild a store from log traces for reproduction.
+- Run tests with custom log levels using: `-ea -Dcom.github.trex_paxos.srs.testLogLevel=FINEST` (or FINE, FINER, etc.)
 
 ## Commit & Pull Request Guidelines
 - Write present-tense, 72-character subjects (`Update pom.xml to require Java 21`); add context or links in the body when needed.
@@ -37,3 +43,99 @@
 ## Configuration & Logging Tips
 - Tune key length and padding with system properties such as `-Dcom.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH=128` to mirror production limits.
 - Enable `Level.FINEST` logging when investigating disk corruption; redact sensitive keys before sharing traces.
+
+## Documentation Standards
+- Use JEP 467 documentation format with `///` triple-slash comments instead of traditional `/**` javadoc style
+- Place documentation on the line immediately above the element being documented
+- Example: `/// Returns the file path of this record store.` followed by `public Path getFilePath()`
+
+## Logging Standards
+- **CRITICAL**: Never add temporary INFO level logging for debugging purposes
+- Always use appropriate log levels: FINE for normal debugging, FINEST for detailed tracing
+- Use `JulLoggingConfig` system properties to control logging levels: `-Djava.util.logging.config.file=logging.properties`
+- Logging should be permanent and controlled via configuration, not added/removed from code
+- Adding temporary logging and then removing it is considered fraudulent practice
+
+## Critical API Behavior
+
+### maxKeyLength Enforcement
+The `maxKeyLength` parameter is **fundamental and enforced**:
+- Must be between 1 and 252 bytes (validated with `Objects.requireNonNull` and range check)
+- Files store their `maxKeyLength` in the header with magic number validation permanently
+- File format: 4-byte magic number (0xBEEBBEEB) followed by 1-byte key length
+- When opening existing files, you **must** use the same `maxKeyLength` that was used to create the file
+- Different `maxKeyLength` values will throw `IllegalArgumentException`
+- Invalid magic number throws `IllegalStateException` indicating corrupted or incompatible file
+- This prevents data corruption and maintains file format integrity
+- If you need different key lengths, create a new database and migrate data
+
+## Build Output Analysis
+- Always redirect compile output to a file, then use `tail` and `rg` to analyze errors systematically
+- Never filter expected errors - analyze the complete output to understand all issues
+- Use this pattern for systematic error analysis:
+```shell
+mvn test-compile > compile.log 2>&1; tail -50 compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" compile.log
+```
+- Overwrite a single temp file (`compile.log`) rather than creating multiple log files
+
+## Code Formatting Requirements (Spotless)
+- **CRITICAL**: All code changes must comply with Google Java Format enforced by Spotless
+- **Before any commit**: Always run `mvn spotless:apply` to auto-format code to Google standards
+- **For large edits**: Run `mvn spotless:check` to verify formatting compliance before testing
+- **CI/CD**: Build will fail if code is not properly formatted - Spotless check runs automatically
+- **IDE Integration**: Configure your IDE to use Google Java Format to avoid manual fixes
+- **Never disable**: Do not disable or bypass Spotless formatting checks
+
+## API Design Patterns
+- Follow MVStore (H2 Database) builder pattern design for create vs open auto-detection
+- Builder should automatically handle file existence validation and appropriate constructor selection
+- Provide fluent API that eliminates user confusion about create vs open semantics
+- Credit MVStore inspiration in javadoc: `/// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.`
+
+## Use Modern CLI Tools When Available
+
+Check for `rg` and `perl` and other power tools and use them if that makes sense. For example to do mechanical refactors
+across many sites perfer things like:
+
+```shell
+#  □ Replace Lombok `val` usages with `final var` in tests and sources.
+perl -pi -e 's/\bval\b/final var/g' $(rg -l '\bval\b' --glob '*.java')
+perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var;' --glob '*.java')
+```
+
+## File Format Specification and Validation
+
+### File Format Structure
+
+| Offset | Size (bytes) | Field | Description | Validation |
+|--------|-------------|--------|-------------|------------|
+| 0 | 4 | Magic Number | `0xBEEBBEEB` - File format identifier | Must equal `0xBEEBBEEB` or throw `IllegalStateException` |
+| 4 | 1 | Key Length | Maximum key length (1-252) | Range validated, must match constructor parameter |
+| 5 | 4 | Record Count | Number of records in store | Must be non-negative, validated against file size |
+| 9 | 8 | Data Start Ptr | File offset to start of data region | Must be ≥ header size, validated against file size |
+| 17 | - | Index Region | Record headers and keys | Size = `recordCount * (keyLength + 25)` |
+| Data Start Ptr | - | Data Region | Record data with length prefixes | Each record: 4-byte length + data + optional CRC32 |
+
+### Validation Checks
+
+1. **Magic Number Check**: First 4 bytes must be `0xBEEBBEEB`
+   - **Failure**: `IllegalStateException` - "Invalid file format: File does not contain required magic number"
+2. **Key Length Validation**: Must be between 1-252 and match constructor parameter
+   - **Failure**: `IllegalArgumentException` - "File has key length X but builder specified Y"
+3. **File Size Validation**: File must be large enough for claimed record count
+   - **Failure**: `IOException` - "File too small for X records"
+4. **Header CRC Validation**: Each key and record header includes CRC32 checksum
+   - **Failure**: `IllegalStateException` - "invalid key CRC32" or "invalid header CRC32"
+5. **Data CRC Validation**: Optional record payload CRC32 (when enabled)
+   - **Failure**: `IllegalStateException` - "CRC32 check failed"
+
+## Logging Policy - CRITICAL
+
+**NEVER DELETE LOGGING LINES** - Once logging is added at the appropriate level (FINE/FINEST), it becomes permanent infrastructure:
+
+- Logging lines are not "temporary debug code" - they are permanent observability features
+- Removing logging lines destroys debugging capability for future issues
+- If a log level feels wrong, adjust the level, but never remove the line
+- All logging must use appropriate levels: FINE for normal debugging, FINEST for detailed tracing
+- System properties control visibility - never remove logging to "clean up" output
+- Deleting logging lines is considered a destructive act that harms future debugging

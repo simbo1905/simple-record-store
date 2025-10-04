@@ -20,9 +20,9 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     
     private static final Logger logger = Logger.getLogger(CrashBugInvestigationTest.class.getName());
     
-    private Path tempFile;
     private FileRecordStore store;
-    
+  private Path tempFile;
+
     @Before
     public void setup() throws IOException {
         tempFile = Files.createTempFile("crash-investigation-", ".db");

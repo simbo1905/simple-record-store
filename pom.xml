@@ -71,6 +71,7 @@
 				<configuration>
 					<encoding>UTF-8</encoding>
 					<release>21</release>
+					<failOnWarning>true</failOnWarning> <!-- treat warnings as errors -->
 					<annotationProcessorPaths>
 						<path>
 							<groupId>org.projectlombok</groupId>
@@ -137,6 +138,33 @@
 					</execution>
 				</executions>
 			</plugin>
+
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>2.44.0</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>apply</goal>   <!-- formats sources -->
+                            <goal>check</goal>   <!-- fails build if not formatted -->
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <java>
+                        <target>src/main/java/**/*.java</target>
+                        <target>src/test/java/**/*.java</target>
+                        <intellij>
+                            <version>2025.2</version> <!-- IntelliJ version to match -->
+                            <style>IntelliJ</style>   <!-- use the built‑in IntelliJ style -->
+                            <tabWidth>4</tabWidth>
+                            <useTabs>false</useTabs>
+                            <keepLineBreaks>true</keepLineBreaks>
+                        </intellij>
+                    </java>
+                </configuration>
+            </plugin>
 
 		</plugins>
 	</build>

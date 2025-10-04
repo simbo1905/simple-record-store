@@ -1,5 +1,6 @@
 package com.github.simbo1905.nfp.srs;
 
+import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.Synchronized;
 
@@ -61,11 +62,13 @@ public class FileRecordStore implements AutoCloseable {
   // The total length of one index entry - the key length plus the record
   // header length and the CRC of the key which is an unsigned 32 bits.
   private final int indexEntryLength;
-  // Store the file path for getFilePath() method
+
+  @Getter
   private final Path filePath;
   /// Flag indicating if this store is read-only
   private final boolean readOnly;
   private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace = Comparator.comparingInt(o -> o.getFreeSpace(true));
+
   /*default*/ FileOperations fileOperations;
     /// In-memory index mapping keys to record headers. Uses KeyWrapper for efficient
   /// hash code caching and optional defensive copying. Supports both byte array and UUID keys.
@@ -114,7 +117,6 @@ public class FileRecordStore implements AutoCloseable {
   FileRecordStore(File file, int preallocatedRecords, int maxKeyLength, boolean disablePayloadCrc32, boolean useMemoryMapping, String accessMode, KeyType keyType, boolean defensiveCopy) throws IOException {
     try {
       // Validate maxKeyLength early
-      Objects.requireNonNull(maxKeyLength, "maxKeyLength cannot be null");
       if (maxKeyLength < 1 || maxKeyLength > MAX_KEY_LENGTH_THEORETICAL) {
         throw new IllegalArgumentException(String.format(
             "maxKeyLength must be between 1 and %d, got %d",
@@ -228,14 +230,6 @@ public class FileRecordStore implements AutoCloseable {
     fileOperations.seek(MAGIC_NUMBER_HEADER_LOCATION);
     fileOperations.writeInt(MAGIC_NUMBER);
     logger.log(Level.FINEST, () -> String.format("Writing magic number header: 0x%08X", MAGIC_NUMBER));
-  }
-
-  /// Reads the magic number header from the beginning of the fileOperations.
-  private int readMagicNumberHeader() throws IOException {
-    fileOperations.seek(MAGIC_NUMBER_HEADER_LOCATION);
-    int magic = fileOperations.readInt();
-    logger.log(Level.FINEST, () -> String.format("Reading magic number header: 0x%08X", magic));
-    return magic;
   }
 
   /// Writes the max key length to the fileOperations (after magic number).
@@ -447,7 +441,7 @@ public class FileRecordStore implements AutoCloseable {
     dumpFile(Level.INFO, filename, disableCrc32);
   }
 
-  static void dumpFile(Level level, String filename, boolean disableCrc) throws IOException {
+  static void dumpFile(@SuppressWarnings("SameParameterValue") Level level, String filename, boolean disableCrc) throws IOException {
     try (FileRecordStore recordFile = new FileRecordStore.Builder()
         .path(filename)
         .accessMode(Builder.AccessMode.READ_ONLY)
@@ -781,7 +775,7 @@ public class FileRecordStore implements AutoCloseable {
     final var snapshot = snapshotKeys();
     if (keyType == KeyType.UUID) {
       return snapshot.stream()
-          .map(wrapper -> wrapper.toUUID())
+          .map(KeyWrapper::toUUID)
           .map(uuid -> {
             byte[] bytes = new byte[16];
             ByteBuffer.wrap(bytes)
@@ -1079,7 +1073,7 @@ public class FileRecordStore implements AutoCloseable {
       ensureNotReadOnly();
       logger.log(Level.FINE, () -> String.format("insertRecord value.len:%d key:%s ", value.length, print(key)));
       if (recordExists(key)) {
-        throw new IllegalArgumentException("Key exists: " + key);
+        throw new IllegalArgumentException("Key exists: " + Arrays.toString(key));
       }
       ensureIndexSpace(getNumRecords() + 1);
       RecordHeader newRecord = allocateRecord(payloadLength(value.length));
@@ -1342,13 +1336,6 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
-  /// Returns the file path of this record store.
-  ///
-  /// @return the path to the database file
-  public Path getFilePath() {
-    return filePath;
-  }
-
   /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
   /// This provides a secure, explicit way to configure and create stores.
   public static class Builder {
@@ -1565,7 +1552,7 @@ public class FileRecordStore implements AutoCloseable {
         // Key length must be non-negative and within reasonable bounds
         // Allow keyLength == 0 as valid (maxKeyLength could be 0)
         logger.log(Level.FINEST, "Validation: keyLength=" + keyLength + " expected=" + expectedMaxKeyLength);
-        if (keyLength < 0 || keyLength > MAX_KEY_LENGTH_THEORETICAL) {
+        if (keyLength > MAX_KEY_LENGTH_THEORETICAL) {
           logger.log(Level.FINE, "Validation failed: invalid key length " + keyLength);
           return false;
         }

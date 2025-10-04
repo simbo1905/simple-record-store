@@ -25,7 +25,6 @@ class MemoryMappedFile implements FileOperations {
   final RandomAccessFile randomAccessFile;
   final FileChannel channel;
   volatile Epoch currentEpoch; // Atomic reference to current mapping state
-  final List<MappedByteBuffer> mappedBuffers; // Temporary buffer list during mapping
   private long position = 0;
 
   /// Immutable holder for a complete memory mapping epoch.
@@ -44,13 +43,13 @@ class MemoryMappedFile implements FileOperations {
   public MemoryMappedFile(java.io.RandomAccessFile file) throws IOException {
     this.randomAccessFile = file;
     this.channel = file.getChannel();
-    this.mappedBuffers = new ArrayList<>();
     mapFile();
   }
 
   private void mapFile() throws IOException {
     long fileSize = channel.size();
     List<Long> starts = new ArrayList<>();
+    List<MappedByteBuffer> mappedBuffers = new ArrayList<>();
 
     // Start with READ_WRITE mode; will switch to READ_ONLY if channel is not writable
     FileChannel.MapMode mapMode = FileChannel.MapMode.READ_WRITE;
@@ -85,17 +84,14 @@ class MemoryMappedFile implements FileOperations {
 
     long[] regionStarts = starts.stream().mapToLong(Long::longValue).toArray();
     currentEpoch = new Epoch(mappedBuffers, regionStarts, fileSize);
-
-    // Clear mappedBuffers to prevent memory leak - it now holds references in currentEpoch
-    mappedBuffers.clear();
   }
 
   /// Finds the mapped buffer and offset for a given file position.
   private BufferLocation locate(long pos) {
     Epoch epoch = currentEpoch;
-    if (pos < 0 || pos > epoch.mappedSize) {
+    if (pos < 0 || pos >= epoch.mappedSize) {
       throw new IllegalArgumentException(
-          "Position " + pos + " out of range [0, " + epoch.mappedSize + "]");
+          "Position " + pos + " out of range [0, " + epoch.mappedSize + ")");
     }
 
     // Binary search for the correct buffer
@@ -237,18 +233,20 @@ class MemoryMappedFile implements FileOperations {
     }
 
     try {
-      // Build new epoch atomically
+      // Build new epoch first
+      Epoch newEpoch = buildNewEpoch(newLength);
 
-      // Publish new epoch atomically
-      currentEpoch = buildNewEpoch(newLength);
-
-      // Clean up old epoch buffers (explicit unmap to prevent memory leak)
-      unmapEpoch(current);
-
-      // Ensure position is still valid
+      // Ensure position is still valid before publishing
       if (position > newLength) {
         position = newLength;
       }
+
+      // Publish new epoch atomically (readers will now use new buffers)
+      currentEpoch = newEpoch;
+
+      // Clean up old epoch buffers after publishing (safe to unmap now)
+      unmapEpoch(current);
+
     } catch (Exception e) {
       // If anything goes wrong, don't leave object in inconsistent state
       // Current epoch remains valid

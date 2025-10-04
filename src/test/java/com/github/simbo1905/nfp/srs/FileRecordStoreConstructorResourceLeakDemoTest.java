@@ -19,7 +19,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
     try {
       // Create a valid store first, then corrupt the key length to trigger validation failure
-      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (FileRecordStore store =
+          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -78,7 +79,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
     try {
       // Create a valid store first, then corrupt it to fail validation
-      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (FileRecordStore store =
+          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -116,12 +118,13 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
           // The real test: try to create many failing constructors and see if we exhaust resources
           for (int i = 0; i < 100; i++) {
             Path testFile = Files.createTempFile("resource-test-" + i, ".dat");
-            
+
             // Create valid store first
-            try (FileRecordStore store = new FileRecordStore.Builder().path(testFile).maxKeyLength(64).open()) {
+            try (FileRecordStore store =
+                new FileRecordStore.Builder().path(testFile).maxKeyLength(64).open()) {
               store.insertRecord("testkey".getBytes(), "testdata".getBytes());
             }
-            
+
             // Corrupt it to cause validation failure
             try (RandomAccessFile raf = new RandomAccessFile(testFile.toFile(), "rw")) {
               raf.seek(5); // numRecords position
@@ -159,7 +162,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
     try {
       // Create a valid store to understand constructor flow
-      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (FileRecordStore store =
+          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
         // Store is empty but valid
       }
 

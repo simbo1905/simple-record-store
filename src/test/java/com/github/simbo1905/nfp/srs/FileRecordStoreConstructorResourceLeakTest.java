@@ -68,7 +68,8 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
     try {
       // Create a valid store first, then corrupt it to have invalid record count
-      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (FileRecordStore store =
+          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -111,7 +112,8 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
     try {
       // Create a valid store first, then corrupt the record data
-      try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (FileRecordStore store =
+          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 

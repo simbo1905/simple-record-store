@@ -78,6 +78,14 @@ mvn test-compile > compile.log 2>&1; tail -50 compile.log; echo "=== FULL ERRORS
 ```
 - Overwrite a single temp file (`compile.log`) rather than creating multiple log files
 
+## Code Formatting Requirements (Spotless)
+- **CRITICAL**: All code changes must comply with Google Java Format enforced by Spotless
+- **Before any commit**: Always run `mvn spotless:apply` to auto-format code to Google standards
+- **For large edits**: Run `mvn spotless:check` to verify formatting compliance before testing
+- **CI/CD**: Build will fail if code is not properly formatted - Spotless check runs automatically
+- **IDE Integration**: Configure your IDE to use Google Java Format to avoid manual fixes
+- **Never disable**: Do not disable or bypass Spotless formatting checks
+
 ## API Design Patterns
 - Follow MVStore (H2 Database) builder pattern design for create vs open auto-detection
 - Builder should automatically handle file existence validation and appropriate constructor selection

@@ -165,99 +165,114 @@ public class FileRecordStore implements AutoCloseable {
 
       java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, accessMode);
 
-      logger.log(
-          Level.FINE,
-          () ->
-              String.format(
-                  "create file=%s preallocatedRecords=%d maxKeyLength=%d disablePayloadCrc32=%b useMemoryMapping=%b",
-                  file.toPath(),
-                  preallocatedRecords,
-                  maxKeyLength,
-                  disablePayloadCrc32,
-                  useMemoryMapping));
+      try {
+        logger.log(
+            Level.FINE,
+            () ->
+                String.format(
+                    "create file=%s preallocatedRecords=%d maxKeyLength=%d disablePayloadCrc32=%b useMemoryMapping=%b",
+                    file.toPath(),
+                    preallocatedRecords,
+                    maxKeyLength,
+                    disablePayloadCrc32,
+                    useMemoryMapping));
 
-      this.disableCrc32 = disablePayloadCrc32;
-      this.maxKeyLength = maxKeyLength;
-      this.indexEntryLength = maxKeyLength + 1 + CRC32_LENGTH + RECORD_HEADER_LENGTH;
-      this.readOnly = !"rw".equals(accessMode);
-      this.keyType = keyType;
-      this.defensiveCopy = defensiveCopy;
+        this.disableCrc32 = disablePayloadCrc32;
+        this.maxKeyLength = maxKeyLength;
+        this.indexEntryLength = maxKeyLength + 1 + CRC32_LENGTH + RECORD_HEADER_LENGTH;
+        this.readOnly = !"rw".equals(accessMode);
+        this.keyType = keyType;
+        this.defensiveCopy = defensiveCopy;
 
-      // Validate UUID mode constraints
-      if (keyType == KeyType.UUID && maxKeyLength != 16) {
-        throw new IllegalArgumentException(
-            "UUID key type requires maxKeyLength=16, got " + maxKeyLength);
-      }
-
-      // Check if file was empty when we opened it (before we modify it)
-      boolean wasEmpty = raf.length() == 0;
-
-      // Only set length for new files - don't overwrite existing data
-      if (wasEmpty) {
-        raf.setLength(FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
-      }
-      this.fileOperations =
-          useMemoryMapping ? new MemoryMappedFile(raf) : new RandomAccessFile(raf);
-      this.filePath = file.toPath();
-
-      dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
-
-      // Initialize data structures before any file operations that might fail
-      int numRecords = readNumRecordsHeader();
-
-      memIndex =
-          new HashMap<>(wasEmpty ? preallocatedRecords : Math.max((int) (numRecords * 1.2), 16));
-      positionIndex = new TreeMap<>();
-
-      // Only initialize headers for new files - existing files should already have headers
-      if (wasEmpty) {
-        writeMagicNumberHeader();
-        writeKeyLengthHeader();
-        writeNumRecordsHeader(0);
-        writeDataStartPtrHeader(dataStartPtr);
-      } else {
-        // Existing file - validate headers before loading data
-        // First check if this is an old format file (without magic number)
-        fileOperations.seek(0);
-        int firstFourBytes = fileOperations.readInt();
-
-        int existingKeyLength;
-        int existingRecords;
-
-        if (firstFourBytes == MAGIC_NUMBER) {
-          // New format with magic number
-          existingKeyLength = readKeyLengthHeader();
-          existingRecords = readNumRecordsHeader();
-        } else {
-          // Old format - reject with exception instead of warning
-          throw new IllegalStateException(
-              "Invalid file format: File does not contain required magic number 0xBEEBBEEB. " +
-              "This appears to be an old format file or corrupted data. " +
-              "Only files created with FileRecordStore.Builder are supported.");
-        }
-
-        // Validate key length matches before proceeding
-        if (existingKeyLength != maxKeyLength) {
+        // Validate UUID mode constraints
+        if (keyType == KeyType.UUID && maxKeyLength != 16) {
           throw new IllegalArgumentException(
-              String.format(
-                  "File has key length %d but builder specified %d",
-                  existingKeyLength, maxKeyLength));
+              "UUID key type requires maxKeyLength=16, got " + maxKeyLength);
         }
 
-        // Read dataStartPtr for new format
-        dataStartPtr = readDataStartHeader();
+        // Check if file was empty when we opened it (before we modify it)
+        boolean wasEmpty = raf.length() == 0;
 
-        // Validate file has minimum required size for existing records
-        long requiredFileSize = FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
-        if (fileOperations.length() < requiredFileSize) {
-          throw new IOException(
-              String.format(
-                  "File too small for %d records. Required: %d bytes, Actual: %d bytes",
-                  existingRecords, requiredFileSize, fileOperations.length()));
+        // Only set length for new files - don't overwrite existing data
+        if (wasEmpty) {
+          raf.setLength(FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
         }
+        this.fileOperations =
+            useMemoryMapping ? new MemoryMappedFile(raf) : new RandomAccessFile(raf);
+        this.filePath = file.toPath();
 
-        // Load existing index into memory - this may throw if data is corrupted
-        loadExistingIndex(existingRecords);
+        dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
+
+        // Initialize data structures before any file operations that might fail
+        int numRecords = readNumRecordsHeader();
+
+        memIndex =
+            new HashMap<>(wasEmpty ? preallocatedRecords : Math.max((int) (numRecords * 1.2), 16));
+        positionIndex = new TreeMap<>();
+
+        // Only initialize headers for new files - existing files should already have headers
+        if (wasEmpty) {
+          writeMagicNumberHeader();
+          writeKeyLengthHeader();
+          writeNumRecordsHeader(0);
+          writeDataStartPtrHeader(dataStartPtr);
+        } else {
+          // Existing file - validate headers before loading data
+          // First check if this is an old format file (without magic number)
+          fileOperations.seek(0);
+          int firstFourBytes = fileOperations.readInt();
+
+          int existingKeyLength;
+          int existingRecords;
+
+          if (firstFourBytes == MAGIC_NUMBER) {
+            // New format with magic number
+            existingKeyLength = readKeyLengthHeader();
+            existingRecords = readNumRecordsHeader();
+          } else {
+            // Old format - reject with exception instead of warning
+            throw new IllegalStateException(
+                "Invalid file format: File does not contain required magic number 0xBEEBBEEB. "
+                    + "This appears to be an old format file or corrupted data. "
+                    + "Only files created with FileRecordStore.Builder are supported.");
+          }
+
+          // Validate key length matches before proceeding
+          if (existingKeyLength != maxKeyLength) {
+            throw new IllegalArgumentException(
+                String.format(
+                    "File has key length %d but builder specified %d",
+                    existingKeyLength, maxKeyLength));
+          }
+
+          // Read dataStartPtr for new format
+          dataStartPtr = readDataStartHeader();
+
+          // Validate file has minimum required size for existing records
+          long requiredFileSize =
+              FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
+          if (fileOperations.length() < requiredFileSize) {
+            throw new IOException(
+                String.format(
+                    "File too small for %d records. Required: %d bytes, Actual: %d bytes",
+                    existingRecords, requiredFileSize, fileOperations.length()));
+          }
+
+          // Load existing index into memory - this may throw if data is corrupted
+          loadExistingIndex(existingRecords);
+        }
+      } catch (Exception e) {
+        // Close the RandomAccessFile if constructor fails to prevent resource leak
+        try {
+          raf.close();
+        } catch (IOException closeException) {
+          // Log but don't mask the original exception
+          logger.log(
+              Level.WARNING,
+              "Failed to close RandomAccessFile during constructor failure",
+              closeException);
+        }
+        throw e;
       }
 
       // Only transition to OPEN after successful initialization
@@ -1446,7 +1461,7 @@ public class FileRecordStore implements AutoCloseable {
   /// not, space is created by moving records to the end of the fileOperations.
   private void ensureIndexSpace(int requiredNumRecords) throws IOException {
     long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
-    
+
     // Check if header expansion is disabled
     if (!allowHeaderExpansion) {
       // Verify we have sufficient pre-allocated space
@@ -1454,15 +1469,15 @@ public class FileRecordStore implements AutoCloseable {
         int currentRecords = getNumRecords();
         throw new IllegalStateException(
             String.format(
-                "Header expansion disabled and insufficient pre-allocated space. " +
-                "Required: %d records, Current: %d records, Pre-allocated header space exhausted. " +
-                "Consider increasing preallocatedRecords or enabling header expansion.",
+                "Header expansion disabled and insufficient pre-allocated space. "
+                    + "Required: %d records, Current: %d records, Pre-allocated header space exhausted. "
+                    + "Consider increasing preallocatedRecords or enabling header expansion.",
                 requiredNumRecords, currentRecords));
       }
       // Sufficient space available, no expansion needed
       return;
     }
-    
+
     if (isEmpty() && endIndexPtr > getFileLength()) {
       setFileLength(endIndexPtr);
       dataStartPtr = endIndexPtr;
@@ -1577,7 +1592,8 @@ public class FileRecordStore implements AutoCloseable {
   /// space is exceeded. This is useful for snapshotting to maintain stable memory layout.
   ///
   /// This is a runtime operational mode toggle primarily intended for snapshotting scenarios.
-  /// The feature prevents header/index expansion during sequential scans to maintain memory stability.
+  /// The feature prevents header/index expansion during sequential scans to maintain memory
+  // stability.
   ///
   /// @param allow true to allow header expansion, false to disable it
   /// @throws UnsupportedOperationException if the store is read-only
@@ -1886,7 +1902,7 @@ public class FileRecordStore implements AutoCloseable {
 
         int keyLength;
         int numRecords;
-        
+
         if (magicNumber == MAGIC_NUMBER) {
           // New format with magic number
           try {

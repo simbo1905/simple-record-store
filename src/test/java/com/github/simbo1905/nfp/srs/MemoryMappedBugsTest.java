@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.logging.Level;
 
 /**
- * Test to demonstrate real bugs in MemoryMappedRandomAccessFile:
+ * Test to demonstrate real bugs in MemoryMappedFile:
  * 1. Memory leak: mappedBuffers field retains references after initial mapping
  * 2. Data loss risk: sync() only flushes initial buffers, not current epoch buffers
  */
@@ -18,7 +18,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
 
     @Test
     public void demonstrateMemoryLeakFix() throws Exception {
-        logger.log(Level.FINE, "=== Testing MemoryMappedRandomAccessFile Memory Leak Fix ===");
+        logger.log(Level.FINE, "=== Testing MemoryMappedFile Memory Leak Fix ===");
         
         Path tempFile = Files.createTempFile("memory-leak-test", ".dat");
         
@@ -29,14 +29,14 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
             }
             
             // Create memory-mapped file
-            MemoryMappedRandomAccessFile mappedFile = new MemoryMappedRandomAccessFile(
+            MemoryMappedFile mappedFile = new MemoryMappedFile(
                 new RandomAccessFile(tempFile.toFile(), "rw"));
             
             // Write some initial data
             mappedFile.write("initial data".getBytes());
             
             // Use reflection to access mappedBuffers field
-            Field mappedBuffersField = MemoryMappedRandomAccessFile.class.getDeclaredField("mappedBuffers");
+            Field mappedBuffersField = MemoryMappedFile.class.getDeclaredField("mappedBuffers");
             mappedBuffersField.setAccessible(true);
             
             // After our fix, mappedBuffers should be empty since we clear it after initial mapping
@@ -66,7 +66,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
     
     @Test
     public void demonstrateDataLossRisk() throws Exception {
-        logger.log(Level.FINE, "=== Testing MemoryMappedRandomAccessFile Data Loss Risk ===");
+        logger.log(Level.FINE, "=== Testing MemoryMappedFile Data Loss Risk ===");
         
         Path tempFile = Files.createTempFile("data-loss-test", ".dat");
         
@@ -77,7 +77,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
             }
             
             // Create memory-mapped file and write initial data
-            MemoryMappedRandomAccessFile mappedFile = new MemoryMappedRandomAccessFile(
+            MemoryMappedFile mappedFile = new MemoryMappedFile(
                 new RandomAccessFile(tempFile.toFile(), "rw"));
             
             // Write initial data
@@ -100,7 +100,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
             
             // Now simulate a crash by creating a new instance and reading
             logger.log(Level.FINE, "Simulating crash recovery by reopening file");
-            MemoryMappedRandomAccessFile recoveryFile = new MemoryMappedRandomAccessFile(
+            MemoryMappedFile recoveryFile = new MemoryMappedFile(
                 new RandomAccessFile(tempFile.toFile(), "rw"));
             
             // Try to read the extended data
@@ -133,7 +133,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
         
         try {
             RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw");
-            MemoryMappedRandomAccessFile mappedFile = new MemoryMappedRandomAccessFile(raf);
+            MemoryMappedFile mappedFile = new MemoryMappedFile(raf);
             
             // Write some data
             mappedFile.write("test data".getBytes());

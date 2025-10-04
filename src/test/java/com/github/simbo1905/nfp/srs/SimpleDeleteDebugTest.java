@@ -3,7 +3,6 @@ package com.github.simbo1905.nfp.srs;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.util.logging.Level;
 
 /// Simple debug test for delete operations with FINER logging
@@ -36,8 +35,8 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         FileRecordStore countingStore = builder.path(baseStore.getFilePath()).open();
@@ -69,8 +68,8 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         // Create store with data
 
         // Replace with exception delegate
-        RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(store.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
         store.fileOperations = exceptionOps;
 

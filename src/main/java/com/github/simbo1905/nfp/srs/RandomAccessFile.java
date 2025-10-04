@@ -1,12 +1,8 @@
 package com.github.simbo1905.nfp.srs;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 
-/*
- * easier to mock final native class by wrapping it in an interface
- */
-record DirectRandomAccessFile(RandomAccessFile randomAccessFile) implements CrashSafeFileOperations {
+record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements FileOperations {
 
   @Override
   public long getFilePointer() throws IOException {

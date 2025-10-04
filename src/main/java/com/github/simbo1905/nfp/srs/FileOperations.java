@@ -5,7 +5,7 @@ import java.io.IOException;
 /// Interface for crash-safe file operations with explicit synchronization control.
 /// Wraps file I/O operations to support both direct and memory-mapped implementations
 /// while maintaining crash safety guarantees through coordinated write patterns.
-interface CrashSafeFileOperations {
+interface FileOperations {
 
   /// Forces all buffered modifications to be written to the storage device.
   /// For direct I/O, calls FileChannel.force(false). For memory-mapped I/O,

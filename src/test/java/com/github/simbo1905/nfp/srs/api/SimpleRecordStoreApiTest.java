@@ -14,8 +14,6 @@ import java.util.logging.Logger;
 import com.github.simbo1905.nfp.srs.*;
 
 import static com.github.simbo1905.nfp.srs.FileRecordStore.MAX_KEY_LENGTH_PROPERTY;
-import static com.github.simbo1905.nfp.srs.TestByteSequences.fromUtf8;
-import static com.github.simbo1905.nfp.srs.TestByteSequences.toUtf8String;
 
 public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     String fileName;

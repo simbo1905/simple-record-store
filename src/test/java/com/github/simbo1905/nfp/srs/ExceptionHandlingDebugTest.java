@@ -3,7 +3,6 @@ package com.github.simbo1905.nfp.srs;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -95,8 +94,8 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         
         FileRecordStore baseStore = builder.open();
         
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAtOperation);
         
         FileRecordStore exceptionStore = builder.path(baseStore.getFilePath()).open();

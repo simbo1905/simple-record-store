@@ -6,7 +6,6 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Level;
@@ -156,10 +155,10 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
         logger.log(Level.FINE, () -> String.format("Creating store with halt at operation %d", haltAtOperation));
         
         // Create the base RandomAccessFile
-        RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw");
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(tempFile.toFile(), "rw");
         
         // Create the direct file operations
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         
         // Wrap with halt operations
         DelegatingHaltOperations haltOps = new DelegatingHaltOperations(directOps, haltAtOperation);

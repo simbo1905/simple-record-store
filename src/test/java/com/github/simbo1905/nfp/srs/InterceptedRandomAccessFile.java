@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 
 public record InterceptedRandomAccessFile(RandomAccessFile file,
-                                          WriteCallback wc) implements CrashSafeFileOperations {
+                                          WriteCallback wc) implements FileOperations {
 
   @Override
   public void sync() {

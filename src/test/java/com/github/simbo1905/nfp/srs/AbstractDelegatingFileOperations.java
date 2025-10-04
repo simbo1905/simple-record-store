@@ -8,11 +8,11 @@ import java.util.logging.Logger;
 
 /// Abstract base class for delegating file operations with operation counting and logging.
 /// Provides the foundation for both exception injection and operation halting scenarios.
-abstract class AbstractDelegatingFileOperations implements CrashSafeFileOperations {
+abstract class AbstractDelegatingFileOperations implements FileOperations {
     
     private static final Logger logger = Logger.getLogger(AbstractDelegatingFileOperations.class.getName());
     
-    protected final CrashSafeFileOperations delegate;
+    protected final FileOperations delegate;
   /**
    */
   @Getter
@@ -22,7 +22,7 @@ abstract class AbstractDelegatingFileOperations implements CrashSafeFileOperatio
   @Getter
   protected final int targetOperation;
     
-    public AbstractDelegatingFileOperations(CrashSafeFileOperations delegate, int targetOperation) {
+    public AbstractDelegatingFileOperations(FileOperations delegate, int targetOperation) {
         this.delegate = delegate;
         this.targetOperation = targetOperation;
         logger.log(Level.FINE, () -> String.format("Created %s with targetOperation=%d", 

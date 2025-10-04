@@ -10,17 +10,17 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/// Memory-mapped implementation of CrashSafeFileOperations that reduces write amplification
+/// Memory-mapped implementation of FileOperations that reduces write amplification
 /// by batching writes in memory and deferring disk flushes. Preserves crash safety guarantees
-/// through the same dual-write patterns used by DirectRandomAccessFile.
+/// through the same dual-write patterns used by RandomAccessFile.
 ///
 /// This implementation maps the entire file into memory in chunks and performs all writes
 /// through the memory-mapped buffers. The force operation is only called on close()
 /// or explicit sync(), giving the host application control over durability timing.
-class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
+class MemoryMappedFile implements FileOperations {
 
     static final long MAPPING_CHUNK_SIZE = 128 * 1024 * 1024; // 128 MB per chunk
-    static final Logger logger = Logger.getLogger(MemoryMappedRandomAccessFile.class.getName());
+    static final Logger logger = Logger.getLogger(MemoryMappedFile.class.getName());
 
     final RandomAccessFile randomAccessFile;
     final FileChannel channel;
@@ -40,12 +40,8 @@ class MemoryMappedRandomAccessFile implements CrashSafeFileOperations {
 
     /// Creates a new memory-mapped file wrapper.
     /// @param file The underlying RandomAccessFile
-    /// @throws IOException if mapping fails/**
-     * Creates a new memory-mapped file wrapper.
-     * @param file The underlying RandomAccessFile
-     * @throws IOException if mapping fails
-     */
-    public MemoryMappedRandomAccessFile(RandomAccessFile file) throws IOException {
+    /// @throws IOException if mapping fails
+    public MemoryMappedFile(java.io.RandomAccessFile file) throws IOException {
         this.randomAccessFile = file;
         this.channel = file.getChannel();
         this.mappedBuffers = new ArrayList<>();

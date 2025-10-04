@@ -6,7 +6,7 @@ import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/// A delegating CrashSafeFileOperations that counts operations and can halt at a specific count.
+/// A delegating FileOperations that counts operations and can halt at a specific count.
 /// This allows controlled testing of file operations without throwing exceptions.
 @Getter
 class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
@@ -17,7 +17,7 @@ class DelegatingHaltOperations extends AbstractDelegatingFileOperations {
    */
   private boolean halted = false;
     
-    public DelegatingHaltOperations(CrashSafeFileOperations delegate, int haltAtOperation) {
+    public DelegatingHaltOperations(FileOperations delegate, int haltAtOperation) {
         super(delegate, haltAtOperation);
         logger.log(Level.FINE, () -> String.format("Created DelegatingHaltOperations with haltAtOperation=%d", haltAtOperation));
     }

@@ -66,7 +66,7 @@ public class FileRecordStore implements AutoCloseable {
   /// Flag indicating if this store is read-only
   private final boolean readOnly;
   private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace = Comparator.comparingInt(o -> o.getFreeSpace(true));
-  /*default*/ CrashSafeFileOperations fileOperations;
+  /*default*/ FileOperations fileOperations;
     /// In-memory index mapping keys to record headers. Uses KeyWrapper for efficient
   /// hash code caching and optional defensive copying. Supports both byte array and UUID keys.
   private Map<KeyWrapper, RecordHeader> memIndex;
@@ -121,7 +121,7 @@ public class FileRecordStore implements AutoCloseable {
             MAX_KEY_LENGTH_THEORETICAL, maxKeyLength));
       }
       
-      RandomAccessFile raf = new RandomAccessFile(file, accessMode);
+      java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, accessMode);
 
       logger.log(Level.FINE, () -> String.format("create file=%s preallocatedRecords=%d maxKeyLength=%d disablePayloadCrc32=%b useMemoryMapping=%b", file.toPath(), preallocatedRecords, maxKeyLength, disablePayloadCrc32, useMemoryMapping));
 
@@ -144,7 +144,7 @@ public class FileRecordStore implements AutoCloseable {
       if (wasEmpty) {
         raf.setLength(FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
       }
-      this.fileOperations = useMemoryMapping ? new MemoryMappedRandomAccessFile(raf) : new DirectRandomAccessFile(raf);
+      this.fileOperations = useMemoryMapping ? new MemoryMappedFile(raf) : new RandomAccessFile(raf);
       this.filePath = file.toPath();
 
       dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
@@ -373,7 +373,7 @@ public class FileRecordStore implements AutoCloseable {
     return indexPositionToKeyFp(pos) + maxKeyLength;
   }
 
-  private static RecordHeader read(int index, CrashSafeFileOperations in) throws IOException {
+  private static RecordHeader read(int index, FileOperations in) throws IOException {
     byte[] header = new byte[RECORD_HEADER_LENGTH];
     final var fp = in.getFilePointer();
     in.readFully(header);
@@ -418,7 +418,7 @@ public class FileRecordStore implements AutoCloseable {
   @SuppressWarnings("unused")
   @SneakyThrows
   static String print(File f) {
-    try (RandomAccessFile file = new RandomAccessFile(f.getAbsolutePath(), "r")) {
+    try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(f.getAbsolutePath(), "r")) {
       final var len = file.length();
       assert len < Integer.MAX_VALUE;
       final var bytes = new byte[(int) len];
@@ -529,20 +529,6 @@ public class FileRecordStore implements AutoCloseable {
       throw e;
     }
   }
-  
-  /// Legacy method for ByteSequence keys - deprecated, use byte[] or UUID instead
-  /// @deprecated Use readRecordData(byte[]) or readRecordData(UUID) instead
-  public byte[] readRecordData(ByteSequence key) throws IOException {
-    ensureOpen();
-    try {
-      logger.log(Level.FINE, () -> String.format("readRecordData key:%s", print(key.bytes)));
-      final var header = keyToRecordHeader(key);
-      return readRecordData(header);
-    } catch (Exception e) {
-      state = StoreState.UNKNOWN;
-      throw e;
-    }
-  }
 
   /// Ensures the store is open, throwing IllegalStateException if not in OPEN state.
   private void ensureOpen() {
@@ -558,18 +544,6 @@ public class FileRecordStore implements AutoCloseable {
     RecordHeader h = memIndex.get(key);
     if (h == null) {
       throw new IllegalArgumentException(String.format("Key not found %s", print(key.bytes())));
-    }
-    return h;
-  }
-  
-  /*
-   * Maps a ByteSequence key to a record header - for backward compatibility.
-   */
-  private RecordHeader keyToRecordHeader(ByteSequence key) {
-    KeyWrapper keyWrapper = KeyWrapper.of(key.bytes, defensiveCopy); // Use same defensive copy setting as stored keys
-    RecordHeader h = memIndex.get(keyWrapper);
-    if (h == null) {
-      throw new IllegalArgumentException(String.format("Key not found %s '%s'", print(key.bytes), key.toBase64()));
     }
     return h;
   }
@@ -837,17 +811,6 @@ public class FileRecordStore implements AutoCloseable {
         .map(KeyWrapper::toUUID)
         .collect(Collectors.toSet());
   }
-  
-  /// Returns all keys as ByteSequence objects (backward compatibility).
-  /// @deprecated Use keys() for byte[] keys or uuidKeys() for UUID keys instead
-  @Deprecated
-  public Iterable<ByteSequence> keys() {
-    ensureOpen();
-    final var snapshot = snapshotKeys();
-    return snapshot.stream()
-        .map(wrapper -> ByteSequence.of(wrapper.bytes()))
-        .collect(Collectors.toSet());
-  }
 
   @Synchronized
   private Set<KeyWrapper> snapshotKeys() {
@@ -1012,7 +975,7 @@ public class FileRecordStore implements AutoCloseable {
         String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
   }
 
-  private void write(RecordHeader rh, CrashSafeFileOperations out) throws IOException {
+  private void write(RecordHeader rh, FileOperations out) throws IOException {
     if (rh.dataCount < 0) {
       throw new IllegalStateException("dataCount has not been initialized " + this);
     }
@@ -1129,56 +1092,10 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
-  /// Inserts a new record with a ByteSequence key (backward compatibility).
-  /// @deprecated Use insertRecord(byte[], byte[]) or insertRecord(UUID, byte[]) instead
-  @Deprecated
-  @Synchronized
-  public void insertRecord(ByteSequence key, byte[] value) throws IOException {
-    // Use the same key wrapper logic as the original ByteSequence path
-    ensureOpen();
-    try {
-      ensureNotReadOnly();
-      logger.log(Level.FINE, () -> String.format("insertRecord value.len:%d key:%s ", value.length, print(key.bytes)));
-      if (recordExists(key)) {
-        throw new IllegalArgumentException("Key exists: " + key);
-      }
-      ensureIndexSpace(getNumRecords() + 1);
-      RecordHeader newRecord = allocateRecord(payloadLength(value.length));
-      writeRecordData(newRecord, value);
-      // Create KeyWrapper with defensiveCopy setting from the store
-      final var keyWrapper = KeyWrapper.of(key.bytes, defensiveCopy);
-      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
-    } catch (Exception e) {
-      state = StoreState.UNKNOWN;
-      throw e;
-    }
-  }
-  
-  /// Updates an existing record with a ByteSequence key (backward compatibility).
-  /// @deprecated Use updateRecord(byte[], byte[]) or updateRecord(UUID, byte[]) instead
-  @Deprecated
-  public void updateRecord(ByteSequence key, byte[] value) throws IOException {
-    updateRecord(key.bytes, value);
-  }
-  
-  /// Deletes the record with a ByteSequence key (backward compatibility).
-  /// @deprecated Use deleteRecord(byte[]) or deleteRecord(UUID) instead
-  @Deprecated
-  public void deleteRecord(ByteSequence key) throws IOException {
-    deleteRecord(key.bytes);
-  }
-  
-  /// Checks if there is a record belonging to the given ByteSequence key (backward compatibility).
-  /// @deprecated Use recordExists(byte[]) or recordExists(UUID) instead
-  @Deprecated
-  public boolean recordExists(ByteSequence key) {
-    return recordExists(key.bytes);
-  }
-
   private int payloadLength(int raw) {
-    int len = raw + 4; // for length prefix
+    int len = raw + Integer.BYTES; // for length prefix
     if (!disableCrc32) {
-      len += 8; // for crc32 long
+      len += Long.BYTES; // for crc32 long
     }
     return len;
   }
@@ -1621,7 +1538,7 @@ public class FileRecordStore implements AutoCloseable {
     /// @return true if the file appears to be a valid FileRecordStore
     /// @throws IOException if the file cannot be read
     private boolean isValidFileRecordStore(Path path, int expectedMaxKeyLength) throws IOException {
-      try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
+      try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(path.toFile(), "r")) {
         // Empty files are never valid stores
         if (raf.length() == 0) {
           logger.log(Level.FINE, "Validation failed: file is empty");

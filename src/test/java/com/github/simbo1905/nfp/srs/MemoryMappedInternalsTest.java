@@ -19,14 +19,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/// * White-box tests for MemoryMappedRandomAccessFile internals.
+/// * White-box tests for MemoryMappedFile internals.
 /// * These tests exercise package-private methods and verify memory management correctness.
 public class MemoryMappedInternalsTest extends JulLoggingConfig {
     
     private static final Logger logger = Logger.getLogger(MemoryMappedInternalsTest.class.getName());
     
     private Path tempFile;
-    private MemoryMappedRandomAccessFile mmFile;
+    private MemoryMappedFile mmFile;
     private RandomAccessFile raf;
     
     @Before
@@ -73,7 +73,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         Assert.assertEquals("Buffer capacity should be 4096", 4096, buffer.capacity());
         
         // Unmap the buffer
-        MemoryMappedRandomAccessFile.unmapBuffer(buffer);
+        MemoryMappedFile.unmapBuffer(buffer);
         
         // Buffer should still exist as Java object but underlying memory released
         Assert.assertNotNull("Buffer object should still exist", buffer);
@@ -87,7 +87,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Testing atomic epoch publishing under concurrency");
         
         // Create memory mapped file
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         
         // Write some initial data
         mmFile.writeInt(42);
@@ -213,7 +213,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Testing remap failure recovery");
         
         // Create initial file
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         long originalSize = mmFile.length();
         logger.log(Level.FINE, "Original file size: " + originalSize);
         
@@ -252,7 +252,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
     public void testNativeMemory_flatAfter1000Cycles() throws Exception {
         logger.log(Level.FINE, "Testing native memory usage over many cycles");
         
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         long initialSize = mmFile.length();
         
         // Perform many grow/shrink cycles
@@ -293,7 +293,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         long fileSize = chunkSize * 3; // 3 chunks
         raf.setLength(fileSize);
         
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         
         // Verify initial state
         Assert.assertEquals("Initial size should be 3 chunks", fileSize, mmFile.length());
@@ -319,7 +319,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
         logger.log(Level.FINE, "Testing package-private unmapBuffer access");
         
         // Verify the method exists and is accessible
-        Method unmapMethod = MemoryMappedRandomAccessFile.class.getDeclaredMethod("unmapBuffer", MappedByteBuffer.class);
+        Method unmapMethod = MemoryMappedFile.class.getDeclaredMethod("unmapBuffer", MappedByteBuffer.class);
         Assert.assertNotNull("unmapBuffer method should exist", unmapMethod);
         Assert.assertTrue("Method should be static", java.lang.reflect.Modifier.isStatic(unmapMethod.getModifiers()));
         
@@ -338,10 +338,10 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
     public void testExposeCurrentEpoch_reflectionAccess() throws Exception {
         logger.log(Level.FINE, "Testing epoch reflection access");
         
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         
         // Directly access the package‑protected currentEpoch field (no reflection needed)
-        MemoryMappedRandomAccessFile.Epoch epoch = mmFile.currentEpoch;
+        MemoryMappedFile.Epoch epoch = mmFile.currentEpoch;
         Assert.assertNotNull("Current epoch should not be null", epoch);
         
         // Verify the Epoch type is a record and inspect its components
@@ -366,7 +366,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
     public void testMemoryLeakFix_demonstration() throws Exception {
         logger.log(Level.FINE, "Demonstrating memory leak fix");
         
-        mmFile = new MemoryMappedRandomAccessFile(raf);
+        mmFile = new MemoryMappedFile(raf);
         
         // Get initial state
         long initialSize = mmFile.length();

@@ -4,7 +4,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -32,8 +31,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace file operations with counting wrapper that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create new store with counting wrapper  
@@ -74,8 +73,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -115,8 +114,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -170,8 +169,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -213,8 +212,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -259,8 +258,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -303,8 +302,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -343,8 +342,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -387,8 +386,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         FileRecordStore baseStore = builder.open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Create store with counting wrapper
@@ -430,8 +429,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .open();
         
         // Replace with counting delegate that never throws
-        RandomAccessFile raf = new RandomAccessFile(countingStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(countingStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations countingOps = new DelegatingExceptionOperations(directOps, Integer.MAX_VALUE);
         
         // Replace file operations with counting wrapper
@@ -1070,8 +1069,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .open();
         
         // Replace file operations with exception injection
-        RandomAccessFile raf = new RandomAccessFile(testStore.getFilePath().toFile(), "r");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(testStore.getFilePath().toFile(), "r");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
       testStore.fileOperations = new DelegatingExceptionOperations(directOps, throwAt);
         
         try {
@@ -1096,8 +1095,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .open();
         
         // Replace file operations with exception injection
-        RandomAccessFile raf = new RandomAccessFile(testStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(testStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
       testStore.fileOperations = new DelegatingExceptionOperations(directOps, throwAt);
         
         // Create max length key
@@ -1198,8 +1197,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .open();
         
         // Replace file operations with exception injection wrapper
-        RandomAccessFile raf = new RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(baseStore.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
         DelegatingExceptionOperations exceptionOps = new DelegatingExceptionOperations(directOps, throwAtOperation);
         
         // Create new store with exception wrapper
@@ -1227,8 +1226,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .open();
         
         // Replace file operations with exception injection wrapper
-        RandomAccessFile raf = new RandomAccessFile(store.getFilePath().toFile(), "rw");
-        DirectRandomAccessFile directOps = new DirectRandomAccessFile(raf);
+        java.io.RandomAccessFile raf = new java.io.RandomAccessFile(store.getFilePath().toFile(), "rw");
+        RandomAccessFile directOps = new RandomAccessFile(raf);
 
       // Replace the file operations with our exception wrapper
         store.fileOperations = new DelegatingExceptionOperations(directOps, throwAtOperation);

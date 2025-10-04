@@ -11,7 +11,7 @@ import java.util.Collections;
 
 /**
  * Tests for memory-mapped file implementation to ensure it provides
- * the same correctness guarantees as DirectRandomAccessFile while
+ * the same correctness guarantees as RandomAccessFile while
  * reducing write amplification.
  */
 @SuppressWarnings("ResultOfMethodCallIgnored")

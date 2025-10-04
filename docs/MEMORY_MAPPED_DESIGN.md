@@ -255,4 +255,4 @@ The memory-mapped implementation is a drop-in replacement:
 
 ---
 
-**Note**: This implementation addresses the critical native memory leak that was present in earlier versions. Always use the latest version with the atomic epoch-swap protocol for production deployments.
+**Note**: This implementation uses atomic epoch-swap protocol for robust native memory management during file growth operations.

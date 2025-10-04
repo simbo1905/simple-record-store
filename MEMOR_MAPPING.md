@@ -1,1 +1,0 @@
-# OBSOLETE — see docs/MEMORY_MAPPED_DESIGN.md

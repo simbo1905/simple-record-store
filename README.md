@@ -184,6 +184,25 @@ Memory-mapped mode uses Java's `MappedByteBuffer` to map the file into memory:
 3. **Crash Safety**: The OS guarantees consistency of memory-mapped files; CRC32 validation catches corruption on read
 4. **File Growth**: Automatically remaps when the file needs to expand
 
+### Memory Requirements
+
+**Key Fact**: Memory-mapped files do NOT need to fit entirely into RAM. The operating system uses demand paging:
+
+- Only accessed portions of the file are loaded into memory (page fault handling)
+- Unused pages can be evicted under memory pressure
+- File size can exceed physical RAM + swap space
+- The JVM address space limit (typically 2-4GB for 32-bit, much larger for 64-bit) is the theoretical maximum
+
+**Chunked Mapping**: The implementation uses configurable chunks (default ~128MB) to:
+- Reduce memory pressure for large files
+- Enable partial unmapping when regions are no longer needed
+- Provide atomic epoch-swap during file growth
+
+**Memory Management**: 
+- Native memory is explicitly released via buffer unmapping
+- Failed remaps don't leak native memory
+- Epoch-swap protocol ensures no orphaned buffers
+
 ### Crash Safety
 
 Memory-mapped mode maintains the same crash safety guarantees as direct I/O:
@@ -223,6 +242,17 @@ Memory-mapping reduces write operations from 3-5 disk I/Os per operation to 1-2 
 - Pre-allocate file size using a large `initialSize` parameter to minimize remapping
 - Use memory-mapping for update-heavy workloads where file size is stable
 - Consider direct I/O if your workload involves frequent, small file size changes
+
+### Native Memory Management
+
+The implementation uses an **atomic epoch-swap protocol** to prevent native memory leaks:
+
+1. **Epoch Structure**: Immutable containers holding mapped buffers and region boundaries
+2. **Atomic Publishing**: New epochs are built off-side then atomically published
+3. **Explicit Cleanup**: Old epoch buffers are explicitly unmapped after transition
+4. **Fail-Closed Design**: Failed remaps leave current epoch unchanged
+
+The implementation ensures robust native memory management during file growth operations.
 
 ## Thread Safety
 

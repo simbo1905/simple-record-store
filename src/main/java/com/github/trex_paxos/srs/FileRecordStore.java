@@ -59,10 +59,15 @@ public class FileRecordStore implements AutoCloseable {
   private final boolean readOnly;
   private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace = Comparator.comparingInt(o -> o.getFreeSpace(true));
   /*default*/ CrashSafeFileOperations fileOperations;
-  /// Hashtable which holds the in-memory index. For efficiency, the entire
-  /// index is cached in memory. The hashtable wraps the byte[] key as a String
-  /// as you cannot use a raw byte[] as a key and Java doesn't have extension methods yet.
-  private Map<ByteSequence, RecordHeader> memIndex;
+    /// In-memory index mapping keys to record headers. Uses KeyWrapper for efficient
+  /// hash code caching and optional defensive copying. Supports both byte array and UUID keys.
+  private Map<KeyWrapper, RecordHeader> memIndex;
+  
+  /// Key type for optimized handling - enables JIT branch elimination since this is final after construction
+  private final KeyType keyType;
+  
+  /// Whether to use defensive copying for byte array keys
+  private final boolean defensiveCopy;
   /// Store state tracking for proper lifecycle management
   enum StoreState {
     NEW,      // Initial state - store created but not yet validated/opened
@@ -92,7 +97,13 @@ public class FileRecordStore implements AutoCloseable {
   /// @param disablePayloadCrc32 if true, skips CRC32 on record values (keys and headers always protected)
   /// @param useMemoryMapping    if true, use memory-mapped file access; does not affect write amplification
   /// @throws IOException if file cannot be created or pre-allocation fails
+  /// Constructor for backward compatibility - defaults to byte array keys with defensive copying
+  @Deprecated
   FileRecordStore(File file, int preallocatedRecords, int maxKeyLength, boolean disablePayloadCrc32, boolean useMemoryMapping, String accessMode) throws IOException {
+    this(file, preallocatedRecords, maxKeyLength, disablePayloadCrc32, useMemoryMapping, accessMode, KeyType.BYTE_ARRAY, true);
+  }
+  
+  FileRecordStore(File file, int preallocatedRecords, int maxKeyLength, boolean disablePayloadCrc32, boolean useMemoryMapping, String accessMode, KeyType keyType, boolean defensiveCopy) throws IOException {
     try {
       RandomAccessFile raf = new RandomAccessFile(file, accessMode);
 
@@ -102,6 +113,13 @@ public class FileRecordStore implements AutoCloseable {
       this.maxKeyLength = maxKeyLength;
       this.indexEntryLength = maxKeyLength + 1 + CRC32_LENGTH + RECORD_HEADER_LENGTH;
       this.readOnly = !"rw".equals(accessMode);
+      this.keyType = keyType;
+      this.defensiveCopy = defensiveCopy;
+      
+      // Validate UUID mode constraints
+      if (keyType == KeyType.UUID && maxKeyLength != 16) {
+        throw new IllegalArgumentException("UUID key type requires maxKeyLength=16, got " + maxKeyLength);
+      }
 
       // Check if file was empty when we opened it (before we modify it)
       boolean wasEmpty = raf.length() == 0;
@@ -206,7 +224,7 @@ public class FileRecordStore implements AutoCloseable {
   /// Loads existing index entries from file into memory.
   private void loadExistingIndex(int numRecords) throws IOException {
     for (int i = 0; i < numRecords; i++) {
-      ByteSequence key = readKeyFromIndex(i);
+      KeyWrapper key = readKeyFromIndex(i);
       RecordHeader header = readRecordHeaderFromIndex(i);
 
       memIndex.put(key, header);
@@ -217,7 +235,7 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Reads the ith key from the index.
-  private ByteSequence readKeyFromIndex(int position) throws IOException {
+  private KeyWrapper readKeyFromIndex(int position) throws IOException {
     final var fp = indexPositionToKeyFp(position);
     fileOperations.seek(fp);
 
@@ -255,7 +273,7 @@ public class FileRecordStore implements AutoCloseable {
           ));
     }
 
-    return ByteSequence.of(key);
+    return KeyWrapper.of(key, defensiveCopy);
   }
 
   /// Reads the ith record header from the index.
@@ -383,7 +401,7 @@ public class FileRecordStore implements AutoCloseable {
       for (int index = 0; index < recordFile.getNumRecords(); index++) {
         final RecordHeader header = recordFile.readRecordHeaderFromIndex(index);
         final var bk = recordFile.readKeyFromIndex(index);
-        final String k = bk.toBase64();
+        final String k = java.util.Base64.getEncoder().encodeToString(bk.bytes());
         logger.log(level, String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
             index,
             k,
@@ -393,7 +411,7 @@ public class FileRecordStore implements AutoCloseable {
             header.dataPointer,
             header.crc32
         ));
-        final byte[] data = recordFile.readRecordData(bk);
+        final byte[] data = recordFile.readRecordData(bk.bytes());
 
         String d = java.util.Base64.getEncoder().encodeToString(data);
         int finalIndex = index;
@@ -418,10 +436,49 @@ public class FileRecordStore implements AutoCloseable {
   /// @return the data stored for the specified key
   /// @throws IOException if an I/O error occurs
   /// @throws IllegalArgumentException if the key does not exist
+  public byte[] readRecordData(byte[] key) throws IOException {
+    ensureOpen();
+    try {
+      logger.log(Level.FINE, () -> String.format("readRecordData key:%s", print(key)));
+      final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
+      final var header = keyToRecordHeader(keyWrapper);
+      return readRecordData(header);
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;
+      throw e;
+    }
+  }
+  
+  /// Reads the data for the record with the specified UUID key.
+  /// Optimized for UUID keys when store is configured for UUID mode.
+  ///
+  /// @param key the UUID key of the record to read
+  /// @return the data stored for the specified key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  public byte[] readRecordData(UUID key) throws IOException {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    try {
+      logger.log(Level.FINE, () -> String.format("readRecordData UUID key:%s", key));
+      final var keyWrapper = KeyWrapper.of(key);
+      final var header = keyToRecordHeader(keyWrapper);
+      return readRecordData(header);
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;
+      throw e;
+    }
+  }
+  
+  /// Legacy method for ByteSequence keys - deprecated, use byte[] or UUID instead
+  /// @deprecated Use readRecordData(byte[]) or readRecordData(UUID) instead
   public byte[] readRecordData(ByteSequence key) throws IOException {
     ensureOpen();
     try {
-      logger.log(Level.FINE, () -> String.format("updateRecord key:%s", print(key.bytes)));
+      logger.log(Level.FINE, () -> String.format("readRecordData key:%s", print(key.bytes)));
       final var header = keyToRecordHeader(key);
       return readRecordData(header);
     } catch (Exception e) {
@@ -440,8 +497,20 @@ public class FileRecordStore implements AutoCloseable {
   /*
    * Maps a key to a record header by looking it up in the in-memory index.
    */
-  private RecordHeader keyToRecordHeader(ByteSequence key) {
+  private RecordHeader keyToRecordHeader(KeyWrapper key) {
     RecordHeader h = memIndex.get(key);
+    if (h == null) {
+      throw new IllegalArgumentException(String.format("Key not found %s", print(key.bytes())));
+    }
+    return h;
+  }
+  
+  /*
+   * Maps a ByteSequence key to a record header - for backward compatibility.
+   */
+  private RecordHeader keyToRecordHeader(ByteSequence key) {
+    KeyWrapper keyWrapper = KeyWrapper.of(key.bytes, defensiveCopy); // Use same defensive copy setting as stored keys
+    RecordHeader h = memIndex.get(keyWrapper);
     if (h == null) {
       throw new IllegalArgumentException(String.format("Key not found %s '%s'", print(key.bytes), key.toBase64()));
     }
@@ -490,6 +559,168 @@ public class FileRecordStore implements AutoCloseable {
     return buf;
   }
 
+  /// Inserts a new record with a UUID key. Optimized for 16-byte UUID storage.
+  ///
+  /// @param key the UUID key for the new record
+  /// @param value the data to store for the key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key already exists
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  @Synchronized
+  public void insertRecord(UUID key, byte[] value) throws IOException {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    try {
+      ensureNotReadOnly();
+      logger.log(Level.FINE, () -> String.format("insertRecord UUID value.len:%d key:%s ", value.length, key));
+      final var keyWrapper = KeyWrapper.of(key);
+      if (recordExists(key)) {
+        throw new IllegalArgumentException("Key exists: " + key);
+      }
+      ensureIndexSpace(getNumRecords() + 1);
+      RecordHeader newRecord = allocateRecord(payloadLength(value.length));
+      writeRecordData(newRecord, value);
+      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;
+      throw e;
+    }
+  }
+
+  /// Updates an existing record with a UUID key.
+  ///
+  /// @param key the UUID key of the record to update
+  /// @param value the new data to store for the key
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  @Synchronized
+  public void updateRecord(UUID key, byte[] value) throws IOException {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    try {
+      ensureNotReadOnly();
+      logger.log(Level.FINE, () -> String.format("updateRecord UUID value.len:%d key:%s", value.length, key));
+      final var keyWrapper = KeyWrapper.of(key);
+      final var updateMeHeader = keyToRecordHeader(keyWrapper);
+      final var capacity = updateMeHeader.getDataCapacity();
+
+      final var recordIsSameSize = value.length == capacity;
+      final var recordIsSmallerAndCrcEnabled = !disableCrc32 && value.length < capacity;
+
+      // can update in place if the record is same size no matter whether CRC32 is enabled.
+      // if record is smaller than we can only update in place if we have a CRC32 to validate which data length is valid
+      if (recordIsSameSize || recordIsSmallerAndCrcEnabled) {
+        // write with the backup crc so one of the two CRCs will be valid after a crash
+        writeRecordHeaderToIndex(updateMeHeader);
+        updateMeHeader.dataCount = value.length;
+        updateFreeSpaceIndex(updateMeHeader);
+        // write the main data
+        writeRecordData(updateMeHeader, value);
+        // write the header with the main CRC
+        writeRecordHeaderToIndex(updateMeHeader);
+      } else {// if last record expand or contract the file
+        final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
+        final var fileLength = getFileLength();// perform a move. insert data to the end of the file then overwrite header.
+        if (endOfRecord == fileLength) {
+          updateMeHeader.dataCount = value.length;
+          setFileLength(fileLength + (value.length - updateMeHeader.getDataCapacity()));
+          updateMeHeader.setDataCapacity(value.length);
+          updateFreeSpaceIndex(updateMeHeader);
+          writeRecordData(updateMeHeader, value);
+          writeRecordHeaderToIndex(updateMeHeader);
+        } else if (value.length > updateMeHeader.getDataCapacity()) {
+          // allocate to next free space or expand the file
+          RecordHeader newRecord = allocateRecord(value.length);
+          // new record is expanded old record
+          newRecord.dataCount = value.length;
+          writeRecordData(newRecord, value);
+          writeRecordHeaderToIndex(newRecord);
+          memIndex.put(keyWrapper, newRecord);
+          positionIndex.remove(updateMeHeader.dataPointer);
+          positionIndex.put(newRecord.dataPointer, newRecord);
+          assert memIndex.size() == positionIndex.size() :
+              String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
+
+          // if there is a previous record add space to it
+          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousOptional = getRecordAt(previousIndex);
+
+          if (previousOptional.isPresent()) {
+            RecordHeader previous = previousOptional.get();
+            // append space of deleted record onto previous record
+            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            updateFreeSpaceIndex(previous);
+            writeRecordHeaderToIndex(previous);
+          } else {
+            // record free space at the end of the index area
+            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+          }
+        } else {
+          throw new AssertionError("this line should be unreachable");
+        }
+      }
+
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;
+      throw e;
+    }
+  }
+
+  /// Deletes the record with the specified UUID key.
+  ///
+  /// @param key the UUID key of the record to delete
+  /// @throws IOException if an I/O error occurs
+  /// @throws IllegalArgumentException if the key does not exist
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  @Synchronized
+  public void deleteRecord(UUID key) throws IOException {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    try {
+      ensureNotReadOnly();
+      logger.log(Level.FINE, () -> String.format("deleteRecord UUID key:%s", key));
+      final var keyWrapper = KeyWrapper.of(key);
+      RecordHeader delRec = keyToRecordHeader(keyWrapper);
+      int currentNumRecords = getNumRecords();
+      deleteEntryFromIndex(delRec, currentNumRecords);
+      final var memDeleted = memIndex.remove(keyWrapper);
+      assert delRec == memDeleted;
+      final var posDeleted = positionIndex.remove(delRec.dataPointer);
+      assert delRec == posDeleted;
+      assert memIndex.size() == positionIndex.size() :
+          String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
+      freeMap.remove(delRec);
+
+      if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
+        // shrink file since this is the last record in the file
+        setFileLength(delRec.dataPointer);
+      } else {
+        final var previousOptional = getRecordAt(delRec.dataPointer - 1);
+        if (previousOptional.isPresent()) {
+          // append space of deleted record onto previous record
+          final var previous = previousOptional.get();
+          previous.incrementDataCapacity(delRec.getDataCapacity());
+          updateFreeSpaceIndex(previous);
+          writeRecordHeaderToIndex(previous);
+        } else {
+          // make free space at the end of the index area
+          writeDataStartPtrHeader(delRec.dataPointer + delRec.getDataCapacity());
+        }
+      }
+
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;  
+      throw e;
+    }
+  }
+
   private void setFileLength(long l) throws IOException {
     fileOperations.setLength(l);
   }
@@ -511,16 +742,58 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Generates a defensive copy of all the keys in a thread safe manner.
+  /// Returns byte arrays for BYTE_ARRAY mode, or UUIDs converted from 16-byte arrays for UUID mode.
   ///
   /// @return an iterable collection of all keys in the store
+  public Iterable<byte[]> keysBytes() {
+    ensureOpen();
+    final var snapshot = snapshotKeys();
+    if (keyType == KeyType.UUID) {
+      return snapshot.stream()
+          .map(wrapper -> wrapper.toUUID())
+          .map(uuid -> {
+            byte[] bytes = new byte[16];
+            ByteBuffer.wrap(bytes)
+                .putLong(uuid.getMostSignificantBits())
+                .putLong(uuid.getLeastSignificantBits());
+            return bytes;
+          })
+          .collect(Collectors.toSet());
+    } else {
+      return snapshot.stream()
+          .map(KeyWrapper::copyBytes)
+          .collect(Collectors.toSet());
+    }
+  }
+  
+  /// Returns all UUID keys when store is in UUID mode.
+  ///
+  /// @return an iterable collection of all UUID keys in the store
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  public Iterable<UUID> uuidKeys() {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    final var snapshot = snapshotKeys();
+    return snapshot.stream()
+        .map(KeyWrapper::toUUID)
+        .collect(Collectors.toSet());
+  }
+  
+  /// Returns all keys as ByteSequence objects (backward compatibility).
+  /// @deprecated Use keys() for byte[] keys or uuidKeys() for UUID keys instead
+  @Deprecated
   public Iterable<ByteSequence> keys() {
     ensureOpen();
     final var snapshot = snapshotKeys();
-    return snapshot.stream().map(ByteSequence::copy).collect(Collectors.toSet());
+    return snapshot.stream()
+        .map(wrapper -> ByteSequence.of(wrapper.bytes()))
+        .collect(Collectors.toSet());
   }
 
   @Synchronized
-  private Set<ByteSequence> snapshotKeys() {
+  private Set<KeyWrapper> snapshotKeys() {
     return new HashSet<>(memIndex.keySet());
   }
 
@@ -538,9 +811,25 @@ public class FileRecordStore implements AutoCloseable {
   /// @param key the key to check
   /// @return true if a record exists for the key, false otherwise
   @Synchronized
-  public boolean recordExists(ByteSequence key) {
+  public boolean recordExists(byte[] key) {
     ensureOpen();
-    return memIndex.containsKey(key);
+    final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
+    return memIndex.containsKey(keyWrapper);
+  }
+  
+  /// Checks if there is a record belonging to the given UUID key.
+  ///
+  /// @param key the UUID key to check
+  /// @return true if a record exists for the key, false otherwise
+  /// @throws UnsupportedOperationException if store is not in UUID mode
+  @Synchronized
+  public boolean recordExists(UUID key) {
+    ensureOpen();
+    if (keyType != KeyType.UUID) {
+      throw new UnsupportedOperationException("UUID operations only supported when store is configured with uuidKeys()");
+    }
+    final var keyWrapper = KeyWrapper.of(key);
+    return memIndex.containsKey(keyWrapper);
   }
 
   /// This method searches the free map for free space and then returns a
@@ -636,7 +925,7 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Adds the new record to the in-memory index and calls the super class add
   /// the index entry to the fileOperations.
-  private void addEntryToIndex(ByteSequence key, RecordHeader newRecord,
+  private void addEntryToIndex(KeyWrapper key, RecordHeader newRecord,
                                int currentNumRecords) throws IOException {
     if (key.length() > maxKeyLength) {
       throw new IllegalArgumentException(
@@ -719,18 +1008,18 @@ public class FileRecordStore implements AutoCloseable {
     }
   }
 
-  private void writeKeyToIndex(ByteSequence key, int index) throws IOException {
+  private void writeKeyToIndex(KeyWrapper key, int index) throws IOException {
     final var len = (byte) key.length();
-    final var writeLen = (int) key.length() + 1 + CRC32_LENGTH;
+    final var writeLen = key.length() + 1 + CRC32_LENGTH;
 
     ByteBuffer buffer = ByteBuffer.allocate(writeLen);
     buffer.put(len);
-    buffer.put(key.bytes, 0, (int) key.length());
+    buffer.put(key.bytes(), 0, key.length());
 
     // compute crc from the backing array with what we have written
     final var array = buffer.array();
     CRC32 crc = new CRC32();
-    crc.update(array, 1, (int) key.length());
+    crc.update(array, 1, key.length());
     int crc32 = (int) (crc.getValue() & 0xFFFFFFFFL);
 
     // add the crc which will write through to the backing array
@@ -742,7 +1031,7 @@ public class FileRecordStore implements AutoCloseable {
 
     FileRecordStore.logger.log(Level.FINEST, () ->
         String.format(">k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
-            fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, key.toBase64(), print(key.bytes)));
+            fpk, index, len & 0xFF, fpk + (len & 0xFF), crc32, java.util.Base64.getEncoder().encodeToString(key.bytes()), print(key.bytes())));
   }
 
   /// Writes the ith record header to the index.
@@ -763,8 +1052,32 @@ public class FileRecordStore implements AutoCloseable {
   /// @throws IOException if an I/O error occurs
   /// @throws IllegalArgumentException if the key already exists
   @Synchronized
-  public void insertRecord(ByteSequence key, byte[] value)
+  public void insertRecord(byte[] key, byte[] value)
       throws IOException {
+    ensureOpen();
+    try {
+      ensureNotReadOnly();
+      logger.log(Level.FINE, () -> String.format("insertRecord value.len:%d key:%s ", value.length, print(key)));
+      if (recordExists(key)) {
+        throw new IllegalArgumentException("Key exists: " + key);
+      }
+      ensureIndexSpace(getNumRecords() + 1);
+      RecordHeader newRecord = allocateRecord(payloadLength(value.length));
+      writeRecordData(newRecord, value);
+      final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
+      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
+    } catch (Exception e) {
+      state = StoreState.UNKNOWN;
+      throw e;
+    }
+  }
+
+  /// Inserts a new record with a ByteSequence key (backward compatibility).
+  /// @deprecated Use insertRecord(byte[], byte[]) or insertRecord(UUID, byte[]) instead
+  @Deprecated
+  @Synchronized
+  public void insertRecord(ByteSequence key, byte[] value) throws IOException {
+    // Use the same key wrapper logic as the original ByteSequence path
     ensureOpen();
     try {
       ensureNotReadOnly();
@@ -775,11 +1088,34 @@ public class FileRecordStore implements AutoCloseable {
       ensureIndexSpace(getNumRecords() + 1);
       RecordHeader newRecord = allocateRecord(payloadLength(value.length));
       writeRecordData(newRecord, value);
-      addEntryToIndex(key, newRecord, getNumRecords());
+      // Create KeyWrapper with defensiveCopy setting from the store
+      final var keyWrapper = KeyWrapper.of(key.bytes, defensiveCopy);
+      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
     }
+  }
+  
+  /// Updates an existing record with a ByteSequence key (backward compatibility).
+  /// @deprecated Use updateRecord(byte[], byte[]) or updateRecord(UUID, byte[]) instead
+  @Deprecated
+  public void updateRecord(ByteSequence key, byte[] value) throws IOException {
+    updateRecord(key.bytes, value);
+  }
+  
+  /// Deletes the record with a ByteSequence key (backward compatibility).
+  /// @deprecated Use deleteRecord(byte[]) or deleteRecord(UUID) instead
+  @Deprecated
+  public void deleteRecord(ByteSequence key) throws IOException {
+    deleteRecord(key.bytes);
+  }
+  
+  /// Checks if there is a record belonging to the given ByteSequence key (backward compatibility).
+  /// @deprecated Use recordExists(byte[]) or recordExists(UUID) instead
+  @Deprecated
+  public boolean recordExists(ByteSequence key) {
+    return recordExists(key.bytes);
   }
 
   private int payloadLength(int raw) {
@@ -796,12 +1132,14 @@ public class FileRecordStore implements AutoCloseable {
   /// @param value the new data to store for the key
   /// @throws IOException if an I/O error occurs
   /// @throws IllegalArgumentException if the key does not exist
-  public void updateRecord(ByteSequence key, byte[] value) throws IOException {
+  @Synchronized
+  public void updateRecord(byte[] key, byte[] value) throws IOException {
     ensureOpen();
     try {
       ensureNotReadOnly();
-      logger.log(Level.FINE, () -> String.format("updateRecord value.len:%d key:%s", value.length, print(key.bytes)));
-      final var updateMeHeader = keyToRecordHeader(key);
+      logger.log(Level.FINE, () -> String.format("updateRecord value.len:%d key:%s", value.length, print(key)));
+      final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
+      final var updateMeHeader = keyToRecordHeader(keyWrapper);
       final var capacity = updateMeHeader.getDataCapacity();
 
       final var recordIsSameSize = value.length == capacity;
@@ -835,7 +1173,7 @@ public class FileRecordStore implements AutoCloseable {
           newRecord.dataCount = value.length;
           writeRecordData(newRecord, value);
           writeRecordHeaderToIndex(newRecord);
-          memIndex.put(key, newRecord);
+          memIndex.put(keyWrapper, newRecord);
           positionIndex.remove(updateMeHeader.dataPointer);
           positionIndex.put(newRecord.dataPointer, newRecord);
           assert memIndex.size() == positionIndex.size() :
@@ -904,15 +1242,17 @@ public class FileRecordStore implements AutoCloseable {
   /// @param key the key of the record to delete
   /// @throws IOException if an I/O error occurs
   /// @throws IllegalArgumentException if the key does not exist
-  public void deleteRecord(ByteSequence key) throws IOException {
+  @Synchronized
+  public void deleteRecord(byte[] key) throws IOException {
     ensureOpen();
     try {
       ensureNotReadOnly();
-      logger.log(Level.FINE, () -> String.format("deleteRecord key:%s", print(key.bytes)));
-      RecordHeader delRec = keyToRecordHeader(key);
+      logger.log(Level.FINE, () -> String.format("deleteRecord key:%s", print(key)));
+      final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
+      RecordHeader delRec = keyToRecordHeader(keyWrapper);
       int currentNumRecords = getNumRecords();
       deleteEntryFromIndex(delRec, currentNumRecords);
-      final var memDeleted = memIndex.remove(key);
+      final var memDeleted = memIndex.remove(keyWrapper);
       assert delRec == memDeleted;
       final var posDeleted = positionIndex.remove(delRec.dataPointer);
       assert delRec == posDeleted;
@@ -992,7 +1332,7 @@ public class FileRecordStore implements AutoCloseable {
       for (int index = 0; index < getNumRecords(); index++) {
         final RecordHeader header = readRecordHeaderFromIndex(index);
         final var bk = readKeyFromIndex(index);
-        final String k = bk.toBase64();
+        final String k = java.util.Base64.getEncoder().encodeToString(bk.bytes());
         int finalIndex = index;
         logger.log(level, () -> String.format("%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
             finalIndex,
@@ -1003,7 +1343,7 @@ public class FileRecordStore implements AutoCloseable {
             header.dataPointer,
             header.crc32
         ));
-        final byte[] data = readRecordData(bk);
+        final byte[] data = readRecordData(bk.bytes());
 
         String d = java.util.Base64.getEncoder().encodeToString(data);
         int finalIndex1 = index;
@@ -1046,6 +1386,8 @@ public class FileRecordStore implements AutoCloseable {
     private boolean disablePayloadCrc32 = false;
     private boolean useMemoryMapping = false;
     private AccessMode accessMode = AccessMode.READ_WRITE;
+    private KeyType keyType = KeyType.BYTE_ARRAY;
+    private boolean defensiveCopy = true;
 
     /// Sets the path for the database fileOperations.
     ///
@@ -1085,6 +1427,38 @@ public class FileRecordStore implements AutoCloseable {
     /// @return this builder for chaining
     public Builder preallocatedRecords(int preallocatedRecords) {
       this.preallocatedRecords = preallocatedRecords;
+      return this;
+    }
+
+    /// Configures the store to use UUID keys (16-byte) for optimized UUID storage.
+    /// Sets maxKeyLength to 16 automatically and enables UUID-specific optimizations.
+    ///
+    /// @return this builder for chaining
+    public Builder uuidKeys() {
+      this.keyType = KeyType.UUID;
+      this.maxKeyLength = 16;
+      return this;
+    }
+    
+    /// Configures the store to use byte array keys with specified maximum length.
+    /// This is the default mode if neither uuidKeys() nor byteArrayKeys() is called.
+    ///
+    /// @param maxKeyLength the maximum key length in bytes
+    /// @return this builder for chaining
+    public Builder byteArrayKeys(int maxKeyLength) {
+      this.keyType = KeyType.BYTE_ARRAY;
+      this.maxKeyLength = maxKeyLength;
+      return this;
+    }
+    
+    /// Sets whether to use defensive copying for byte array keys.
+    /// When true (default), byte arrays are cloned before storage to prevent external mutation.
+    /// When false, zero-copy is used for performance-critical code with trusted callers.
+    ///
+    /// @param defensiveCopy true to enable defensive copying, false for zero-copy
+    /// @return this builder for chaining
+    public Builder defensiveCopy(boolean defensiveCopy) {
+      this.defensiveCopy = defensiveCopy;
       return this;
     }
 
@@ -1145,7 +1519,7 @@ public class FileRecordStore implements AutoCloseable {
         Path tempPath = Files.createTempFile(tempFilePrefix, tempFileSuffix);
         tempPath.toFile().deleteOnExit();
         return new FileRecordStore(tempPath.toFile(), preallocatedRecords, maxKeyLength,
-            disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
+            disablePayloadCrc32, useMemoryMapping, accessMode.getMode(), keyType, defensiveCopy);
       }
 
       if (path == null) {
@@ -1162,22 +1536,22 @@ public class FileRecordStore implements AutoCloseable {
 
           if (isValid) {
             // Open existing - use preallocatedRecords=0 for existing files
-            return new FileRecordStore(path.toFile(), 0, maxKeyLength, disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
+            return new FileRecordStore(path.toFile(), 0, maxKeyLength, disablePayloadCrc32, useMemoryMapping, accessMode.getMode(), keyType, defensiveCopy);
           } else {
             // File exists but isn't a valid store - create new store (overwrite)
             // This preserves backward compatibility with tests that expect overwrite behavior
             return new FileRecordStore(path.toFile(), preallocatedRecords, maxKeyLength,
-                disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
+                disablePayloadCrc32, useMemoryMapping, accessMode.getMode(), keyType, defensiveCopy);
           }
         } catch (IOException e) {
           // Can't read file - create new store (overwrite existing)
           return new FileRecordStore(path.toFile(), preallocatedRecords, maxKeyLength,
-              disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
+              disablePayloadCrc32, useMemoryMapping, accessMode.getMode(), keyType, defensiveCopy);
         }
       } else {
         // File doesn't exist - create new
         return new FileRecordStore(path.toFile(), preallocatedRecords, maxKeyLength,
-            disablePayloadCrc32, useMemoryMapping, accessMode.getMode());
+            disablePayloadCrc32, useMemoryMapping, accessMode.getMode(), keyType, defensiveCopy);
       }
     }
 

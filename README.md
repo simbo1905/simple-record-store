@@ -69,6 +69,93 @@ There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the
 updated, or deleted. If you find a bug, please try to create a repeatable test with fine logging enabled and post the
 logging. There is additional logging at `Level.FINEST` that shows every byte written to or read from the file. 
 
+## Simplified Key Handling
+
+The library now provides a simplified API that eliminates the `ByteSequence` abstraction and offers optimized UUID key support:
+
+### Direct byte[] Key Support
+
+Instead of wrapping keys in `ByteSequence`, you can now use `byte[]` directly:
+
+```java
+// Old API (still supported for backward compatibility)
+ByteSequence key = ByteSequence.of("mykey".getBytes());
+store.insertRecord(key, data);
+
+// New simplified API
+byte[] key = "mykey".getBytes();
+store.insertRecord(key, data);
+```
+
+### UUID Key Optimization
+
+For applications using UUID keys, the library provides specialized support with significant performance benefits:
+
+```java
+// Create a store optimized for UUID keys
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .uuidKeys()  // Enables UUID optimization
+    .open();
+
+// Direct UUID operations - no conversion overhead
+UUID userId = UUID.randomUUID();
+store.insertRecord(userId, userData);
+byte[] data = store.readRecordData(userId);
+store.updateRecord(userId, updatedData);
+```
+
+**UUID Optimization Benefits:**
+- **Zero allocations**: UUIDs are stored directly as 16-byte arrays
+- **JIT optimization**: Branch elimination for constant key type after construction
+- **Direct storage**: No wrapper objects or conversion overhead
+- **Memory efficiency**: Pre-computed hash codes for HashMap storage
+
+### Defensive Copy Configuration
+
+By default, the library creates defensive copies of byte array keys to prevent corruption from external mutation:
+
+```java
+// Default behavior - safe defensive copying
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .defensiveCopy(true)  // Default: true
+    .open();
+
+// Performance mode - zero-copy for trusted callers
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .defensiveCopy(false)  // Opt-in for performance-critical code
+    .open();
+```
+
+**Zero-Copy Safety Considerations:**
+- **Use only when**: You control the key arrays and guarantee they won't be mutated
+- **Performance benefit**: Eliminates array cloning overhead
+- **Risk**: External mutation of keys will corrupt the internal index
+- **Safe patterns**: Keys from immutable sources (String.getBytes(), serialization output)
+
+### Key Type Configuration
+
+The builder provides explicit key type configuration:
+
+```java
+// UUID keys (16-byte, optimized)
+FileRecordStore store = new FileRecordStore.Builder()
+    .uuidKeys()
+    .open();
+
+// Byte array keys with custom max length
+FileRecordStore store = new FileRecordStore.Builder()
+    .byteArrayKeys(128)  // Max key length: 128 bytes
+    .open();
+
+// Default behavior (backward compatible)
+FileRecordStore store = new FileRecordStore.Builder()
+    .maxKeyLength(64)  // Implies byte array keys
+    .open();
+```
+
 ## Memory-Mapped File Optimisation
 
 Simple Record Store supports an optional **memory-mapped file** mode that reduces seek write costs while preserving all crash safety guarantees. This mode batches multiple write operations in memory and defers disk synchronisation.

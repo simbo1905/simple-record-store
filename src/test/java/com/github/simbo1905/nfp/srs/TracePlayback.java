@@ -59,7 +59,7 @@ public class TracePlayback {
                             key[index] = b;
                             index++;
                         }
-                        final var k = ByteSequence.of(key);
+                        final byte[] k = key;
                         try {
                             if (l.startsWith("FINE: deleteRecord")) {
                                 recordStore.deleteRecord(k);
@@ -70,9 +70,9 @@ public class TracePlayback {
                                 final var len = lenMatcher.group(1);
                                 byte[] value = new byte[Integer.parseInt(len)];
                                 if (l.startsWith("FINE: insertRecord"))
-                                    recordStore.insertRecord(ByteSequence.of(key), value);
+                                    recordStore.insertRecord(key, value);
                                 else if (l.startsWith("FINE: updateRecord")) {
-                                    recordStore.updateRecord(ByteSequence.of(key), value);
+                                    recordStore.updateRecord(key, value);
                                 }
                             }
                         } catch (IOException e) {

@@ -33,7 +33,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long directStart = System.nanoTime();
       try (FileRecordStore store = new FileRecordStore.Builder().path(directFile).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
           for (int i = 0; i < RECORD_COUNT; i++) {
-              final var key = ByteSequence.of(("key" + i).getBytes());
+              final byte[] key = ("key" + i).getBytes();
               byte[] value = new byte[RECORD_SIZE];
               Arrays.fill(value, (byte) ('A' + (i % 26)));
               store.insertRecord(key, value);
@@ -45,7 +45,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long mmapStart = System.nanoTime();
       try (FileRecordStore store = new FileRecordStore.Builder().path(mmapFile).preallocatedRecords(10000).useMemoryMapping(true).open()) {
           for (int i = 0; i < RECORD_COUNT; i++) {
-              final var key = ByteSequence.of(("key" + i).getBytes());
+              final byte[] key = ("key" + i).getBytes();
               byte[] value = new byte[RECORD_SIZE];
               Arrays.fill(value, (byte) ('A' + (i % 26)));
               store.insertRecord(key, value);
@@ -87,7 +87,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
           Path path = Paths.get(directFile);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     store.insertRecord(key, value1);
                 }
             }
@@ -95,7 +95,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long directStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore.Builder().path(path).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     store.updateRecord(key, value2);
                 }
             }
@@ -105,7 +105,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
           Path path1 = Paths.get(mmapFile);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path1).preallocatedRecords(10000).useMemoryMapping(true).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     store.insertRecord(key, value1);
                 }
             }
@@ -113,7 +113,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
             long mmapStart = System.nanoTime();
             try (FileRecordStore store = new FileRecordStore.Builder().path(path1).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
                 for (int i = 0; i < RECORD_COUNT / 2; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     store.updateRecord(key, value2);
                 }
             }

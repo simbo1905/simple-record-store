@@ -33,7 +33,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .open()) {
             
             // Verify store is working
-            ByteSequence key = ByteSequence.of("test".getBytes());
+            byte[] key = "test".getBytes();
             byte[] data = "test data".getBytes();
             store.insertRecord(key, data);
             
@@ -56,7 +56,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .maxKeyLength(64)
                 .open()) {
             
-            ByteSequence key = ByteSequence.of("existing".getBytes());
+            byte[] key = "existing".getBytes();
             byte[] data = "existing data".getBytes();
             store.insertRecord(key, data);
         }
@@ -66,7 +66,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .path(dbPath)
                 .open()) {
             
-            ByteSequence key = ByteSequence.of("existing".getBytes());
+            byte[] key = "existing".getBytes();
             byte[] retrieved = store.readRecordData(key);
             assertArrayEquals("existing data".getBytes(), retrieved);
         }
@@ -82,7 +82,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .open()) {
             
             // Use the store
-            ByteSequence key = ByteSequence.of("temp".getBytes());
+            byte[] key = "temp".getBytes();
             store.insertRecord(key, "temp data".getBytes());
             
             // Verify data
@@ -103,7 +103,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .maxKeyLength(64)
                 .open()) {
             
-            store.insertRecord(ByteSequence.of("key1".getBytes()), "data1".getBytes());
+            store.insertRecord(("key1".getBytes()), "data1".getBytes());
         }
         
         // Open read-only
@@ -113,12 +113,12 @@ public class BuilderTest extends JulLoggingConfig {
                 .open()) {
             
             // Should be able to read
-            byte[] data = store.readRecordData(ByteSequence.of("key1".getBytes()));
+            byte[] data = store.readRecordData(("key1".getBytes()));
             assertArrayEquals("data1".getBytes(), data);
             
             // Should not be able to write (would throw exception)
             try {
-                store.insertRecord(ByteSequence.of("key2".getBytes()), "data2".getBytes());
+                store.insertRecord(("key2".getBytes()), "data2".getBytes());
                 fail("Expected exception for read-only store");
             } catch (UnsupportedOperationException e) {
                 // Expected
@@ -136,7 +136,7 @@ public class BuilderTest extends JulLoggingConfig {
                 .open()) {
             
             // Should work with default values
-            ByteSequence key = ByteSequence.of("default".getBytes());
+            byte[] key = "default".getBytes();
             store.insertRecord(key, "default data".getBytes());
             
             byte[] retrieved = store.readRecordData(key);

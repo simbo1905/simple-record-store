@@ -45,7 +45,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         baseStore.close();
         
         // Setup: insert a record first
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
         countingStore.insertRecord(key, data);
         
@@ -73,7 +73,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
         exceptionOps = new DelegatingExceptionOperations(directOps, throwAt);
         store.fileOperations = exceptionOps;
 
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
 
         try {
           store.deleteRecord(key);
@@ -100,7 +100,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
             .tempFile("delete-test-", ".db")
             .open();
         
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
         store.insertRecord(key, data);
         

@@ -31,7 +31,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
                     .path(tempFile)
                     .maxKeyLength(64)
                     .open()) {
-                store1.insertRecord(ByteSequence.of("testkey".getBytes()), "testdata".getBytes());
+                store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
                 logger.log(Level.FINE, "Created store with maxKeyLength=64, inserted test record");
             }
             
@@ -42,7 +42,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
                     .maxKeyLength(64)
                     .open()) {
                 logger.log(Level.FINE, "✓ Successfully reopened existing store");
-                byte[] data = store2.readRecordData(ByteSequence.of("testkey".getBytes()));
+                byte[] data = store2.readRecordData(("testkey".getBytes()));
                 Assert.assertArrayEquals("Data should be preserved", "testdata".getBytes(), data);
             }
             
@@ -63,7 +63,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
                     .path(tempFile)
                     .maxKeyLength(64)
                     .open()) {
-                store1.insertRecord(ByteSequence.of("testkey".getBytes()), "testdata".getBytes());
+                store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
             }
             
             // Corrupt the key length header to trigger validation failure
@@ -145,7 +145,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
                     .maxKeyLength(64)
                     .preallocatedRecords(10)
                     .open()) {
-                store1.insertRecord(ByteSequence.of("testkey".getBytes()), "testdata".getBytes());
+                store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
                 logger.log(Level.FINE, "Created store with preallocatedRecords=10");
             }
             
@@ -159,7 +159,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
                 logger.log(Level.FINE, "✓ Successfully reopened store with different preallocatedRecords");
                 
                 // Verify data integrity
-                byte[] data = store2.readRecordData(ByteSequence.of("testkey".getBytes()));
+                byte[] data = store2.readRecordData(("testkey".getBytes()));
                 Assert.assertArrayEquals("Data should be preserved", "testdata".getBytes(), data);
             }
             

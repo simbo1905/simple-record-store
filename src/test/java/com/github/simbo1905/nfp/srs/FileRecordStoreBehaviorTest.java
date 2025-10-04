@@ -40,7 +40,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
                 exceptionOps = (DelegatingExceptionOperations) store.fileOperations;
                 
                 // Attempt operation that should trigger exception
-                ByteSequence key = ByteSequence.of("testkey".getBytes());
+                byte[] key = "testkey".getBytes();
                 byte[] data = "testdata".getBytes();
                 
                 store.insertRecord(key, data);
@@ -86,7 +86,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
       try (FileRecordStore store = new FileRecordStore.Builder()
           .tempFile("success-test-", ".db")
           .open()) {
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
 
         // Insert record
@@ -134,7 +134,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
                 FileRecordStore store = createStoreWithExceptionAtPath(tempFile, throwAt);
                 DelegatingExceptionOperations exceptionOps = (DelegatingExceptionOperations) store.fileOperations;
                 
-                ByteSequence key = ByteSequence.of("testkey".getBytes());
+                byte[] key = "testkey".getBytes();
                 byte[] data = "testdata".getBytes();
                 
                 try {
@@ -205,7 +205,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         baseStore.close();
         
         // Perform simple insert
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
         
         countingStore.insertRecord(key, data);
@@ -259,7 +259,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     }
     
     /// Verify store is operational by performing basic operations
-    private void verifyStoreOperational(FileRecordStore store, ByteSequence key, byte[] data) throws IOException {
+    private void verifyStoreOperational(FileRecordStore store, byte[] key, byte[] data) throws IOException {
         // Write data
         store.insertRecord(key, data);
         
@@ -275,7 +275,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     
     /// Verify subsequent operations fail with IllegalStateException
     private void verifySubsequentOperationsFail(FileRecordStore store) {
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
         
         // All operations should now throw IllegalStateException
@@ -283,7 +283,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         assertOperationFails(() -> store.readRecordData(key), "readRecordData");
         assertOperationFails(() -> store.updateRecord(key, data), "updateRecord");
         assertOperationFails(() -> store.deleteRecord(key), "deleteRecord");
-        assertOperationFails(store::keys, "keys");
+        assertOperationFails(() -> store.keysBytes(), "keys");
         assertOperationFails(store::isEmpty, "isEmpty");
         assertOperationFails(() -> store.recordExists(key), "recordExists");
         assertOperationFails(store::fsync, "fsync");

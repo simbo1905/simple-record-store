@@ -33,13 +33,13 @@ public class MemoryMappedTests extends JulLoggingConfig {
       tempFilePath = store.getFilePath(); // Capture the path for reopening
 
       // Insert records - writes go to memory-mapped buffers
-      ByteSequence key1 = ByteSequence.of("user:1".getBytes());
+      byte[] key1 = "user:1".getBytes();
       byte[] userData = "John Doe".getBytes();
       logger.fine("Inserting record with key: " + new String("user:1".getBytes()) + ", data: " + new String(userData));
       store.insertRecord(key1, userData);
 
       // Multiple operations are batched in memory
-      ByteSequence key2 = ByteSequence.of("user:2".getBytes());
+      byte[] key2 = "user:2".getBytes();
       logger.fine("Inserting record with key: " + new String("user:2".getBytes()) + ", data: Jane Smith");
       store.insertRecord(key2, "Jane Smith".getBytes());
 
@@ -66,7 +66,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
     logger.fine("Reopening FileRecordStore with parameters: tempFile, maxKeyLength=" + MAX_KEY_LENGTH + ", disablePayloadCrc32=false, useMemoryMapping=true");
     try (FileRecordStore store = new FileRecordStore.Builder().path(tempFilePath).maxKeyLength(MAX_KEY_LENGTH).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
       logger.fine("FileRecordStore reopened successfully");
-      ByteSequence key1 = ByteSequence.of("user:1".getBytes());
+      byte[] key1 = "user:1".getBytes();
       logger.fine("Reading record with key: " + new String("user:1".getBytes()));
       byte[] data = store.readRecordData(key1);
       logger.log(Level.FINE, "After reopen: " + new String(data));
@@ -88,7 +88,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
         // Insert batch of records
         for (int i = 0; i < 100; i++) {
           int recordId = batch * 100 + i;
-          ByteSequence key = ByteSequence.of(("record" + recordId).getBytes());
+          byte[] key = ("record" + recordId).getBytes();
           store.insertRecord(key, ("data-" + recordId).getBytes());
         }
 
@@ -107,14 +107,14 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
       // Insert initial data
       for (int i = 0; i < 1000; i++) {
-        ByteSequence key = ByteSequence.of(("key" + i).getBytes());
+        byte[] key = ("key" + i).getBytes();
         store.insertRecord(key, ("initial-value-" + i).getBytes());
       }
 
       // Perform many updates - this is where memory-mapping shines
       // Each update would normally be 3 disk writes, now they're batched
       for (int i = 0; i < 1000; i++) {
-        ByteSequence key = ByteSequence.of(("key" + i).getBytes());
+        byte[] key = ("key" + i).getBytes();
         store.updateRecord(key, ("updated-value-" + i).getBytes());
       }
 
@@ -131,18 +131,18 @@ public class MemoryMappedTests extends JulLoggingConfig {
     // Create initial data with direct I/O
     try (FileRecordStore store = new FileRecordStore.Builder().tempFile("example-mixed-", ".db").preallocatedRecords(10000).disablePayloadCrc32(false).open()) {
       tempFile = store.getFilePath(); // Get the path from the created temp file
-      store.insertRecord(ByteSequence.of("key1".getBytes()), "value1".getBytes());
+      store.insertRecord(("key1".getBytes()), "value1".getBytes());
     }
 
     // Open with memory-mapping for batch updates
     try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
-      store.updateRecord(ByteSequence.of("key1".getBytes()), "updated".getBytes());
-      store.insertRecord(ByteSequence.of("key2".getBytes()), "value2".getBytes());
+      store.updateRecord(("key1".getBytes()), "updated".getBytes());
+      store.insertRecord(("key2".getBytes()), "value2".getBytes());
     }
 
     // Open with direct I/O again for verification
     try (FileRecordStore store = new FileRecordStore.Builder().path(tempFile).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
-      byte[] data = store.readRecordData(ByteSequence.of("key1".getBytes()));
+      byte[] data = store.readRecordData(("key1".getBytes()));
       logger.log(Level.FINE, "Final value: " + new String(data));
     }
   }

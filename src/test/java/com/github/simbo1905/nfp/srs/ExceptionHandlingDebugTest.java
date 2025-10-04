@@ -39,7 +39,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
             logger.log(Level.FINE, "Store created successfully, state: " + store.getState());
             logger.log(Level.FINE, "Exception delegate created, target: " + exceptionOps.getTargetOperation() + ", current count: " + exceptionOps.getOperationCount());
             
-            ByteSequence key = ByteSequence.of("testkey".getBytes());
+            byte[] key = "testkey".getBytes();
             byte[] data = "testdata".getBytes();
             
             try {
@@ -74,7 +74,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         }
     }
     
-    private void testSubsequentOperation(FileRecordStore store, ByteSequence key) {
+    private void testSubsequentOperation(FileRecordStore store, byte[] key) {
         logger.log(Level.FINE, "Testing subsequent operation after exception...");
         try {
             store.recordExists(key);

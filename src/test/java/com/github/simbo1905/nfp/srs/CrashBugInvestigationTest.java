@@ -62,11 +62,11 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
         store = createStoreWithHalt(veryHighHaltPoint);
         
         // Perform simple insert
-        ByteSequence key = ByteSequence.of("testkey".getBytes());
+        byte[] key = "testkey".getBytes();
         byte[] data = "testdata".getBytes();
         
         logger.log(Level.FINE, () -> String.format("Inserting key=%s, data=%s", 
-            new String(key.bytes), new String(data)));
+            new String(key), new String(data)));
         
         store.insertRecord(key, data);
         
@@ -104,7 +104,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                 FileRecordStore testStore = createStoreWithHalt(haltAt);
                 
                 // Perform simple insert
-                ByteSequence key = ByteSequence.of("testkey".getBytes());
+                byte[] key = "testkey".getBytes();
                 byte[] data = "testdata".getBytes();
                 
                 testStore.insertRecord(key, data);

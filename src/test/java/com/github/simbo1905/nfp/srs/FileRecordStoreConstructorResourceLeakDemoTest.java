@@ -183,7 +183,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                     .maxKeyLength(64)
                     .preallocatedRecords(10)
                     .open()) {
-                store1.insertRecord(ByteSequence.of("key1".getBytes()), "data1".getBytes());
+                store1.insertRecord(("key1".getBytes()), "data1".getBytes());
             }
             
             // Now reopen with DIFFERENT parameters - this tests if the constructor
@@ -199,7 +199,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                 logger.log(Level.FINE, "✓ Store reopened successfully with different parameters");
                 
                 // Verify data integrity - this tests if dataStartPtr was read correctly from file
-                byte[] data = store2.readRecordData(ByteSequence.of("key1".getBytes()));
+                byte[] data = store2.readRecordData(("key1".getBytes()));
                 Assert.assertArrayEquals("Data should be preserved", "data1".getBytes(), data);
                 
                 logger.log(Level.FINE, "✓ Data integrity verified - dataStartPtr was correctly read from file");

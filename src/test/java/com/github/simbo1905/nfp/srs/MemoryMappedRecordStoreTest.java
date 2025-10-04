@@ -27,7 +27,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
           Path path = Paths.get(fileName);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(1000).useMemoryMapping(true).open()) {
                 // Insert
-                final var key1 = ByteSequence.of("key1".getBytes());
+                final var key1 = ("key1".getBytes());
                 final var value1 = "value1".getBytes();
                 store.insertRecord(key1, value1);
                 
@@ -63,7 +63,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(1000).useMemoryMapping(true).open()) {
                 // Insert multiple records
                 for (int i = 0; i < 100; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
 
                     final var value = ("value" + i).getBytes();
                     store.insertRecord(key, value);
@@ -71,7 +71,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
                 
                 // Verify all records
                 for (int i = 0; i < 100; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     Assert.assertTrue(store.recordExists(key));
                     byte[] value = store.readRecordData(key);
                     Assert.assertArrayEquals(("value" + i).getBytes(), value);
@@ -82,7 +82,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             try (FileRecordStore store = new FileRecordStore.Builder().path(path).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
                 Assert.assertEquals(100, store.getNumRecords());
                 for (int i = 0; i < 100; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     Assert.assertTrue(store.recordExists(key));
                 }
             }
@@ -97,7 +97,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         try {
             try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(10000).useMemoryMapping(true).open()) {
                 // Insert large records
-                final var key1 = ByteSequence.of("largekey1".getBytes());
+                final var key1 = ("largekey1".getBytes());
                 byte[] largeValue = new byte[10000];
                 Arrays.fill(largeValue, (byte) 'A');
                 store.insertRecord(key1, largeValue);
@@ -127,7 +127,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
             
             try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(2000).useMemoryMapping(true).open()) {
-                final var key = ByteSequence.of("testkey".getBytes());
+                final var key = ("testkey".getBytes());
                 store.insertRecord(key, data1);
                 
                 // Update with same size (should be in-place)
@@ -147,7 +147,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         try {
           Path path = Paths.get(fileName);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(1000).useMemoryMapping(true).open()) {
-                final var key = ByteSequence.of("key1".getBytes());
+                final var key = ("key1".getBytes());
                 final var value = "value1".getBytes();
                 store.insertRecord(key, value);
                 
@@ -161,7 +161,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             
             // Verify persistence after close
             try (FileRecordStore store = new FileRecordStore.Builder().path(path).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
-                final var key = ByteSequence.of("key1".getBytes());
+                final var key = ("key1".getBytes());
                 Assert.assertTrue(store.recordExists(key));
             }
         } finally {
@@ -176,19 +176,19 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             // Create with direct I/O
           Path path = Paths.get(fileName);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(1000).disablePayloadCrc32(false).open()) {
-                final var key1 = ByteSequence.of("key1".getBytes());
+                final var key1 = ("key1".getBytes());
                 final var value1 = "value1".getBytes();
                 store.insertRecord(key1, value1);
             }
             
             // Open with memory-mapped I/O and add more data
             try (FileRecordStore store = new FileRecordStore.Builder().path(path).disablePayloadCrc32(false).useMemoryMapping(true).open()) {
-                final var key2 = ByteSequence.of("key2".getBytes());
+                final var key2 = ("key2".getBytes());
                 final var value2 = "value2".getBytes();
                 store.insertRecord(key2, value2);
                 
                 // Verify both records
-                Assert.assertTrue(store.recordExists(ByteSequence.of("key1".getBytes())));
+                Assert.assertTrue(store.recordExists(("key1".getBytes())));
                 Assert.assertTrue(store.recordExists(key2));
             }
             
@@ -209,7 +209,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             try (FileRecordStore store = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(100).useMemoryMapping(true).open()) {
                 // Insert records that will require file growth
                 for (int i = 0; i < 50; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     byte[] value = new byte[100];
                     Arrays.fill(value, (byte) ('A' + (i % 26)));
                     store.insertRecord(key, value);
@@ -245,7 +245,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
           Path path = Paths.get(fileName);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(1000).useMemoryMapping(true).open()) {
                 for (int i = 0; i < 10; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     final var value = ("value" + i).getBytes();
                     store.insertRecord(key, value);
                 }
@@ -257,7 +257,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
                 // Due to close() calling fsync(), all data should be present
                 Assert.assertEquals(10, store.getNumRecords());
                 for (int i = 0; i < 10; i++) {
-                    final var key = ByteSequence.of(("key" + i).getBytes());
+                    final byte[] key = ("key" + i).getBytes();
                     Assert.assertTrue(store.recordExists(key));
                     byte[] value = store.readRecordData(key);
                     Assert.assertArrayEquals(("value" + i).getBytes(), value);
@@ -281,7 +281,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
           Path path = Paths.get(fileName);
           try (FileRecordStore store = new FileRecordStore.Builder().path(path).preallocatedRecords(2000).useMemoryMapping(true).open()) {
-                final var key = ByteSequence.of("testkey".getBytes());
+                final var key = ("testkey".getBytes());
                 store.insertRecord(key, data1);
                 store.fsync(); // Ensure first write is persisted
                 
@@ -295,7 +295,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
             
             // Verify persistence
             try (FileRecordStore store = new FileRecordStore.Builder().path(path).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).disablePayloadCrc32(false).useMemoryMapping(false).open()) {
-                final var key = ByteSequence.of("testkey".getBytes());
+                final var key = ("testkey".getBytes());
                 byte[] read = store.readRecordData(key);
                 Assert.assertArrayEquals(data2, read);
             }

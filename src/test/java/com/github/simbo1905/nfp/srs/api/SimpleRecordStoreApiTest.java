@@ -55,28 +55,28 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         // given
         recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).preallocatedRecords(initialSize).open();
         String uuid = UUIDGenerator.generateUUID().toString();
-        final var key = fromUtf8(uuid);
+        final var key = uuid.getBytes();
 
         // when
         this.recordsFile.insertRecord(key, uuid.getBytes());
-        if( recordsFile.recordExists(fromUtf8(uuid))){
-            this.recordsFile.deleteRecord(fromUtf8(uuid));
+        if( recordsFile.recordExists(uuid.getBytes())){
+            this.recordsFile.deleteRecord(uuid.getBytes());
         }
 
         Assert.assertTrue(this.recordsFile.isEmpty());
-        Assert.assertFalse(this.recordsFile.recordExists(fromUtf8(uuid)));
+        Assert.assertFalse(this.recordsFile.recordExists(uuid.getBytes()));
 
-        this.recordsFile.insertRecord(fromUtf8(uuid), uuid.getBytes());
+        this.recordsFile.insertRecord(uuid.getBytes(), uuid.getBytes());
 
         Assert.assertFalse(this.recordsFile.isEmpty());
-        Assert.assertTrue(this.recordsFile.recordExists(fromUtf8(uuid)));
+        Assert.assertTrue(this.recordsFile.recordExists(uuid.getBytes()));
 
         this.recordsFile.fsync();
 
-        final var data = this.recordsFile.readRecordData(fromUtf8(uuid));
-        Assert.assertEquals(toUtf8String(data), uuid);
+        final var data = this.recordsFile.readRecordData(uuid.getBytes());
+        Assert.assertEquals(new String(data), uuid);
 
-        this.recordsFile.updateRecord(fromUtf8(uuid), "updated".getBytes());
+        this.recordsFile.updateRecord(uuid.getBytes(), "updated".getBytes());
 
         this.recordsFile.fsync();
 
@@ -84,11 +84,11 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
         // then
         recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).open();
-        final var updated = this.recordsFile.readRecordData(fromUtf8(uuid));
+        final var updated = this.recordsFile.readRecordData(uuid.getBytes());
         Assert.assertEquals("updated", new String(updated));
         Assert.assertEquals(1, recordsFile.size());
 
-        Assert.assertEquals(recordsFile.keys().iterator().next(), key);
+        Assert.assertArrayEquals(recordsFile.keysBytes().iterator().next(), key);
     }
 
 
@@ -103,7 +103,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
         final String longestKey = String.join("", Collections
             .nCopies(recordsFile.maxKeyLength - 5, "1"));
-        ByteSequence key = fromUtf8(longestKey);
+        byte[] key = longestKey.getBytes();
         byte[] value = longestKey.getBytes();
         recordsFile.insertRecord(key, value);
 
@@ -113,7 +113,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
                 Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
         recordsFile = new FileRecordStore.Builder().path(Paths.get(fileName)).accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY).open();
 
-        String put0 = new String(recordsFile.readRecordData(fromUtf8(longestKey)));
+        String put0 = new String(recordsFile.readRecordData(longestKey.getBytes()));
 
         Assert.assertEquals(put0, longestKey);
 

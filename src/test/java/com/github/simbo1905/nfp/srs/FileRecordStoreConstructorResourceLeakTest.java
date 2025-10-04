@@ -29,7 +29,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
                     .path(tempFile)
                     .maxKeyLength(64)
                     .open()) {
-                store1.insertRecord(ByteSequence.of("testkey".getBytes()), "testdata".getBytes());
+                store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
             }
             
             // Corrupt the key length header to trigger validation failure

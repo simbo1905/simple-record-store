@@ -18,7 +18,7 @@ The latest release on Maven Central is:
 </dependency>
 ```
 
-See `SimpleRecordStoreApiTests.java` for examples of the minimal public API. 
+See `SimpleRecordStoreApiTest.java` for examples of the minimal public API. 
 
 The public API uses a `ByteSequence` as the key. This is a lightweight wrapper to a byte array that implements `equals` 
 and `hashCode`. This means that we know exactly how the store the keys on disk and can use it as the key of a Map: 
@@ -387,13 +387,13 @@ Note that the source code utilises Lombok to enable the writing of cleaner and s
 
 ## Crash-Safety Testing
 
-Crash resilience is enforced by a replay harness that wraps every functional scenario in `SimpleRecordStoreTest`:
+Crash resilience is enforced by a replay harness that wraps every functional scenario in `FileRecordStoreExceptionHandlingTest`:
 
 - `RecordsFileSimulatesDiskFailures` substitutes the production `RandomAccessFile` with an `InterceptedRandomAccessFile`, routing every I/O call through a `WriteCallback` hook.
 - Each scenario first runs with a `StackCollectingWriteCallback`, capturing the precise sequence of file operations (stack traces are trimmed once execution exits `com.github.simbo1905`).
 - The test then replays the same scenario once per recorded call, using a `CrashAtWriteCallback` to throw an `IOException` at that call index. This simulates a crash immediately after the intercepted disk operation.
 - After the injected failure, the store is reopened using the standard `FileRecordStore`, iterating `keys()` and reading every value via `readRecordData`. That replay exercises the built-in `CRC32` guard while asserting that `getNumRecords()` matches the readable set, flagging any divergence as corruption.
-- The harness runs across inserts, updates, deletes, compaction, and both narrow and padded payloads (see `string1k`) so every write ordering is brute-forced.
+- The harness runs across inserts, updates, deletes, compaction, and various payload sizes so every write ordering is brute-forced.
 
 ## Configuration
 

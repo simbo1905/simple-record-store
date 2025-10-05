@@ -54,12 +54,20 @@ record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements Fi
     return randomAccessFile.readByte();
   }
 
+  public short readShort() throws IOException {
+    return randomAccessFile.readShort();
+  }
+
   public int readInt() throws IOException {
     return randomAccessFile.readInt();
   }
 
   public long readLong() throws IOException {
     return randomAccessFile.readLong();
+  }
+
+  public void writeShort(short v) throws IOException {
+    randomAccessFile.writeShort(v);
   }
 
   public void writeInt(int v) throws IOException {

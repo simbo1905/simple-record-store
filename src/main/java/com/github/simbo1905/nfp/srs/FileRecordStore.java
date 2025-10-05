@@ -26,31 +26,30 @@ public class FileRecordStore implements AutoCloseable {
   /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
   /// Placed at the start of every file to detect corruption and incompatible formats.
   private static final int MAGIC_NUMBER = 0xBEEBBEEB;
-  /// Default maximum key length in bytes. Can be overridden up to 2^8 - 4.
-  public static final int DEFAULT_MAX_KEY_LENGTH = 64;
-  /// Theoretical maximum key length based on file format constraints (2^8 - 4).
-  public static final int MAX_KEY_LENGTH_THEORETICAL =
-      Double.valueOf(Math.pow(2, 8)).intValue() - Integer.BYTES;
+  /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
+  public static final int DEFAULT_MAX_KEY_LENGTH = 128;
+  /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
+  public static final int MAX_KEY_LENGTH_THEORETICAL = Short.MAX_VALUE - Integer.BYTES;
   private static final Logger logger = Logger.getLogger(FileRecordStore.class.getName());
   // Number of bytes in the record header.
   private static final int RECORD_HEADER_LENGTH = 20;
   // File index to the magic number header.
   private static final long MAGIC_NUMBER_HEADER_LOCATION = 0;
   // File index to the key length header (after magic number).
-  private static final long KEY_LENGTH_HEADER_LOCATION = 4;
+  private static final long KEY_LENGTH_HEADER_LOCATION = Integer.BYTES;
   // File index to the num records header.
-  private static final long NUM_RECORDS_HEADER_LOCATION = 5;
+  private static final long NUM_RECORDS_HEADER_LOCATION = Integer.BYTES + Short.BYTES;
   // File index to the start of the data region beyond the index region
-  private static final long DATA_START_HEADER_LOCATION = 9;
+  private static final long DATA_START_HEADER_LOCATION = Integer.BYTES + Short.BYTES + Integer.BYTES;
   /// Total length in bytes of the global database headers:
   /// 1. 4-byte magic number (0xBEEBBEEB) for file format validation
-  /// 2. 1 byte stores the key length the file was created with. (This cannot
+  /// 2. 2-byte short stores the key length the file was created with. (This cannot
   ///    be changed; copy into a new store to adjust the limit.)
   /// 3. 4-byte int tracking the number of records.
   /// 4. 8-byte long pointing to the start of the data region.
-  private static final int FILE_HEADERS_REGION_LENGTH = 17;
+  private static final int FILE_HEADERS_REGION_LENGTH = Integer.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
   // this is an unsigned 32 int
-  private static final int CRC32_LENGTH = 4;
+  private static final int CRC32_LENGTH = Integer.BYTES;
   /// System property name for configuring the maximum key length.
   public static String MAX_KEY_LENGTH_PROPERTY = "MAX_KEY_LENGTH";
   private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
@@ -295,17 +294,17 @@ public class FileRecordStore implements AutoCloseable {
   /// Writes the max key length to the fileOperations (after magic number).
   private void writeKeyLengthHeader() throws IOException {
     fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
-    final var keyLength = (byte) maxKeyLength;
+    final var keyLength = (short) maxKeyLength;
     logger.log(
         Level.FINEST,
         "Writing key length header: " + keyLength + " (from maxKeyLength=" + maxKeyLength + ")");
-    fileOperations.write(keyLength);
+    fileOperations.writeShort(keyLength);
   }
 
   /// Reads the max key length from the fileOperations (after magic number).
   private int readKeyLengthHeader() throws IOException {
     fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
-    int keyLength = fileOperations.readByte() & 0xFF;
+    int keyLength = fileOperations.readShort() & 0xFFFF;
     logger.log(Level.FINEST, "Reading key length header: " + keyLength);
     return keyLength;
   }
@@ -462,7 +461,7 @@ public class FileRecordStore implements AutoCloseable {
 
     final var array = buffer.array();
     CRC32 crc = new CRC32();
-    crc.update(array, 0, 8 + 4 + 4);
+    crc.update(array, 0, Long.BYTES + Integer.BYTES + Integer.BYTES);
     long crc32expected = crc.getValue();
     if (rh.crc32 != crc32expected) {
       throw new IllegalStateException(
@@ -640,7 +639,7 @@ public class FileRecordStore implements AutoCloseable {
   private byte[] readRecordData(RecordHeader header) throws IOException {
     // read the length
     fileOperations.seek(header.dataPointer);
-    byte[] lenBytes = new byte[4];
+    byte[] lenBytes = new byte[Integer.BYTES];
     fileOperations.readFully(lenBytes);
     int len = (new DataInputStream(new ByteArrayInputStream(lenBytes))).readInt();
 
@@ -672,7 +671,7 @@ public class FileRecordStore implements AutoCloseable {
           () ->
               String.format(
                   "<d fp:%d len:%d crc:%d bytes:%s",
-                  header.dataPointer + 4, len, actualCrc, print(buf)));
+                  header.dataPointer + Integer.BYTES, len, actualCrc, print(buf)));
 
       if (actualCrc != expectedCrc) {
         throw new IllegalStateException(
@@ -1124,7 +1123,7 @@ public class FileRecordStore implements AutoCloseable {
     buffer.putInt(rh.dataCount);
     final var array = buffer.array();
     CRC32 crc = new CRC32();
-    crc.update(array, 0, 8 + 4 + 4);
+    crc.update(array, 0, Long.BYTES + Integer.BYTES + Integer.BYTES);
     rh.crc32 = crc.getValue();
     int crc32int = (int) (rh.crc32 & 0xFFFFFFFFL);
     buffer.putInt(crc32int);
@@ -1387,7 +1386,7 @@ public class FileRecordStore implements AutoCloseable {
     final var payload = bout.toByteArray();
     fileOperations.seek(header.dataPointer);
     fileOperations.write(payload, 0, payload.length); // drop
-    byte[] lenBytes = Arrays.copyOfRange(payload, 0, 4);
+    byte[] lenBytes = Arrays.copyOfRange(payload, 0, Integer.BYTES);
 
     logger.log(
         Level.FINEST,
@@ -1404,7 +1403,7 @@ public class FileRecordStore implements AutoCloseable {
         () ->
             String.format(
                 ">d fp:%d len:%d end:%d crc:%d data:%s",
-                header.dataPointer + 4,
+                header.dataPointer + Integer.BYTES,
                 payload.length,
                 header.dataPointer + payload.length,
                 crc,
@@ -1593,7 +1592,7 @@ public class FileRecordStore implements AutoCloseable {
   ///
   /// This is a runtime operational mode toggle primarily intended for snapshotting scenarios.
   /// The feature prevents header/index expansion during sequential scans to maintain memory
-  // stability.
+  /// stability.
   ///
   /// @param allow true to allow header expansion, false to disable it
   /// @throws UnsupportedOperationException if the store is read-only
@@ -1619,15 +1618,22 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
-  /// This provides a secure, explicit way to configure and create stores.
+  /// Example usage:
+  /// <pre>
+  /// FileRecordStore store = new FileRecordStore.Builder()
+  ///     .path("/path/to/store.dat")
+  ///     .maxKeyLength(128)
+  ///     .useMemoryMapping(true)
+  ///     .open();
+  /// </pre>
   public static class Builder {
     private Path path;
     private String tempFilePrefix;
     private String tempFileSuffix;
-    private int preallocatedRecords = 0;
-    private int maxKeyLength = DEFAULT_MAX_KEY_LENGTH;
-    private boolean disablePayloadCrc32 = false;
-    private boolean useMemoryMapping = false;
+    private int preallocatedRecords = 1024;  // SSD optimized: pre-allocate for better sequential performance
+    private int maxKeyLength = DEFAULT_MAX_KEY_LENGTH;  // 128 bytes - optimized for SHA256/SHA512
+    private boolean disablePayloadCrc32 = false;  // SSD optimized: keep CRC32 enabled
+    private boolean useMemoryMapping = true;  // SSD optimized: enable by default
     private AccessMode accessMode = AccessMode.READ_WRITE;
     private KeyType keyType = KeyType.BYTE_ARRAY;
     private boolean defensiveCopy = true;
@@ -1907,7 +1913,7 @@ public class FileRecordStore implements AutoCloseable {
           // New format with magic number
           try {
             raf.seek(KEY_LENGTH_HEADER_LOCATION);
-            keyLength = raf.readByte() & 0xFF;
+            keyLength = raf.readShort() & 0xFFFF;
             raf.seek(NUM_RECORDS_HEADER_LOCATION);
             numRecords = raf.readInt();
           } catch (EOFException e) {

@@ -19,6 +19,8 @@ import java.util.concurrent.atomic.AtomicLong;
 // the Java core Type 4
 /// pure random UUID generation gives me about 0.6M per second. This class gets about 0.5M per
 // second.
+
+/// High-performance UUID generator that creates time-ordered UUIDs suitable for database keys.
 @SuppressWarnings("unused")
 public class UUIDGenerator {
   /// A trick from the core UUID class is to use holder class to defer initialization until needed.

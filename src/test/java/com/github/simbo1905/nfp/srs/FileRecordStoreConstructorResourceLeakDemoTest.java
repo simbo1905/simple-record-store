@@ -84,10 +84,9 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
-      // Corrupt the file to cause validation failure by writing invalid record count
+      // Truncate the file to cause validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(5); // numRecords position in new format
-        raf.writeInt(999); // Write invalid record count that doesn't match actual records
+        raf.setLength(50); // Truncate to make file too small for valid store
       }
 
       logger.log(

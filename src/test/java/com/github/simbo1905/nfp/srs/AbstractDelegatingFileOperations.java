@@ -80,6 +80,12 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
   }
 
   @Override
+  public void writeShort(short v) throws IOException {
+    checkOperation();
+    delegate.writeShort(v);
+  }
+
+  @Override
   public void writeInt(int v) throws IOException {
     checkOperation();
     delegate.writeInt(v);
@@ -143,6 +149,12 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
   public byte readByte() throws IOException {
     checkOperation();
     return delegate.readByte();
+  }
+
+  @Override
+  public short readShort() throws IOException {
+    checkOperation();
+    return delegate.readShort();
   }
 
   /// Reset the operation count to zero

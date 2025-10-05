@@ -360,6 +360,13 @@ class MemoryMappedFile implements FileOperations {
   }
 
   @Override
+  public short readShort() throws IOException {
+    byte[] bytes = new byte[2];
+    readFully(bytes);
+    return ByteBuffer.wrap(bytes).getShort();
+  }
+
+  @Override
   public int readInt() throws IOException {
     byte[] bytes = new byte[4];
     readFully(bytes);
@@ -371,6 +378,13 @@ class MemoryMappedFile implements FileOperations {
     byte[] bytes = new byte[8];
     readFully(bytes);
     return ByteBuffer.wrap(bytes).getLong();
+  }
+
+  @Override
+  public void writeShort(short v) throws IOException {
+    byte[] bytes = new byte[2];
+    ByteBuffer.wrap(bytes).putShort(v);
+    write(bytes);
   }
 
   @Override

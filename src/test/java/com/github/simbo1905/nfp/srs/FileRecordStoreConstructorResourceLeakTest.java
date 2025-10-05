@@ -73,13 +73,13 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
-      // Corrupt the record count to be much higher than actual
+      // Truncate the file to make it too small for the claimed records
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(5); // numRecords position in new format
-        raf.writeInt(100); // Claim 100 records when we only have 1
+        // Truncate to just the header size + minimal data, not enough for actual records
+        raf.setLength(50); // Much smaller than needed for even 1 record
       }
 
-      logger.log(Level.FINE, "Attempting to open store with file too small for claimed records...");
+      logger.log(Level.FINE, "Attempting to open store with truncated file...");
 
       // This should fail with IOException due to file size validation
       try (FileRecordStore store =

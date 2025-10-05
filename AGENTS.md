@@ -105,22 +105,33 @@ perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var
 
 ## File Format Specification and Validation
 
-### File Format Structure
+### File Format Structure (v2 - Short Key Length)
 
 | Offset | Size (bytes) | Field | Description | Validation |
 |--------|-------------|--------|-------------|------------|
 | 0 | 4 | Magic Number | `0xBEEBBEEB` - File format identifier | Must equal `0xBEEBBEEB` or throw `IllegalStateException` |
-| 4 | 1 | Key Length | Maximum key length (1-252) | Range validated, must match constructor parameter |
-| 5 | 4 | Record Count | Number of records in store | Must be non-negative, validated against file size |
-| 9 | 8 | Data Start Ptr | File offset to start of data region | Must be ≥ header size, validated against file size |
-| 17 | - | Index Region | Record headers and keys | Size = `recordCount * (keyLength + 25)` |
+| 4 | 2 | Key Length | Maximum key length (1-32763) | Range validated, must match constructor parameter |
+| 6 | 4 | Record Count | Number of records in store | Must be non-negative, validated against file size |
+| 10 | 8 | Data Start Ptr | File offset to start of data region | Must be ≥ header size, validated against file size |
+| 18 | - | Index Region | Record headers and keys | Size = `recordCount * (keyLength + 25)` |
 | Data Start Ptr | - | Data Region | Record data with length prefixes | Each record: 4-byte length + data + optional CRC32 |
+
+**Note**: Upgraded from 1-byte to 2-byte key length field to support SHA256/SHA512 hashes (32-64 bytes) and larger keys up to 32KB.
+
+### SSD Optimized Defaults
+
+The store is optimized for modern SSD performance characteristics:
+
+- **Default Key Length**: 128 bytes (supports SHA256/SHA512 hashes)
+- **Memory Mapping**: Enabled by default (reduces write amplification)
+- **Pre-allocation**: Increased default preallocated records for better sequential performance
+- **CRC32**: Enabled by default (SSDs handle checksums efficiently)
 
 ### Validation Checks
 
 1. **Magic Number Check**: First 4 bytes must be `0xBEEBBEEB`
    - **Failure**: `IllegalStateException` - "Invalid file format: File does not contain required magic number"
-2. **Key Length Validation**: Must be between 1-252 and match constructor parameter
+2. **Key Length Validation**: Must be between 1-32763 and match constructor parameter
    - **Failure**: `IllegalArgumentException` - "File has key length X but builder specified Y"
 3. **File Size Validation**: File must be large enough for claimed record count
    - **Failure**: `IOException` - "File too small for X records"

@@ -105,6 +105,15 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
   }
 
   /* (non-Javadoc)
+   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#readShort()
+   */
+  @Override
+  public short readShort() throws IOException {
+    wc.onWrite();
+    return file.readShort();
+  }
+
+  /* (non-Javadoc)
    * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#readInt()
    */
   @Override
@@ -120,6 +129,15 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
   public long readLong() throws IOException {
     wc.onWrite();
     return file.readLong();
+  }
+
+  /* (non-Javadoc)
+   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#writeShort(short)
+   */
+  @Override
+  public void writeShort(short v) throws IOException {
+    wc.onWrite();
+    file.writeShort(v);
   }
 
   /* (non-Javadoc)

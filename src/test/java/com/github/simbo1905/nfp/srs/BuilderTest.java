@@ -58,8 +58,9 @@ public class BuilderTest extends JulLoggingConfig {
       store.insertRecord(key, data);
     }
 
-    // Reopen existing store
-    try (FileRecordStore store = new FileRecordStore.Builder().path(dbPath).open()) {
+    // Reopen existing store with same key length
+    try (FileRecordStore store =
+        new FileRecordStore.Builder().path(dbPath).maxKeyLength(64).open()) {
 
       byte[] key = "existing".getBytes();
       byte[] retrieved = store.readRecordData(key);
@@ -103,8 +104,9 @@ public class BuilderTest extends JulLoggingConfig {
       store.insertRecord(("key1".getBytes()), "data1".getBytes());
     }
 
-    // Open read-only
-    try (FileRecordStore store = new FileRecordStore.Builder().path(dbPath).readOnly(true).open()) {
+    // Open read-only with same key length
+    try (FileRecordStore store =
+        new FileRecordStore.Builder().path(dbPath).maxKeyLength(64).readOnly(true).open()) {
 
       // Should be able to read
       byte[] data = store.readRecordData(("key1".getBytes()));

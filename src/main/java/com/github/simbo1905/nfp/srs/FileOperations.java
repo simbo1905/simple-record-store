@@ -36,9 +36,13 @@ interface FileOperations {
 
   byte readByte() throws IOException;
 
+  short readShort() throws IOException;
+
   int readInt() throws IOException;
 
   long readLong() throws IOException;
+
+  void writeShort(short v) throws IOException;
 
   void writeInt(int v) throws IOException;
 

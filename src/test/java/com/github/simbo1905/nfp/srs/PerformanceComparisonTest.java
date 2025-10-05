@@ -22,7 +22,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     // Test direct I/O
     long directStart = System.nanoTime();
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(directFile)
             .preallocatedRecords(10000)
             .disablePayloadCrc32(false)
@@ -39,7 +39,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     // Test memory-mapped I/O
     long mmapStart = System.nanoTime();
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(mmapFile)
             .preallocatedRecords(10000)
             .useMemoryMapping(true)
@@ -87,7 +87,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       // Test direct I/O updates
       Path path = directPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(10000)
               .disablePayloadCrc32(false)
@@ -100,7 +100,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
 
       long directStart = System.nanoTime();
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
@@ -115,7 +115,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       // Test memory-mapped I/O updates
       Path path1 = mmapPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path1)
               .preallocatedRecords(10000)
               .useMemoryMapping(true)
@@ -128,7 +128,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
 
       long mmapStart = System.nanoTime();
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path1)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)

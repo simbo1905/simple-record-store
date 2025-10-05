@@ -9,7 +9,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
-/// Tests for the FileRecordStore.Builder API.
+/// Tests for the FileRecordStoreBuilder API.
 /// This test class validates the new builder pattern before it exists.
 public class BuilderTest extends JulLoggingConfig {
 
@@ -21,7 +21,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Create new store with builder
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(dbPath)
             .preallocatedRecords(100)
             .maxKeyLength(64)
@@ -47,7 +47,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Create store with data
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(dbPath)
             .preallocatedRecords(100)
             .maxKeyLength(64)
@@ -60,7 +60,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Reopen existing store with same key length
     try (FileRecordStore store =
-        new FileRecordStore.Builder().path(dbPath).maxKeyLength(64).open()) {
+        new FileRecordStoreBuilder().path(dbPath).maxKeyLength(64).open()) {
 
       byte[] key = "existing".getBytes();
       byte[] retrieved = store.readRecordData(key);
@@ -72,7 +72,7 @@ public class BuilderTest extends JulLoggingConfig {
   public void testBuilderTempFile() throws IOException {
     // Create temporary store
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-", ".db")
             .preallocatedRecords(50)
             .maxKeyLength(32)
@@ -95,7 +95,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Create store with data
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(dbPath)
             .preallocatedRecords(100)
             .maxKeyLength(64)
@@ -106,7 +106,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Open read-only with same key length
     try (FileRecordStore store =
-        new FileRecordStore.Builder().path(dbPath).maxKeyLength(64).readOnly(true).open()) {
+        new FileRecordStoreBuilder().path(dbPath).maxKeyLength(64).readOnly(true).open()) {
 
       // Should be able to read
       byte[] data = store.readRecordData(("key1".getBytes()));
@@ -127,7 +127,7 @@ public class BuilderTest extends JulLoggingConfig {
     Path dbPath = tempFolder.newFile("defaults.db").toPath();
 
     // Open with minimal configuration
-    try (FileRecordStore store = new FileRecordStore.Builder().path(dbPath).open()) {
+    try (FileRecordStore store = new FileRecordStoreBuilder().path(dbPath).open()) {
 
       // Should work with default values
       byte[] key = "default".getBytes();
@@ -144,7 +144,7 @@ public class BuilderTest extends JulLoggingConfig {
     Path relativePath = Files.createTempFile("test-relative-", ".db");
     relativePath.toFile().deleteOnExit();
     try {
-      FileRecordStore store = new FileRecordStore.Builder().path(relativePath).open();
+      FileRecordStore store = new FileRecordStoreBuilder().path(relativePath).open();
 
       // Should work (relative paths are allowed)
       store.close();
@@ -155,7 +155,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Test with absolute path
     Path absolutePath = tempFolder.newFile("absolute.db").toPath();
-    try (FileRecordStore ignored = new FileRecordStore.Builder().path(absolutePath).open()) {
+    try (FileRecordStore ignored = new FileRecordStoreBuilder().path(absolutePath).open()) {
       // Should work
       assertTrue(Files.exists(absolutePath));
     }

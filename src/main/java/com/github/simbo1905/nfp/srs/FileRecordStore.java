@@ -1,6 +1,7 @@
 package com.github.simbo1905.nfp.srs;
 
 import static java.util.Optional.of;
+import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.AccessMode;
 
 import java.io.*;
 import java.nio.ByteBuffer;
@@ -23,31 +24,16 @@ import lombok.Synchronized;
 // access modes.
 public class FileRecordStore implements AutoCloseable {
 
+  private static final Logger logger = Logger.getLogger(FileRecordStore.class.getName());
   /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
   /// Placed at the start of every file to detect corruption and incompatible formats.
-  private static final int MAGIC_NUMBER = 0xBEEBBEEB;
+  static final int MAGIC_NUMBER = FileRecordStoreBuilder.MAGIC_NUMBER;
   /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
-  public static final int DEFAULT_MAX_KEY_LENGTH = 128;
+  public static final int DEFAULT_MAX_KEY_LENGTH = FileRecordStoreBuilder.DEFAULT_MAX_KEY_LENGTH;
   /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
-  public static final int MAX_KEY_LENGTH_THEORETICAL = Short.MAX_VALUE - Integer.BYTES;
-  private static final Logger logger = Logger.getLogger(FileRecordStore.class.getName());
+  public static final int MAX_KEY_LENGTH_THEORETICAL = FileRecordStoreBuilder.MAX_KEY_LENGTH_THEORETICAL;
   // Number of bytes in the record header.
   private static final int RECORD_HEADER_LENGTH = 20;
-  // File index to the magic number header.
-  private static final long MAGIC_NUMBER_HEADER_LOCATION = 0;
-  // File index to the key length header (after magic number).
-  private static final long KEY_LENGTH_HEADER_LOCATION = Integer.BYTES;
-  // File index to the num records header.
-  private static final long NUM_RECORDS_HEADER_LOCATION = Integer.BYTES + Short.BYTES;
-  // File index to the start of the data region beyond the index region
-  private static final long DATA_START_HEADER_LOCATION = Integer.BYTES + Short.BYTES + Integer.BYTES;
-  /// Total length in bytes of the global database headers:
-  /// 1. 4-byte magic number (0xBEEBBEEB) for file format validation
-  /// 2. 2-byte short stores the key length the file was created with. (This cannot
-  ///    be changed; copy into a new store to adjust the limit.)
-  /// 3. 4-byte int tracking the number of records.
-  /// 4. 8-byte long pointing to the start of the data region.
-  private static final int FILE_HEADERS_REGION_LENGTH = Integer.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
   // this is an unsigned 32 int
   private static final int CRC32_LENGTH = Integer.BYTES;
   /// System property name for configuring the maximum key length.
@@ -89,6 +75,15 @@ public class FileRecordStore implements AutoCloseable {
   /// Whether to allow header region expansion during operations
   private volatile boolean allowHeaderExpansion = true;
 
+  /// Expansion size in bytes for header region growth
+  final int preferredExpansionSize;
+
+  /// Block size in bytes for data alignment (must be power of 2)
+  final int preferredBlockSize;
+
+  /// Initial header region size in bytes
+  final int initialHeaderRegionSize;
+
   /// Store state tracking for proper lifecycle management
   enum StoreState {
     NEW, // Initial state - store created but not yet validated/opened
@@ -117,33 +112,10 @@ public class FileRecordStore implements AutoCloseable {
   // record movement to expand the index region.
   ///                            Set to 0 for testing to force movement on every insert.
   /// @param maxKeyLength        maximum key length in bytes
-  /// @param disablePayloadCrc32 if true, skips CRC32 on record values (keys and headers always
-  // protected)
-  /// @param useMemoryMapping    if true, use memory-mapped file access; does not affect write
-  // amplification
-  /// @throws IOException if file cannot be created or pre-allocation fails
-  /// Constructor for backward compatibility - defaults to byte array keys with defensive copying
-  @Deprecated
-  FileRecordStore(
-      File file,
-      int preallocatedRecords,
-      int maxKeyLength,
-      boolean disablePayloadCrc32,
-      boolean useMemoryMapping,
-      String accessMode)
-      throws IOException {
-    this(
-        file,
-        preallocatedRecords,
-        maxKeyLength,
-        disablePayloadCrc32,
-        useMemoryMapping,
-        accessMode,
-        KeyType.BYTE_ARRAY,
-        true);
-  }
-
-  FileRecordStore(
+  /// @param preferredExpansionSize expansion size in bytes for header region growth
+  /// @param preferredBlockSize  block size in bytes for data alignment (must be power of 2)
+  /// @param initialHeaderRegionSize initial header region size in bytes
+  public FileRecordStore(
       File file,
       int preallocatedRecords,
       int maxKeyLength,
@@ -151,7 +123,10 @@ public class FileRecordStore implements AutoCloseable {
       boolean useMemoryMapping,
       String accessMode,
       KeyType keyType,
-      boolean defensiveCopy)
+      boolean defensiveCopy,
+      int preferredExpansionSize,
+      int preferredBlockSize,
+      int initialHeaderRegionSize)
       throws IOException {
     try {
       // Validate maxKeyLength early
@@ -182,6 +157,20 @@ public class FileRecordStore implements AutoCloseable {
         this.readOnly = !"rw".equals(accessMode);
         this.keyType = keyType;
         this.defensiveCopy = defensiveCopy;
+        
+        // Validate and store sizing parameters
+        if (preferredExpansionSize <= 0) {
+          throw new IllegalArgumentException("preferredExpansionSize must be positive, got " + preferredExpansionSize);
+        }
+        if (preferredBlockSize <= 0 || (preferredBlockSize & (preferredBlockSize - 1)) != 0) {
+          throw new IllegalArgumentException("preferredBlockSize must be positive and power of 2, got " + preferredBlockSize);
+        }
+        if (initialHeaderRegionSize <= 0) {
+          throw new IllegalArgumentException("initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
+        }
+        this.preferredExpansionSize = preferredExpansionSize;
+        this.preferredBlockSize = preferredBlockSize;
+        this.initialHeaderRegionSize = initialHeaderRegionSize;
 
         // Validate UUID mode constraints
         if (keyType == KeyType.UUID && maxKeyLength != 16) {
@@ -194,13 +183,13 @@ public class FileRecordStore implements AutoCloseable {
 
         // Only set length for new files - don't overwrite existing data
         if (wasEmpty) {
-          raf.setLength(FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
+          raf.setLength(FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
         }
         this.fileOperations =
             useMemoryMapping ? new MemoryMappedFile(raf) : new RandomAccessFile(raf);
         this.filePath = file.toPath();
 
-        dataStartPtr = FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
+        dataStartPtr = FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
 
         // Initialize data structures before any file operations that might fail
         int numRecords = readNumRecordsHeader();
@@ -249,7 +238,7 @@ public class FileRecordStore implements AutoCloseable {
 
           // Validate file has minimum required size for existing records
           long requiredFileSize =
-              FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
+              FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
           if (fileOperations.length() < requiredFileSize) {
             throw new IOException(
                 String.format(
@@ -285,7 +274,7 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Writes the magic number header to the beginning of the fileOperations.
   private void writeMagicNumberHeader() throws IOException {
-    fileOperations.seek(MAGIC_NUMBER_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.MAGIC_NUMBER_HEADER_LOCATION);
     fileOperations.writeInt(MAGIC_NUMBER);
     logger.log(
         Level.FINEST, () -> String.format("Writing magic number header: 0x%08X", MAGIC_NUMBER));
@@ -293,7 +282,7 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Writes the max key length to the fileOperations (after magic number).
   private void writeKeyLengthHeader() throws IOException {
-    fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.KEY_LENGTH_HEADER_LOCATION);
     final var keyLength = (short) maxKeyLength;
     logger.log(
         Level.FINEST,
@@ -303,7 +292,7 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Reads the max key length from the fileOperations (after magic number).
   private int readKeyLengthHeader() throws IOException {
-    fileOperations.seek(KEY_LENGTH_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.KEY_LENGTH_HEADER_LOCATION);
     int keyLength = fileOperations.readShort() & 0xFFFF;
     logger.log(Level.FINEST, "Reading key length header: " + keyLength);
     return keyLength;
@@ -311,25 +300,25 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Writes the number of records header to the fileOperations.
   private void writeNumRecordsHeader(int numRecords) throws IOException {
-    fileOperations.seek(NUM_RECORDS_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.NUM_RECORDS_HEADER_LOCATION);
     fileOperations.writeInt(numRecords);
   }
 
   /// Reads the number of records header from the fileOperations.
   private int readNumRecordsHeader() throws IOException {
-    fileOperations.seek(NUM_RECORDS_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.NUM_RECORDS_HEADER_LOCATION);
     return fileOperations.readInt();
   }
 
   /// Writes the data start pointer header to the fileOperations.
   private void writeDataStartPtrHeader(long dataStartPtr) throws IOException {
-    fileOperations.seek(DATA_START_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.DATA_START_HEADER_LOCATION);
     fileOperations.writeLong(dataStartPtr);
   }
 
   /// Reads the data start pointer header from the fileOperations.
   private long readDataStartHeader() throws IOException {
-    fileOperations.seek(DATA_START_HEADER_LOCATION);
+    fileOperations.seek(FileRecordStoreBuilder.DATA_START_HEADER_LOCATION);
     return fileOperations.readLong();
   }
 
@@ -421,7 +410,7 @@ public class FileRecordStore implements AutoCloseable {
   /// Returns a file pointer in the index pointing to the first byte in the key
   /// located at the given index position.
   private long indexPositionToKeyFp(int pos) {
-    return FILE_HEADERS_REGION_LENGTH + ((long) indexEntryLength * pos);
+    return FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + ((long) indexEntryLength * pos);
   }
 
   private static String print(byte[] bytes) {
@@ -526,9 +515,9 @@ public class FileRecordStore implements AutoCloseable {
       @SuppressWarnings("SameParameterValue") Level level, String filename, boolean disableCrc)
       throws IOException {
     try (FileRecordStore recordFile =
-        new FileRecordStore.Builder()
+        FileRecordStore.Builder()
             .path(filename)
-            .accessMode(Builder.AccessMode.READ_ONLY)
+            .accessMode(AccessMode.READ_ONLY)
             .disablePayloadCrc32(disableCrc)
             .open()) {
       final var len = recordFile.getFileLength();
@@ -1620,356 +1609,14 @@ public class FileRecordStore implements AutoCloseable {
   /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
   /// Example usage:
   /// <pre>
-  /// FileRecordStore store = new FileRecordStore.Builder()
+  /// FileRecordStore store = new FileRecordStoreBuilder()
   ///     .path("/path/to/store.dat")
   ///     .maxKeyLength(128)
   ///     .useMemoryMapping(true)
   ///     .open();
   /// </pre>
-  public static class Builder {
-    private Path path;
-    private String tempFilePrefix;
-    private String tempFileSuffix;
-    private int preallocatedRecords = 1024;  // SSD optimized: pre-allocate for better sequential performance
-    private int maxKeyLength = DEFAULT_MAX_KEY_LENGTH;  // 128 bytes - optimized for SHA256/SHA512
-    private boolean disablePayloadCrc32 = false;  // SSD optimized: keep CRC32 enabled
-    private boolean useMemoryMapping = true;  // SSD optimized: enable by default
-    private AccessMode accessMode = AccessMode.READ_WRITE;
-    private KeyType keyType = KeyType.BYTE_ARRAY;
-    private boolean defensiveCopy = true;
-    private boolean allowInPlaceUpdates = true;
-    private boolean allowHeaderExpansion = true;
-
-    /// Sets the path for the database fileOperations.
-    ///
-    /// @param path the path to the database file
-    /// @return this builder for chaining
-    public Builder path(Path path) {
-      this.path = path;
-      return this;
-    }
-
-    // private boolean inMemory = false; // TODO: Implement in-memory store support (see GitHub
-    // issue #66)
-
-    /// Sets the path for the database file using a string.
-    /// The string will be converted to a Path and normalized.
-    ///
-    /// @param path the path string to the database file
-    /// @return this builder for chaining
-    public Builder path(String path) {
-      this.path = Paths.get(path).normalize();
-      return this;
-    }
-
-    /// Creates a temporary file for the database.
-    /// The file will be automatically deleted on JVM exit.
-    ///
-    /// @param prefix the prefix for the temporary file
-    /// @param suffix the suffix for the temporary file
-    /// @return this builder for chaining
-    public Builder tempFile(String prefix, String suffix) {
-      this.tempFilePrefix = prefix;
-      this.tempFileSuffix = suffix;
-      return this;
-    }
-
-    /// Sets the number of records to pre-allocate space for.
-    ///
-    /// @param preallocatedRecords the number of records to pre-allocate
-    /// @return this builder for chaining
-    public Builder preallocatedRecords(int preallocatedRecords) {
-      this.preallocatedRecords = preallocatedRecords;
-      return this;
-    }
-
-    /// Configures the store to use UUID keys (16-byte) for optimized UUID storage.
-    /// Sets maxKeyLength to 16 automatically and enables UUID-specific optimizations.
-    ///
-    /// @return this builder for chaining
-    public Builder uuidKeys() {
-      this.keyType = KeyType.UUID;
-      this.maxKeyLength = 16;
-      return this;
-    }
-
-    /// Configures the store to use byte array keys with specified maximum length.
-    /// This is the default mode if neither uuidKeys() nor byteArrayKeys() is called.
-    ///
-    /// @param maxKeyLength the maximum key length in bytes
-    /// @return this builder for chaining
-    public Builder byteArrayKeys(int maxKeyLength) {
-      this.keyType = KeyType.BYTE_ARRAY;
-      this.maxKeyLength = maxKeyLength;
-      return this;
-    }
-
-    /// Sets whether to use defensive copying for byte array keys.
-    /// When true (default), byte arrays are cloned before storage to prevent external mutation.
-    /// When false, zero-copy is used for performance-critical code with trusted callers.
-    ///
-    /// @param defensiveCopy true to enable defensive copying, false for zero-copy
-    /// @return this builder for chaining
-    public Builder defensiveCopy(boolean defensiveCopy) {
-      this.defensiveCopy = defensiveCopy;
-      return this;
-    }
-
-    /// Sets the maximum key length in bytes.
-    ///
-    /// @param maxKeyLength the maximum key length
-    /// @return this builder for chaining
-    public Builder maxKeyLength(int maxKeyLength) {
-      this.maxKeyLength = maxKeyLength;
-      return this;
-    }
-
-    /// Disables CRC32 checking for record payloads.
-    ///
-    /// @param disable true to disable CRC32, false to enable (default)
-    /// @return this builder for chaining
-    public Builder disablePayloadCrc32(boolean disable) {
-      this.disablePayloadCrc32 = disable;
-      return this;
-    }
-
-    /// Enables memory-mapped file access.
-    ///
-    /// @param useMemoryMapping true to enable memory mapping
-    /// @return this builder for chaining
-    public Builder useMemoryMapping(boolean useMemoryMapping) {
-      this.useMemoryMapping = useMemoryMapping;
-      return this;
-    }
-
-    /// Opens the store in read-only mode.
-    ///
-    /// @param readOnly true for read-only access
-    /// @return this builder for chaining
-    public Builder readOnly(boolean readOnly) {
-      this.accessMode = readOnly ? AccessMode.READ_ONLY : AccessMode.READ_WRITE;
-      return this;
-    }
-
-    /// Sets whether to allow header region expansion during operations.
-    /// When true (default), the header region can expand to accommodate more records.
-    /// When false, header expansion is disabled and operations will fail if pre-allocated
-    /// space is exceeded. This is useful for snapshotting to maintain stable memory layout.
-    ///
-    /// @param allow true to allow header expansion, false to disable it
-    /// @return this builder for chaining
-    public Builder allowHeaderExpansion(boolean allow) {
-      this.allowHeaderExpansion = allow;
-      return this;
-    }
-
-    /// Sets the access mode for the store.
-    ///
-    /// @param accessMode the access mode (READ_ONLY or READ_WRITE)
-    /// @return this builder for chaining
-    public Builder accessMode(AccessMode accessMode) {
-      this.accessMode = accessMode;
-      return this;
-    }
-
-    /// Sets whether to allow in-place updates for smaller records regardless of CRC32 setting.
-    /// When true (default), smaller records can be updated in-place even when CRC32 is disabled.
-    /// When false, smaller records will use the dual-write pattern (old behavior).
-    /// Same-size records can always be updated in-place regardless of this setting.
-    ///
-    /// @param allow true to allow in-place updates for smaller records, false to force dual-write
-    /// @return this builder for chaining
-    public Builder allowInPlaceUpdates(boolean allow) {
-      this.allowInPlaceUpdates = allow;
-      return this;
-    }
-
-    /// Opens the FileRecordStore.
-    /// Automatically detects whether to create a new database or open an existing one.
-    /// If tempFile is set, always creates a new temporary file.
-    ///
-    /// @return a new FileRecordStore instance
-    /// @throws IOException if the store cannot be opened
-    public FileRecordStore open() throws IOException {
-      if (tempFilePrefix != null && tempFileSuffix != null) {
-        // Create temporary file - always creates new
-        Path tempPath = Files.createTempFile(tempFilePrefix, tempFileSuffix);
-        tempPath.toFile().deleteOnExit();
-        return new FileRecordStore(
-            tempPath.toFile(),
-            preallocatedRecords,
-            maxKeyLength,
-            disablePayloadCrc32,
-            useMemoryMapping,
-            accessMode.getMode(),
-            keyType,
-            defensiveCopy);
-      }
-
-      if (path == null) {
-        throw new IllegalStateException("Either path or tempFile must be specified");
-      }
-
-      // AUTO-DETECTION LOGIC: Check if file exists and has valid headers
-      if (Files.exists(path)) {
-        // File exists - try to validate and open existing store
-        try {
-          // Check if it's a valid FileRecordStore file
-          boolean isValid = isValidFileRecordStore(path, maxKeyLength);
-          logger.log(Level.FINE, "File validation for " + path + ": " + isValid);
-
-          if (isValid) {
-            // Open existing - use preallocatedRecords=0 for existing files
-            return new FileRecordStore(
-                path.toFile(),
-                0,
-                maxKeyLength,
-                disablePayloadCrc32,
-                useMemoryMapping,
-                accessMode.getMode(),
-                keyType,
-                defensiveCopy);
-          } else {
-            // File exists but isn't a valid store - create new store (overwrite)
-            // This preserves backward compatibility with tests that expect overwrite behavior
-            return new FileRecordStore(
-                path.toFile(),
-                preallocatedRecords,
-                maxKeyLength,
-                disablePayloadCrc32,
-                useMemoryMapping,
-                accessMode.getMode(),
-                keyType,
-                defensiveCopy);
-          }
-        } catch (IOException e) {
-          // Can't read file - create new store (overwrite existing)
-          return new FileRecordStore(
-              path.toFile(),
-              preallocatedRecords,
-              maxKeyLength,
-              disablePayloadCrc32,
-              useMemoryMapping,
-              accessMode.getMode(),
-              keyType,
-              defensiveCopy);
-        }
-      } else {
-        // File doesn't exist - create new
-        return new FileRecordStore(
-            path.toFile(),
-            preallocatedRecords,
-            maxKeyLength,
-            disablePayloadCrc32,
-            useMemoryMapping,
-            accessMode.getMode(),
-            keyType,
-            defensiveCopy);
-      }
-    }
-
-    /// Validates that a file contains a valid FileRecordStore format.
-    /// Checks file size and header structure to determine if it's a valid store.
-    /// A valid store must have proper headers and key length matching expected value.
-    ///
-    /// @param path the path to validate
-    /// @param expectedMaxKeyLength the expected max key length for validation
-    /// @return true if the file appears to be a valid FileRecordStore
-    /// @throws IOException if the file cannot be read
-    private boolean isValidFileRecordStore(Path path, int expectedMaxKeyLength) throws IOException {
-      try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(path.toFile(), "r")) {
-        // Empty files are never valid stores
-        if (raf.length() == 0) {
-          logger.log(Level.FINE, "Validation failed: file is empty");
-          return false;
-        }
-
-        // Check if file has minimum required size for headers
-        if (raf.length() < FILE_HEADERS_REGION_LENGTH) {
-          logger.log(
-              Level.FINE,
-              "Validation failed: file too short ("
-                  + raf.length()
-                  + " < "
-                  + FILE_HEADERS_REGION_LENGTH
-                  + ")");
-          return false;
-        }
-
-        // First check the magic number to determine file format
-        raf.seek(0);
-        int magicNumber;
-        try {
-          magicNumber = raf.readInt();
-        } catch (EOFException e) {
-          logger.log(Level.FINE, "Validation failed: EOF reading magic number");
-          return false;
-        }
-
-        int keyLength;
-        int numRecords;
-
-        if (magicNumber == MAGIC_NUMBER) {
-          // New format with magic number
-          try {
-            raf.seek(KEY_LENGTH_HEADER_LOCATION);
-            keyLength = raf.readShort() & 0xFFFF;
-            raf.seek(NUM_RECORDS_HEADER_LOCATION);
-            numRecords = raf.readInt();
-          } catch (EOFException e) {
-            logger.log(Level.FINE, "Validation failed: EOF reading new format headers");
-            return false;
-          }
-        } else {
-          // Old format without magic number - reject it
-          logger.log(Level.FINE, "Validation failed: old format file without magic number");
-          return false;
-        }
-
-        // Validate key length
-        if (keyLength > MAX_KEY_LENGTH_THEORETICAL) {
-          logger.log(Level.FINE, "Validation failed: invalid key length " + keyLength);
-          return false;
-        }
-
-        // Validate that file's key length matches expected maxKeyLength
-        if (keyLength != expectedMaxKeyLength) {
-          logger.log(
-              Level.FINE,
-              "Validation failed: file key length "
-                  + keyLength
-                  + " does not match expected "
-                  + expectedMaxKeyLength);
-          return false;
-        }
-
-        // Validate number of records (no upper bound, only non-negative)
-        if (numRecords < 0) {
-          logger.log(Level.FINE, "Validation failed: negative numRecords " + numRecords);
-          return false;
-        }
-
-        return true;
-      }
-    }
-
-    /// Access mode for opening FileRecordStore instances
-    /// Access mode for opening a FileRecordStore.
-    public enum AccessMode {
-      /// Read-only access mode - files are opened for reading only.
-      READ_ONLY("r"),
-      /// Read-write access mode - files can be read and modified.
-      READ_WRITE("rw");
-
-      private final String mode;
-
-      AccessMode(String mode) {
-        this.mode = mode;
-      }
-
-      String getMode() {
-        return mode;
-      }
-    }
+  public static FileRecordStoreBuilder Builder() {
+    return new FileRecordStoreBuilder();
   }
+
 }

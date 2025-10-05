@@ -22,7 +22,21 @@ class RecordHeader {
   /*
    * Number of bytes of data that this record can hold (4 bytes).
    */
-  @Setter @Getter int dataCapacity;
+  int dataCapacity;
+
+  /*
+   * Explicit getter for dataCapacity to ensure Lombok compatibility.
+   */
+  public int getDataCapacity() {
+    return dataCapacity;
+  }
+
+  /*
+   * Explicit setter for dataCapacity to ensure Lombok compatibility.
+   */
+  public void setDataCapacity(int dataCapacity) {
+    this.dataCapacity = dataCapacity;
+  }
 
   /*
    * Indicates this header's position in the file index.

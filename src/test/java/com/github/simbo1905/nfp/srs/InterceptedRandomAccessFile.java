@@ -109,7 +109,7 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
    */
   @Override
   public short readShort() throws IOException {
-    wc.onWrite();
+    wc.onRead();
     return file.readShort();
   }
 

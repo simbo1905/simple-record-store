@@ -60,23 +60,33 @@
 
 ### maxKeyLength Enforcement
 The `maxKeyLength` parameter is **fundamental and enforced**:
-- Must be between 1 and 252 bytes (validated with `Objects.requireNonNull` and range check)
+- Must be between 1 and 32763 bytes (Short.MAX_VALUE - 4 for CRC32 overhead)
 - Files store their `maxKeyLength` in the header with magic number validation permanently
-- File format: 4-byte magic number (0xBEEBBEEB) followed by 1-byte key length
+- File format: 4-byte magic number (0xBEEBBEEB) followed by 2-byte key length (upgraded from 1-byte)
 - When opening existing files, you **must** use the same `maxKeyLength` that was used to create the file
 - Different `maxKeyLength` values will throw `IllegalArgumentException`
 - Invalid magic number throws `IllegalStateException` indicating corrupted or incompatible file
 - This prevents data corruption and maintains file format integrity
+- **Constructor Requirement**: `maxKeyLength` is now required - no default value provided
 - If you need different key lengths, create a new database and migrate data
 
+### Constructor Requirements (Post PR #86)
+The FileRecordStore constructor now requires explicit sizing parameters:
+- **preferredExpansionSize**: Expansion size in bytes for header region growth
+- **preferredBlockSize**: Block size in bytes for data alignment (must be power of 2)
+- **initialHeaderRegionSize**: Initial header region size in bytes
+- **maxKeyLength**: Required parameter - no default value
+
+These parameters replace the previous default-based approach with explicit sizing hints that the builder computes based on user-friendly KiB/MiB inputs.
+
 ## Build Output Analysis
-- Always redirect compile output to a file, then use `tail` and `rg` to analyze errors systematically
+- Always redirect compile output to a file in `/tmp`, then use `tail` and `rg` to analyze errors systematically
 - Never filter expected errors - analyze the complete output to understand all issues
 - Use this pattern for systematic error analysis:
 ```shell
-mvn test-compile > compile.log 2>&1; tail -50 compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" compile.log
+mvn test-compile > /tmp/compile.log 2>&1; tail -50 /tmp/compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" /tmp/compile.log
 ```
-- Overwrite a single temp file (`compile.log`) rather than creating multiple log files
+- Overwrite a single temp file (`/tmp/compile.log`) rather than creating multiple log files in PWD
 
 ## Code Formatting Requirements (Spotless)
 - **CRITICAL**: All code changes must comply with Google Java Format enforced by Spotless
@@ -91,6 +101,21 @@ mvn test-compile > compile.log 2>&1; tail -50 compile.log; echo "=== FULL ERRORS
 - Builder should automatically handle file existence validation and appropriate constructor selection
 - Provide fluent API that eliminates user confusion about create vs open semantics
 - Credit MVStore inspiration in javadoc: `/// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.`
+
+### Builder Sizing Hints (Post PR #86)
+The builder provides user-friendly sizing hints that are converted to constructor parameters:
+- **hintInitialKeyCount(int)**: Number of initial keys (converted to initial header region size)
+- **hintPreferredBlockSize(int)**: Block size in KiB (must be power of 2, converted to bytes)
+- **hintPreferredExpandSize(int)**: Expansion size in MiB (converted to bytes)
+- **maxKeyLength(int)**: Required parameter - no default, must be 1-32763 bytes
+
+The builder performs these conversions and alignments:
+1. Converts KiB/MiB inputs to bytes for constructor
+2. Rounds key length + 4-byte CRC up to 8-byte boundaries for alignment
+3. Computes optimal initial header region size based on key count and aligned key length
+4. Validates block size is power of 2
+
+Implementation ensures SSD-optimized defaults while giving users control over memory layout.
 
 ## Use Modern CLI Tools When Available
 
@@ -150,3 +175,7 @@ The store is optimized for modern SSD performance characteristics:
 - All logging must use appropriate levels: FINE for normal debugging, FINEST for detailed tracing
 - System properties control visibility - never remove logging to "clean up" output
 - Deleting logging lines is considered a destructive act that harms future debugging
+
+## Documentation Is Critical And Is A Stop The World Requirement
+
+If I want a GitHub issue, or an update to docs, or anything else of a "write that down" then you MUST do that IMMEDIATELY. You MUST NOT say "let me finish x" as I may be telling you as the laptop we are on is about to shutdown or that you are about to enter compaction and forget. We do Spec Driven Development and Readme Driven Development and we document first and code second. 

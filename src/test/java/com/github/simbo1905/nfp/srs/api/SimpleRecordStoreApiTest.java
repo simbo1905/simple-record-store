@@ -57,7 +57,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   public void testInsertOneRecordMapEntry() throws Exception {
     // given
     recordsFile =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
             .preallocatedRecords(initialSize)
             .open();
@@ -91,9 +91,9 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // then
     recordsFile =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
             .open();
     final var updated = this.recordsFile.readRecordData(uuid.getBytes());
     Assert.assertEquals("updated", new String(updated));
@@ -108,7 +108,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 1: Default byte array keys
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-default-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-default-", ".db").open()) {
       Assert.assertNotNull("Store should be created", store);
       Assert.assertTrue("Store should be empty initially", store.isEmpty());
       Assert.assertEquals("Should have 0 records", 0, store.size());
@@ -121,7 +121,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 2: UUID keys mode
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-uuid-", ".db").uuidKeys().open()) {
+        new FileRecordStoreBuilder().tempFile("test-uuid-", ".db").uuidKeys().open()) {
       Assert.assertNotNull("UUID store should be created", store);
 
       UUID uuidKey = UUID.randomUUID();
@@ -139,14 +139,14 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     // Test 3: Read-only mode
     Path readOnlyPath = Files.createTempFile("test-readonly-", ".db");
     readOnlyPath.toFile().deleteOnExit();
-    try (FileRecordStore writeStore = new FileRecordStore.Builder().path(readOnlyPath).open()) {
+    try (FileRecordStore writeStore = new FileRecordStoreBuilder().path(readOnlyPath).open()) {
       writeStore.insertRecord("key1".getBytes(), "value1".getBytes());
     }
 
     try (FileRecordStore readStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(readOnlyPath)
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
             .open()) {
       Assert.assertTrue(
           "Should be able to read in read-only mode", readStore.recordExists("key1".getBytes()));
@@ -161,7 +161,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 4: With/without CRC32 validation
     try (FileRecordStore storeWithCrc =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-crc-", ".db")
             .disablePayloadCrc32(false)
             .open()) {
@@ -173,7 +173,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     }
 
     try (FileRecordStore storeNoCrc =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-no-crc-", ".db")
             .disablePayloadCrc32(true)
             .open()) {
@@ -186,14 +186,14 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 5: Memory-mapped vs direct I/O
     try (FileRecordStore mmapStore =
-        new FileRecordStore.Builder().tempFile("test-mmap-", ".db").useMemoryMapping(true).open()) {
+        new FileRecordStoreBuilder().tempFile("test-mmap-", ".db").useMemoryMapping(true).open()) {
       mmapStore.insertRecord("mmap-key".getBytes(), "mmap-value".getBytes());
       Assert.assertTrue(
           "Memory-mapped store should work", mmapStore.recordExists("mmap-key".getBytes()));
     }
 
     try (FileRecordStore directStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-direct-", ".db")
             .useMemoryMapping(false)
             .open()) {
@@ -204,7 +204,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 6: Different preallocated record counts
     try (FileRecordStore preallocStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-prealloc-", ".db")
             .preallocatedRecords(100)
             .open()) {
@@ -219,7 +219,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 7: Various max key lengths
     try (FileRecordStore shortKeyStore =
-        new FileRecordStore.Builder().tempFile("test-short-", ".db").maxKeyLength(16).open()) {
+        new FileRecordStoreBuilder().tempFile("test-short-", ".db").maxKeyLength(16).open()) {
       Assert.assertEquals("Max key length should be 16", 16, shortKeyStore.maxKeyLength);
 
       byte[] shortKey = "1234567890123456".getBytes(); // exactly 16 bytes
@@ -229,7 +229,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test 8: Temporary file stores
     try (FileRecordStore tempStore =
-        new FileRecordStore.Builder().tempFile("test-temp-", ".temp").open()) {
+        new FileRecordStoreBuilder().tempFile("test-temp-", ".temp").open()) {
       Assert.assertNotNull("Temporary store should be created", tempStore);
       tempStore.insertRecord("temp-key".getBytes(), "temp-value".getBytes());
       Assert.assertTrue(
@@ -245,7 +245,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with byte array keys
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-crud-byte-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-crud-byte-", ".db").open()) {
 
       // Insert operations
       byte[] key1 = "crud-key-1".getBytes();
@@ -282,7 +282,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with UUID keys
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-crud-uuid-", ".db").uuidKeys().open()) {
+        new FileRecordStoreBuilder().tempFile("test-crud-uuid-", ".db").uuidKeys().open()) {
 
       UUID uuid1 = UUID.randomUUID();
       UUID uuid2 = UUID.randomUUID();
@@ -321,7 +321,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     LOGGER.info("=== Testing Query Operations ===");
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-query-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-query-", ".db").open()) {
 
       // Test isEmpty()
       Assert.assertTrue("Store should be empty initially", store.isEmpty());
@@ -356,7 +356,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test uuidKeys() iteration
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-query-uuid-", ".db").uuidKeys().open()) {
+        new FileRecordStoreBuilder().tempFile("test-query-uuid-", ".db").uuidKeys().open()) {
 
       UUID uuid1 = UUID.randomUUID();
       UUID uuid2 = UUID.randomUUID();
@@ -384,7 +384,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     persistencePath.toFile().deleteOnExit();
 
     // Create and populate store
-    try (FileRecordStore store = new FileRecordStore.Builder().path(persistencePath).open()) {
+    try (FileRecordStore store = new FileRecordStoreBuilder().path(persistencePath).open()) {
 
       store.insertRecord("persist-key-1".getBytes(), "persist-value-1".getBytes());
       store.insertRecord("persist-key-2".getBytes(), "persist-value-2".getBytes());
@@ -400,7 +400,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Reopen store to verify persistence
     try (FileRecordStore reopenedStore =
-        new FileRecordStore.Builder().path(persistencePath).open()) {
+        new FileRecordStoreBuilder().path(persistencePath).open()) {
 
       Assert.assertEquals("Should have 2 records after reopen", 2, reopenedStore.size());
       Assert.assertTrue(
@@ -428,7 +428,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with keys at maximum allowed length
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-max-key-", ".db").maxKeyLength(248).open()) {
+        new FileRecordStoreBuilder().tempFile("test-max-key-", ".db").maxKeyLength(248).open()) {
 
       byte[] maxKey = new byte[248];
       for (int i = 0; i < 248; i++) {
@@ -445,7 +445,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with empty values and large values
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-values-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-values-", ".db").open()) {
 
       // Empty value
       byte[] emptyValue = new byte[0];
@@ -463,7 +463,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test operations on closed stores
     FileRecordStore closedStore =
-        new FileRecordStore.Builder().tempFile("test-closed-", ".db").open();
+        new FileRecordStoreBuilder().tempFile("test-closed-", ".db").open();
     closedStore.insertRecord("test-key".getBytes(), "test-value".getBytes());
     closedStore.close();
 
@@ -485,14 +485,14 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     // Test modifying read-only stores
     Path readOnlyPath = Files.createTempFile("test-readonly-error-", ".db");
     readOnlyPath.toFile().deleteOnExit();
-    try (FileRecordStore writeStore = new FileRecordStore.Builder().path(readOnlyPath).open()) {
+    try (FileRecordStore writeStore = new FileRecordStoreBuilder().path(readOnlyPath).open()) {
       writeStore.insertRecord("readonly-test-key".getBytes(), "readonly-test-value".getBytes());
     }
 
     try (FileRecordStore readStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(readOnlyPath)
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
             .open()) {
 
       try {
@@ -506,9 +506,9 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
       // Create a new read-only store for each operation to avoid state issues
       try (FileRecordStore readStore2 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(readOnlyPath)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .open()) {
         try {
           readStore2.updateRecord("readonly-test-key".getBytes(), "updated-value".getBytes());
@@ -519,9 +519,9 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
       }
 
       try (FileRecordStore readStore3 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(readOnlyPath)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .open()) {
         try {
           readStore3.deleteRecord("readonly-test-key".getBytes());
@@ -534,7 +534,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test inserting duplicate keys
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-duplicate-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-duplicate-", ".db").open()) {
 
       byte[] duplicateKey = "duplicate-test-key".getBytes();
       store.insertRecord(duplicateKey, "first-value".getBytes());
@@ -554,7 +554,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test non-existent key read
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-nonexistent-read-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-nonexistent-read-", ".db").open()) {
 
       byte[] nonExistentKey = "nonexistent-key".getBytes();
 
@@ -568,7 +568,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test non-existent key update
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-nonexistent-update-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-nonexistent-update-", ".db").open()) {
 
       byte[] nonExistentKey = "nonexistent-key".getBytes();
 
@@ -582,7 +582,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test non-existent key delete
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-nonexistent-delete-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-nonexistent-delete-", ".db").open()) {
 
       byte[] nonExistentKey = "nonexistent-key".getBytes();
 
@@ -596,7 +596,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test UUID operations on byte array mode stores
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-uuid-wrong-mode-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("test-uuid-wrong-mode-", ".db").open()) {
 
       UUID uuid = UUID.randomUUID();
 
@@ -625,7 +625,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   public void testStateManagement() throws Exception {
     LOGGER.info("=== Testing State Management ===");
 
-    FileRecordStore store = new FileRecordStore.Builder().tempFile("test-state-", ".db").open();
+    FileRecordStore store = new FileRecordStoreBuilder().tempFile("test-state-", ".db").open();
 
     try {
       // Test initial state
@@ -665,7 +665,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with defensive copying (default)
     try (FileRecordStore defensiveStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-defensive-", ".db")
             .defensiveCopy(true)
             .open()) {
@@ -688,7 +688,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // Test with zero copy
     try (FileRecordStore zeroCopyStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-zero-copy-", ".db")
             .defensiveCopy(false)
             .open()) {
@@ -710,7 +710,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
 
     // This test exercises every public method to ensure complete coverage
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-comprehensive-", ".db")
             .preallocatedRecords(10)
             .maxKeyLength(32)
@@ -761,7 +761,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
     }
 
     try (FileRecordStore uuidStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-comprehensive-uuid-", ".db")
             .uuidKeys()
             .open()) {
@@ -815,7 +815,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         Integer.valueOf(FileRecordStore.MAX_KEY_LENGTH_THEORETICAL).toString());
     // create a store with this key
     recordsFile =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
             .preallocatedRecords(initialSize)
             .open();
@@ -831,9 +831,9 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         String.format("%s.%s", FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY),
         Integer.valueOf(FileRecordStore.DEFAULT_MAX_KEY_LENGTH).toString());
     recordsFile =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
             .open();
 
     String put0 = new String(recordsFile.readRecordData(longestKey.getBytes()));

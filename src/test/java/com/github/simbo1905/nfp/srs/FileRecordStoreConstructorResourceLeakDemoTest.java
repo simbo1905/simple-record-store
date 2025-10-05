@@ -5,6 +5,7 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Level;
+import com.github.simbo1905.nfp.srs.KeyType;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -20,7 +21,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     try {
       // Create a valid store first, then corrupt the key length to trigger validation failure
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -44,7 +45,12 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                 64, // maxKeyLength (expects 64, file has 32)
                 false, // disablePayloadCrc32
                 false, // useMemoryMapping
-                "rw"); // accessMode
+                "rw", // accessMode
+                KeyType.BYTE_ARRAY, // keyType
+                true, // defensiveCopy
+                1024*1024, // preferredExpansionSize
+                4*1024, // preferredBlockSize
+                64*1024); // initialHeaderRegionSize
 
         Assert.fail("Should have thrown IllegalArgumentException");
       } catch (IllegalArgumentException e) {
@@ -80,7 +86,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     try {
       // Create a valid store first, then corrupt it to fail validation
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -102,7 +108,12 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                 64, // maxKeyLength
                 false, // disablePayloadCrc32
                 false, // useMemoryMapping
-                "rw"); // accessMode
+                "rw", // accessMode
+                KeyType.BYTE_ARRAY, // keyType
+                true, // defensiveCopy
+                1024*1024, // preferredExpansionSize
+                4*1024, // preferredBlockSize
+                64*1024); // initialHeaderRegionSize
 
         Assert.fail("Should have thrown IOException for file size validation");
       } catch (IOException e) {
@@ -120,7 +131,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
             // Create valid store first
             try (FileRecordStore store =
-                new FileRecordStore.Builder().path(testFile).maxKeyLength(64).open()) {
+                new FileRecordStoreBuilder().path(testFile).maxKeyLength(64).open()) {
               store.insertRecord("testkey".getBytes(), "testdata".getBytes());
             }
 
@@ -132,7 +143,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
             try {
               FileRecordStore store =
-                  new FileRecordStore(testFile.toFile(), 0, 64, false, false, "rw");
+                  new FileRecordStore(testFile.toFile(), 0, 64, false, false, "rw", 
+                                     KeyType.BYTE_ARRAY, true, 1024*1024, 4*1024, 64*1024);
             } catch (IOException expected) {
               // Expected - validation should fail
             }
@@ -162,7 +174,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     try {
       // Create a valid store to understand constructor flow
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         // Store is empty but valid
       }
 
@@ -176,7 +188,12 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
               64, // maxKeyLength
               false, // disablePayloadCrc32
               false, // useMemoryMapping
-              "rw")) { // accessMode
+              "rw", // accessMode
+              KeyType.BYTE_ARRAY, // keyType
+              true, // defensiveCopy
+              1024*1024, // preferredExpansionSize
+              4*1024, // preferredBlockSize
+              64*1024)) { // initialHeaderRegionSize
 
         logger.log(Level.FINE, "✓ Store opened successfully - constructor flow completed");
 
@@ -201,7 +218,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     try {
       // Create a store with specific parameters
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64)
               .preallocatedRecords(10)
@@ -214,7 +231,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
       logger.log(Level.FINE, "Reopening store with different preallocatedRecords parameter...");
 
       try (FileRecordStore store2 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64) // Same as file
               .preallocatedRecords(5) // Different from original

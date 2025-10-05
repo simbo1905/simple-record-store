@@ -25,7 +25,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
             + MAX_KEY_LENGTH
             + ", disablePayloadCrc32=false, useMemoryMapping=true");
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("mydb-", ".tmp")
             .preallocatedRecords(128)
             .maxKeyLength(MAX_KEY_LENGTH)
@@ -79,7 +79,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
             + MAX_KEY_LENGTH
             + ", disablePayloadCrc32=false, useMemoryMapping=true");
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempFilePath)
             .maxKeyLength(MAX_KEY_LENGTH)
             .disablePayloadCrc32(false)
@@ -97,7 +97,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
   public void batchOperationsWithControlledSync() throws IOException {
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("mydb-batch-", ".tmp")
             .preallocatedRecords(50000) // pre-allocate 50KB to reduce remapping
             .maxKeyLength(64) // max key length
@@ -125,7 +125,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
     // For update-heavy workloads, memory-mapping provides significant benefits
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("mydb-update-", ".tmp")
             .preallocatedRecords(128)
             .maxKeyLength(MAX_KEY_LENGTH)
@@ -158,7 +158,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
     // Create initial data with direct I/O
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("example-mixed-", ".db")
             .preallocatedRecords(10000)
             .disablePayloadCrc32(false)
@@ -169,7 +169,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
     // Open with memory-mapping for batch updates
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempFile)
             .disablePayloadCrc32(false)
             .useMemoryMapping(true)
@@ -180,7 +180,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
 
     // Open with direct I/O again for verification
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempFile)
             .disablePayloadCrc32(false)
             .useMemoryMapping(false)

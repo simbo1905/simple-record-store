@@ -124,10 +124,10 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                 // Try to reopen and verify
                 try {
                   FileRecordStore reopenedStore =
-                      new FileRecordStore.Builder()
+                      new FileRecordStoreBuilder()
                           .path(tempFile)
                           .maxKeyLength(64) // Must match the key length used to create the file
-                          .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+                          .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
                           .disablePayloadCrc32(false)
                           .open();
 
@@ -188,13 +188,13 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
 
     // Create FileRecordStore with custom operations using Builder for proper validation
     FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempFile)
             .preallocatedRecords(10)
             .maxKeyLength(64)
             .disablePayloadCrc32(false)
             .useMemoryMapping(false)
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_WRITE)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_WRITE)
             .open();
 
     // Replace the file operations with our halt wrapper

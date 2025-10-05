@@ -21,7 +21,6 @@ import java.util.concurrent.atomic.AtomicLong;
 // second.
 
 /// High-performance UUID generator that creates time-ordered UUIDs suitable for database keys.
-@SuppressWarnings("unused")
 public class UUIDGenerator {
   /// A trick from the core UUID class is to use holder class to defer initialization until needed.
   private static class LazyRandom {
@@ -50,7 +49,6 @@ public class UUIDGenerator {
   /// Within a given JVM we will have good time based ordering.
   ///
   /// @return A new UUID with time-based ordering and global uniqueness.
-  @SuppressWarnings("unused")
   public static UUID generateUUID() {
     // As the most significant bits use ms time then counter for sub-millisecond ordering.
     long msb = epochTimeThenCounterMsb();

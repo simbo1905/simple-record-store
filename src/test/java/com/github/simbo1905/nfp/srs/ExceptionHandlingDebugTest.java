@@ -103,7 +103,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         Level.FINE,
         () -> String.format("Creating store with exception at operation %d", throwAtOperation));
 
-    FileRecordStore.Builder builder = new FileRecordStore.Builder().tempFile("debug-test-", ".db");
+    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("debug-test-", ".db");
 
     FileRecordStore baseStore = builder.open();
 

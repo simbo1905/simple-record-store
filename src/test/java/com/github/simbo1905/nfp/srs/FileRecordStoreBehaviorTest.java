@@ -102,7 +102,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     // Create normal store without exception injection
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("success-test-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("success-test-", ".db").open()) {
       byte[] key = "testkey".getBytes();
       byte[] data = "testdata".getBytes();
 
@@ -178,7 +178,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
 
           // Try to reopen and check what data is recoverable
           try {
-            FileRecordStore reopenedStore = new FileRecordStore.Builder().path(tempFile).open();
+            FileRecordStore reopenedStore = new FileRecordStoreBuilder().path(tempFile).open();
 
             // Check if any data was written before the exception
             if (reopenedStore.recordExists(key)) {
@@ -210,7 +210,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
   private int discoverOperationCount() throws Exception {
     logger.log(Level.FINE, "=== Discovering operation count ===");
 
-    FileRecordStore.Builder builder = new FileRecordStore.Builder().tempFile("discovery-", ".db");
+    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("discovery-", ".db");
 
     // Create base store
     FileRecordStore baseStore = builder.open();
@@ -250,8 +250,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         Level.FINE,
         () -> String.format("Creating store with exception at operation %d", throwAtOperation));
 
-    FileRecordStore.Builder builder =
-        new FileRecordStore.Builder().tempFile("exception-test-", ".db");
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("exception-test-", ".db");
 
     FileRecordStore baseStore = builder.open();
 
@@ -280,7 +280,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
                 "Creating store with exception at operation %d for path %s",
                 throwAtOperation, filePath));
 
-    FileRecordStore store = new FileRecordStore.Builder().path(filePath).open();
+    FileRecordStore store = new FileRecordStoreBuilder().path(filePath).open();
 
     java.io.RandomAccessFile raf = new java.io.RandomAccessFile(store.getFilePath().toFile(), "rw");
     RandomAccessFile directOps = new RandomAccessFile(raf);

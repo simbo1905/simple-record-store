@@ -20,7 +20,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
       // Create a new store with memory mapping enabled
       Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
@@ -47,9 +47,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen without memory mapping to verify data persisted
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -67,7 +67,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     try {
       Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
@@ -91,9 +91,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen and verify persistence
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
               .open()) {
@@ -114,7 +114,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
     try {
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(10000)
               .useMemoryMapping(true)
@@ -151,7 +151,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
       final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
 
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
@@ -176,7 +176,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
     try {
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
@@ -195,9 +195,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Verify persistence after close
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -217,7 +217,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
       // Create with direct I/O
       Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .disablePayloadCrc32(false)
@@ -229,7 +229,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Open with memory-mapped I/O and add more data
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
@@ -245,9 +245,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Open with direct I/O again and verify
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -265,7 +265,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     try {
       // Start with small initial size
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(100)
               .useMemoryMapping(true)
@@ -306,7 +306,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
       // Write some data
       Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
@@ -321,9 +321,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen and verify - OS should have persisted the data
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -353,7 +353,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
@@ -372,9 +372,9 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Verify persistence
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {

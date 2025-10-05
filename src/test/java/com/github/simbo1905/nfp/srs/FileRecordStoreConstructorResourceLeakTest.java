@@ -19,7 +19,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     try {
       // Create a valid store first
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
       }
 
@@ -33,7 +33,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
       // This should fail with IllegalArgumentException
       try (FileRecordStore store2 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64) // Expect 64, but file has 32
               .open()) {
@@ -69,7 +69,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     try {
       // Create a valid store first, then corrupt it to have invalid record count
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -83,7 +83,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
       // This should fail with IOException due to file size validation
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown IOException");
       } catch (IOException e) {
         logger.log(Level.FINE, "✓ Got expected file size exception: " + e.getMessage());
@@ -113,7 +113,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     try {
       // Create a valid store first, then corrupt the record data
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
@@ -128,7 +128,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
 
       // This should fail during loadExistingIndex due to invalid CRC
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception during index loading");
       } catch (Exception e) {
         logger.log(

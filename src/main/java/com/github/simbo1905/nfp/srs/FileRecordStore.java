@@ -1173,7 +1173,7 @@ public class FileRecordStore implements AutoCloseable {
   /// Returns null if no free space is found.
   private RecordHeader findFreeRecord(int payloadLength) throws IOException {
     // FIFO deletes cause free space after the index.
-    long dataStart = readDataStartHeader();
+    long dataStart = dataStartPtr;
     long endIndexPtr = indexPositionToKeyFp(getNumRecords());
     // we prefer speed overs space so we leave space for the header for this insert plus one for
     // future use
@@ -1241,7 +1241,7 @@ public class FileRecordStore implements AutoCloseable {
       if (newRecord == null) {
         try {
           long currentFileLen = getFileLength();
-          long currentDataStart = readDataStartHeader();
+          long currentDataStart = dataStartPtr;
           int currentRecords = getNumRecords();
           final var logMessage = String.format("allocateRecord: CRITICAL - Still no space after expansion. Current file length=%d, dataStartPtr=%d, numRecords=%d", 
               currentFileLen, currentDataStart, currentRecords);
@@ -1644,7 +1644,6 @@ public class FileRecordStore implements AutoCloseable {
     
     // Check if we need to expand
     long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
-    long dataStartPtr = readDataStartHeader();
     long available = dataStartPtr - endIndexPtr - (2L * indexEntryLength);
     
     if (requiredPayloadLength <= available) {

@@ -1,60 +1,24 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- Core store code lives in `src/main/java/com/github/trex_paxos/srs`; keep new storage primitives beside `FileRecordStore` for discoverability.
-- Shared helpers (`ByteSequence`, `RandomAccessFileInterface`) sit in the same package so tests can exercise them without extra wiring.
-- Place unit and property tests in `src/test/java`, mirroring package names; keep generated Maven artefacts inside `target/` and out of version control.
-
-## Build, Test, and Development Commands
-- `mvn compile` — validates Lombok usage and Java 21 compatibility.
-- `mvn test` — runs the JUnit 4 suite, including crash-replay harnesses; execute before every push.
-- `mvn package` — builds the distributable JAR plus sources/javadoc for release validation.
-- `mvn clean deploy` — publishes snapshots to OSSRH; requires configured credentials and GPG keys.
-
 ## Coding Style & Naming Conventions
-- Use four-space indentation and brace placement as shown in `FileRecordStore.java`.
-- Keep packages lowercase with underscores, classes in UpperCamelCase, methods/fields in lowerCamelCase.
-- Lean on Lombok for boilerplate; avoid duplicating generated accessors or synchronization.
-- Encode keys deterministically; prefer `ByteSequence.stringToUtf8` over `String#getBytes` to prevent charset drift.
-
-## Testing Guidelines
-- New scenarios belong in `FileRecordStoreExceptionHandlingTest` or a sibling test class; name files `*Test` so Surefire picks them up.
-- All exception handling and persistence testing is covered by `FileRecordStoreExceptionHandlingTest` which includes:
-  - Comprehensive persistence verification after exceptions
-  - verifyStoreIntegrity() helper for data validation
-  - Enhanced scenario testing with persistence checks
-  - Behavior-based verification instead of internal state inspection
-- Crash-safety coverage uses the replay harness built into `FileRecordStoreExceptionHandlingTest`:
-  - `RecordsFileSimulatesDiskFailures` swaps the production `RandomAccessFile` for an `InterceptedRandomAccessFile` so every I/O call flows through a `WriteCallback`.
-  - `verifyWorkWithIOExceptions` first runs the scenario with a `StackCollectingWriteCallback` to capture the full sequence of file operations (stack traces trimmed once the call exits `com.github.simbo1905`).
-  - It then replays the exact same scenario once per recorded call, using `CrashAtWriteCallback` to throw an `IOException` at that call index. Each run mimics a crash right after the intercepted disk operation.
-  - After the induced failure, the test closes the write handle, reopens the file with a plain `FileRecordStore`, enumerates `keys()`, and calls `readRecordData` on every key. This forces the `CRC32` payload check mentioned in `README.md` and asserts `getNumRecords()` matches what is readable, flagging any divergence as corruption.
-  - The pattern is exercised across inserts, updates, deletes, compaction scenarios, and both narrow/padded payloads (see `string1k`) to brute-force every write ordering.
-- Any change that affects write ordering, fsync boundaries, or persistence metadata must be implemented in a crash-safe order and accompanied by updated replay tests.
-- Capture `java.util.logging` at `FINE`/`FINEST` when diagnosing failures; `TracePlayback` can rebuild a store from log traces for reproduction.
-- Run tests with custom log levels using: `-ea -Dcom.github.trex_paxos.srs.testLogLevel=FINEST` (or FINE, FINER, etc.)
+- Use `mvn spotless:check` and `apply` for formatting of files. 
 
 ## Commit & Pull Request Guidelines
 - Write present-tense, 72-character subjects (`Update pom.xml to require Java 21`); add context or links in the body when needed.
 - Reference related issues and describe crash-safety implications or new coverage in PR descriptions.
-- Include evidence of `mvn test` (and any targeted replay logs) before requesting review.
 - Rebase onto the latest mainline so CI reflects the final diff; attach screenshots only when they clarify tooling output.
-
-## Configuration & Logging Tips
-- Tune key length and padding with system properties such as `-Dcom.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH=128` to mirror production limits.
-- Enable `Level.FINEST` logging when investigating disk corruption; redact sensitive keys before sharing traces.
 
 ## Documentation Standards
 - Use JEP 467 documentation format with `///` triple-slash comments instead of traditional `/**` javadoc style
 - Place documentation on the line immediately above the element being documented
 - Example: `/// Returns the file path of this record store.` followed by `public Path getFilePath()`
 
-## Logging Standards
-- **CRITICAL**: Never add temporary INFO level logging for debugging purposes
-- Always use appropriate log levels: FINE for normal debugging, FINEST for detailed tracing
-- Use `JulLoggingConfig` system properties to control logging levels: `-Djava.util.logging.config.file=logging.properties`
-- Logging should be permanent and controlled via configuration, not added/removed from code
-- Adding temporary logging and then removing it is considered fraudulent practice
+### Unified Logging Workflow
+- Always run the test suite with `-Dcom.github.trex_paxos.srs.testLogLevel=FINEST` and redirect output to a single `/tmp` log file (overwrite the same file each run).
+- Inspect the log with `rg 'INFO|ERROR' /tmp/<logfile>` to verify every test emits the `@Before` INFO banner (see `src/test/java/com/github/simbo1905/nfp/srs/JulLoggingConfig.java`) and to spot failing tests and line numbers quickly.
+- Once failing tests are identified, reuse the same log file filtered with `rg 'INFO|ERROR|FINE'` to follow the execution path; `FINE` entries document method-level flow decisions.
+- Apply additional focused filters such as `rg 'INFO|ERROR|FINE|FINER'` or `rg 'INFO|ERROR|FINE|FINER|FINEST'` on that same file to zoom into deeper state transitions without rerunning the suite.
+- This single-run workflow lets you debug multiple tests at progressively finer granularity without regenerating logs.
 
 ### Comprehensive Debug Logging Guidelines
 
@@ -84,79 +48,16 @@ STATE updateRecordInternal: key=[0x01...0x20], old=RecordHeader[dp=160,dl=26,dc=
 8. **Debug helper methods**: Use `final` debug methods to encourage JIT inlining and reduce overhead when disabled
 9. **Never delete debug logging**: Once added, debug logging becomes permanent infrastructure for future debugging
 
-## Critical API Behavior
-
-### maxKeyLength Enforcement
-The `maxKeyLength` parameter is **fundamental and enforced**:
-- Must be between 1 and 32763 bytes (Short.MAX_VALUE - 4 for CRC32 overhead)
-- Files store their `maxKeyLength` in the header with magic number validation permanently
-- File format: 4-byte magic number (0xBEEBBEEB) followed by 2-byte key length (upgraded from 1-byte)
-- When opening existing files, you **must** use the same `maxKeyLength` that was used to create the file
-- Different `maxKeyLength` values will throw `IllegalArgumentException`
-- Invalid magic number throws `IllegalStateException` indicating corrupted or incompatible file
-- This prevents data corruption and maintains file format integrity
-- **Constructor Requirement**: `maxKeyLength` is now required - no default value provided
-- If you need different key lengths, create a new database and migrate data
-
-### Constructor Requirements (Post PR #86)
-The FileRecordStore constructor now requires explicit sizing parameters:
-- **preferredExpansionSize**: Expansion size in bytes for header region growth
-- **preferredBlockSize**: Block size in bytes for data alignment (must be power of 2)
-- **initialHeaderRegionSize**: Initial header region size in bytes
-- **maxKeyLength**: Required parameter - no default value
-
-These parameters replace the previous default-based approach with explicit sizing hints that the builder computes based on user-friendly KiB/MiB inputs.
-
-### Block Size Alignment Requirements
-When growing header space, we must always align by `preferredBlockSize` for SSD optimization:
-- **SSD Alignment**: Block size must be power of 2 (4 KiB, 8 KiB, 16 KiB, etc.)
-- **Header Expansion**: When `ensureIndexSpace` moves records, new positions must be `preferredBlockSize` aligned
-- **Data Region**: All data pointers must align to block boundaries for optimal SSD performance
-- **Default Values**: 4 KiB blocks provide good balance for most SSDs, 8 KiB+ for high-performance storage
-
 ## Build Output Analysis
 - Always redirect compile output to a file in `/tmp`, then use `tail` and `rg` to analyze errors systematically
 - Never filter expected errors - analyze the complete output to understand all issues
-- Use this pattern for systematic error analysis:
-```shell
-mvn test-compile > /tmp/compile.log 2>&1; tail -50 /tmp/compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" /tmp/compile.log
-```
 - **CRITICAL**: Use `2>&1` NOT `2>>1` - the latter is junk syntax that won't capture stderr properly
 - Overwrite a single temp file (`/tmp/compile.log`) rather than creating multiple log files in PWD
-
-## Code Formatting Requirements (Spotless)
-- **CRITICAL**: All code changes must comply with Google Java Format enforced by Spotless
-- **Before any commit**: Always run `mvn spotless:apply` to auto-format code to Google standards
-- **For large edits**: Run `mvn spotless:check` to verify formatting compliance before testing
-- **CI/CD**: Build will fail if code is not properly formatted - Spotless check runs automatically
-- **IDE Integration**: Configure your IDE to use Google Java Format to avoid manual fixes
-- **Never disable**: Do not disable or bypass Spotless formatting checks
-
-## API Design Patterns
-- Follow MVStore (H2 Database) builder pattern design for create vs open auto-detection
-- Builder should automatically handle file existence validation and appropriate constructor selection
-- Provide fluent API that eliminates user confusion about create vs open semantics
-- Credit MVStore inspiration in javadoc: `/// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.`
-
-### Builder Sizing Hints (Post PR #86)
-The builder provides user-friendly sizing hints that are converted to constructor parameters:
-- **hintInitialKeyCount(int)**: Number of initial keys (converted to initial header region size)
-- **hintPreferredBlockSize(int)**: Block size in KiB (must be power of 2, converted to bytes)
-- **hintPreferredExpandSize(int)**: Expansion size in MiB (converted to bytes)
-- **maxKeyLength(int)**: Required parameter - no default, must be 1-32763 bytes
-
-The builder performs these conversions and alignments:
-1. Converts KiB/MiB inputs to bytes for constructor
-2. Rounds key length + 4-byte CRC up to 8-byte boundaries for alignment
-3. Computes optimal initial header region size based on key count and aligned key length
-4. Validates block size is power of 2
-
-Implementation ensures SSD-optimized defaults while giving users control over memory layout.
 
 ## Use Modern CLI Tools When Available
 
 Check for `rg` and `perl` and other power tools and use them if that makes sense. For example to do mechanical refactors
-across many sites perfer things like:
+across many sites prefer things like:
 
 ```shell
 #  □ Replace Lombok `val` usages with `final var` in tests and sources.
@@ -182,15 +83,6 @@ perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var
 - **Envelope**: The fixed 20-byte metadata structure that follows each key in the index, containing data pointer, capacities, count, and CRC32
 
 **Note**: Upgraded from 1-byte to 2-byte key length field to support SHA256/SHA512 hashes (32-64 bytes) and larger keys up to 32KB.
-
-### SSD Optimized Defaults
-
-The store is optimized for modern SSD performance characteristics:
-
-- **Default Key Length**: 128 bytes (supports SHA256/SHA512 hashes)
-- **Memory Mapping**: Enabled by default (reduces write amplification)
-- **Pre-allocation**: Increased default preallocated records for better sequential performance
-- **CRC32**: Enabled by default (SSDs handle checksums efficiently)
 
 ### Validation Checks
 

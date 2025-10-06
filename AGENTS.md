@@ -14,7 +14,7 @@
 - Example: `/// Returns the file path of this record store.` followed by `public Path getFilePath()`
 
 ### Unified Logging Workflow
-- Always run the test suite with `-Dcom.github.trex_paxos.srs.testLogLevel=FINEST` and redirect output to a single `/tmp` log file (overwrite the same file each run).
+- Always run the **FULL** test suite with `-Dcom.github.trex_paxos.srs.testLogLevel=FINEST` and redirect output to a single `/tmp` log file (overwrite the same file each run).
 - Inspect the log with `rg 'INFO|ERROR' /tmp/<logfile>` to verify every test emits the `@Before` INFO banner (see `src/test/java/com/github/simbo1905/nfp/srs/JulLoggingConfig.java`) and to spot failing tests and line numbers quickly.
 - Once failing tests are identified, reuse the same log file filtered with `rg 'INFO|ERROR|FINE'` to follow the execution path; `FINE` entries document method-level flow decisions.
 - Apply additional focused filters such as `rg 'INFO|ERROR|FINE|FINER'` or `rg 'INFO|ERROR|FINE|FINER|FINEST'` on that same file to zoom into deeper state transitions without rerunning the suite.

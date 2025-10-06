@@ -775,9 +775,7 @@ public class FileRecordStore implements AutoCloseable {
       ensureIndexSpace(getNumRecords() + 1);
       RecordHeader newRecord = allocateRecord(payloadLength(value.length));
       writeRecordData(newRecord, value);
-      // Get the updated header from headerState since writeRecordData updated it
-      final var updatedRecord = headerState.getByPointer(newRecord.dataPointer());
-      addEntryToIndex(keyWrapper, updatedRecord, getNumRecords());
+      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -1224,6 +1222,16 @@ public class FileRecordStore implements AutoCloseable {
     RecordHeader newRecord = findFreeRecord(payloadLength);
 
     if (newRecord == null) {
+      if (!allowHeaderExpansion) {
+        logger.log(
+            Level.FINE,
+            () ->
+                String.format(
+                    "allocateRecord: Header expansion disabled and no space for payloadLength=%d",
+                    payloadLength));
+        throw new IllegalStateException(
+            "Header expansion disabled - insufficient space for new record");
+      }
       // 🔧 Fix: expand file instead of returning null
       logger.log(Level.FINE, () -> String.format("allocateRecord: No free record found for payloadLength=%d - expanding file", payloadLength));
       expandFile(payloadLength);
@@ -1652,21 +1660,21 @@ public class FileRecordStore implements AutoCloseable {
   /// This is called when allocateRecord cannot find space in existing regions.
   /// Always expands by preferredExpansionSize (2 MiB default) for SSD optimization.
   private void expandFile(int requiredPayloadLength) throws IOException {
-    try {
-      long currentSize = fileOperations.length();
-      long newSize = currentSize + preferredExpansionSize;
-      
-      logger.log(Level.FINE, () -> String.format("expandFile: Expanding file from %d to %d bytes (expansion=%d, required=%d)", 
-          currentSize, newSize, preferredExpansionSize, requiredPayloadLength));
-      
-      fileOperations.setLength(newSize);
+    long currentSize = fileOperations.length();
+    long newSize = currentSize + preferredExpansionSize;
 
-      // 🔧 Push the data-region boundary forward so the new tail area becomes usable
-      dataStartPtr = newSize;
-      writeDataStartPtrHeader(dataStartPtr);
-    } catch (IOException e) {
-      throw new IllegalStateException("File expansion failed", e);
-    }
+    logger.log(
+        Level.FINE,
+        () ->
+            String.format(
+                "expandFile: Expanding file from %d to %d bytes (expansion=%d, required=%d)",
+                currentSize, newSize, preferredExpansionSize, requiredPayloadLength));
+
+    fileOperations.setLength(newSize);
+
+    // 🔧 Push the data-region boundary forward so the new tail area becomes usable
+    dataStartPtr = newSize;
+    writeDataStartPtrHeader(dataStartPtr);
   }
 
   /// Aligns a position to the nearest block boundary for SSD optimization.

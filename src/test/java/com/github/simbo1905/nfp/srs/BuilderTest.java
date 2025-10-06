@@ -292,11 +292,7 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Test with zero initial key count (should use defaults)
     try (FileRecordStore store =
-        new FileRecordStoreBuilder()
-            .path(dbPath)
-            .hintInitialKeyCount(0)
-            .maxKeyLength(64)
-            .open()) {
+        new FileRecordStoreBuilder().path(dbPath).hintInitialKeyCount(0).maxKeyLength(64).open()) {
 
       // Should work with default values when hintInitialKeyCount is 0
       byte[] key = "edge-test".getBytes();

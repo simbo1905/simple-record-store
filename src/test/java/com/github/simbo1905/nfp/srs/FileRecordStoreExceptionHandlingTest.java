@@ -987,8 +987,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
 
     // Persistence verification: reopen store and verify data integrity
     if (filePath != null) {
-      try (FileRecordStore verificationStore =
-          new FileRecordStoreBuilder().path(filePath).open()) {
+      try (FileRecordStore verificationStore = new FileRecordStoreBuilder().path(filePath).open()) {
 
         // Count valid records in the reopened store
         int validRecords = 0;

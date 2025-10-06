@@ -1,13 +1,11 @@
 package com.github.simbo1905.nfp.srs;
 
-import static java.util.Optional.of;
 import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.AccessMode;
+import static java.util.Optional.of;
 
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -21,7 +19,7 @@ import lombok.Synchronized;
 
 /// A persistent record store that maps keys to values with crash-safe guarantees.
 /// Provides ACID properties with durable writes and supports both direct I/O and memory-mapped
-// access modes.
+/// access modes.
 public class FileRecordStore implements AutoCloseable {
 
   private static final Logger logger = Logger.getLogger(FileRecordStore.class.getName());
@@ -31,7 +29,8 @@ public class FileRecordStore implements AutoCloseable {
   /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
   public static final int DEFAULT_MAX_KEY_LENGTH = FileRecordStoreBuilder.DEFAULT_MAX_KEY_LENGTH;
   /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
-  public static final int MAX_KEY_LENGTH_THEORETICAL = FileRecordStoreBuilder.MAX_KEY_LENGTH_THEORETICAL;
+  public static final int MAX_KEY_LENGTH_THEORETICAL =
+      FileRecordStoreBuilder.MAX_KEY_LENGTH_THEORETICAL;
   // Number of bytes in the record header.
   private static final int RECORD_HEADER_LENGTH = 20;
   // this is an unsigned 32 int
@@ -39,16 +38,10 @@ public class FileRecordStore implements AutoCloseable {
   /// System property name for configuring the maximum key length.
   public static String MAX_KEY_LENGTH_PROPERTY = "MAX_KEY_LENGTH";
   private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
-  // The length of a key in the index. This is an arbitrary size. UUID strings are only 36.
-  // A base64 sha245 would be about 42 bytes. So you can create a 64 byte surrogate key out of
-  // anything
-  // unique about your data. You can also set it to be a max of 248 bytes. Note we store binary keys
-  // with a header byte
-  // and a CRC32 which is an unsigned 32 stored as a long.
   /// The maximum key length this store was configured with. Immutable after creation.
   public final int maxKeyLength;
-  // The total length of one index entry - the key length plus the record
-  // header length and the CRC of the key which is an unsigned 32 bits.
+  /// The total length of one index entry - the key length plus the record
+  /// header length and the CRC of the key which is an unsigned 32 bits.
   private final int indexEntryLength;
 
   @Getter private final Path filePath;
@@ -63,17 +56,20 @@ public class FileRecordStore implements AutoCloseable {
   private Map<KeyWrapper, RecordHeader> memIndex;
 
   /// Key type for optimized handling - enables JIT branch elimination since this is final after
-  // construction
+  /// construction
   private final KeyType keyType;
 
   /// Whether to use defensive copying for byte array keys
   private final boolean defensiveCopy;
 
+  /// Returns whether in-place updates are allowed for smaller records.
   /// Whether to allow in-place updates for smaller records regardless of CRC32 setting
-  private volatile boolean allowInPlaceUpdates = true;
+  @Getter private volatile boolean allowInPlaceUpdates = true;
 
+  /// Returns whether header region expansion is allowed.
+  ///
   /// Whether to allow header region expansion during operations
-  private volatile boolean allowHeaderExpansion = true;
+  @Getter private volatile boolean allowHeaderExpansion = true;
 
   /// Expansion size in bytes for header region growth
   final int preferredExpansionSize;
@@ -157,16 +153,19 @@ public class FileRecordStore implements AutoCloseable {
         this.readOnly = !"rw".equals(accessMode);
         this.keyType = keyType;
         this.defensiveCopy = defensiveCopy;
-        
+
         // Validate and store sizing parameters
         if (preferredExpansionSize <= 0) {
-          throw new IllegalArgumentException("preferredExpansionSize must be positive, got " + preferredExpansionSize);
+          throw new IllegalArgumentException(
+              "preferredExpansionSize must be positive, got " + preferredExpansionSize);
         }
         if (preferredBlockSize <= 0 || (preferredBlockSize & (preferredBlockSize - 1)) != 0) {
-          throw new IllegalArgumentException("preferredBlockSize must be positive and power of 2, got " + preferredBlockSize);
+          throw new IllegalArgumentException(
+              "preferredBlockSize must be positive and power of 2, got " + preferredBlockSize);
         }
         if (initialHeaderRegionSize <= 0) {
-          throw new IllegalArgumentException("initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
+          throw new IllegalArgumentException(
+              "initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
         }
         this.preferredExpansionSize = preferredExpansionSize;
         this.preferredBlockSize = preferredBlockSize;
@@ -183,13 +182,17 @@ public class FileRecordStore implements AutoCloseable {
 
         // Only set length for new files - don't overwrite existing data
         if (wasEmpty) {
-          raf.setLength(FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + (preallocatedRecords * indexEntryLength * 2L));
+          raf.setLength(
+              FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH
+                  + (preallocatedRecords * indexEntryLength * 2L));
         }
         this.fileOperations =
             useMemoryMapping ? new MemoryMappedFile(raf) : new RandomAccessFile(raf);
         this.filePath = file.toPath();
 
-        dataStartPtr = FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + ((long) preallocatedRecords * indexEntryLength);
+        dataStartPtr =
+            FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH
+                + ((long) preallocatedRecords * indexEntryLength);
 
         // Initialize data structures before any file operations that might fail
         int numRecords = readNumRecordsHeader();
@@ -238,7 +241,8 @@ public class FileRecordStore implements AutoCloseable {
 
           // Validate file has minimum required size for existing records
           long requiredFileSize =
-              FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH + ((long) existingRecords * indexEntryLength);
+              FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH
+                  + ((long) existingRecords * indexEntryLength);
           if (fileOperations.length() < requiredFileSize) {
             throw new IOException(
                 String.format(
@@ -329,7 +333,7 @@ public class FileRecordStore implements AutoCloseable {
       RecordHeader header = readRecordHeaderFromIndex(i);
 
       memIndex.put(key, header);
-      positionIndex.put(header.dataPointer, header);
+      positionIndex.put(header.dataPointer(), header);
 
       updateFreeSpaceIndex(header);
     }
@@ -444,18 +448,35 @@ public class FileRecordStore implements AutoCloseable {
     buffer.put(header);
     buffer.flip();
 
-    RecordHeader rh = new RecordHeader(buffer.getLong(), buffer.getInt());
-    rh.dataCount = buffer.getInt();
-    rh.crc32 = buffer.getInt() & 0xFFFFFFFFL;
+    long dataPointer = buffer.getLong();
+    int dataCapacity = buffer.getInt();
+    int dataCount = buffer.getInt();
+    long crc32 = buffer.getInt() & 0xFFFFFFFFL;
+
+    RecordHeader rh = new RecordHeader(dataPointer, dataCount, dataCapacity, index, crc32);
 
     final var array = buffer.array();
     CRC32 crc = new CRC32();
     crc.update(array, 0, Long.BYTES + Integer.BYTES + Integer.BYTES);
     long crc32expected = crc.getValue();
-    if (rh.crc32 != crc32expected) {
+    if (rh.crc32() != crc32expected) {
       throw new IllegalStateException(
           String.format("invalid header CRC32 expected %d for %s", crc32expected, rh));
     }
+
+    logger.log(
+        Level.FINEST,
+        () ->
+            String.format(
+                "%d header Key=%s, indexPosition=%s, dataCapacity=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                fp,
+                "key",
+                rh.indexPosition(),
+                rh.dataCapacity(),
+                rh.dataCount(),
+                rh.dataPointer(),
+                rh.crc32()));
+
     return rh;
   }
 
@@ -534,14 +555,14 @@ public class FileRecordStore implements AutoCloseable {
         logger.log(
             level,
             String.format(
-                "%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                "%d header Key=%s, indexPosition=%s, dataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                 index,
                 k,
-                header.indexPosition,
-                header.getDataCapacity(),
-                header.dataCount,
-                header.dataPointer,
-                header.crc32));
+                header.indexPosition(),
+                header.dataCapacity(),
+                header.dataCount(),
+                header.dataPointer(),
+                header.crc32()));
         final byte[] data = recordFile.readRecordData(bk.bytes());
 
         String d = java.util.Base64.getEncoder().encodeToString(data);
@@ -627,19 +648,20 @@ public class FileRecordStore implements AutoCloseable {
   /// Reads the record data for the given record header.
   private byte[] readRecordData(RecordHeader header) throws IOException {
     // read the length
-    fileOperations.seek(header.dataPointer);
+    fileOperations.seek(header.dataPointer());
     byte[] lenBytes = new byte[Integer.BYTES];
     fileOperations.readFully(lenBytes);
     int len = (new DataInputStream(new ByteArrayInputStream(lenBytes))).readInt();
 
     logger.log(
         Level.FINEST,
-        () -> String.format("<d fp:%d len:%d bytes:%s ", header.dataPointer, len, print(lenBytes)));
+        () ->
+            String.format("<d fp:%d len:%d bytes:%s ", header.dataPointer(), len, print(lenBytes)));
 
-    assert header.dataPointer + len < getFileLength()
+    assert header.dataPointer() + len < getFileLength()
         : String.format(
             "attempting to read up to %d beyond length of file %d",
-            (header.dataCount + len), getFileLength());
+            (header.dataCount() + len), getFileLength());
 
     // read the body
     byte[] buf = new byte[len];
@@ -660,7 +682,7 @@ public class FileRecordStore implements AutoCloseable {
           () ->
               String.format(
                   "<d fp:%d len:%d crc:%d bytes:%s",
-                  header.dataPointer + Integer.BYTES, len, actualCrc, print(buf)));
+                  header.dataPointer() + Integer.BYTES, len, actualCrc, print(buf)));
 
       if (actualCrc != expectedCrc) {
         throw new IllegalStateException(
@@ -699,7 +721,9 @@ public class FileRecordStore implements AutoCloseable {
       ensureIndexSpace(getNumRecords() + 1);
       RecordHeader newRecord = allocateRecord(payloadLength(value.length));
       writeRecordData(newRecord, value);
-      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
+      // Get the updated header from positionIndex since writeRecordData updated it
+      final var updatedRecord = positionIndex.get(newRecord.dataPointer());
+      addEntryToIndex(keyWrapper, updatedRecord, getNumRecords());
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -727,7 +751,7 @@ public class FileRecordStore implements AutoCloseable {
           () -> String.format("updateRecord UUID value.len:%d key:%s", value.length, key));
       final var keyWrapper = KeyWrapper.of(key);
       final var updateMeHeader = keyToRecordHeader(keyWrapper);
-      final var capacity = updateMeHeader.getDataCapacity();
+      final var capacity = updateMeHeader.dataCapacity();
 
       final var recordIsSameSize = value.length == capacity;
       final var recordIsSmaller = value.length < capacity;
@@ -737,80 +761,85 @@ public class FileRecordStore implements AutoCloseable {
       if (recordIsSameSize || (recordIsSmaller && allowInPlaceUpdates)) {
         // write with the backup crc so one of the two CRCs will be valid after a crash
         writeRecordHeaderToIndex(updateMeHeader);
-        updateMeHeader.dataCount = value.length;
-        updateFreeSpaceIndex(updateMeHeader);
+        final var updatedHeader = RecordHeader.withDataCount(updateMeHeader, value.length);
+        updateFreeSpaceIndex(updatedHeader);
         // write the main data
-        writeRecordData(updateMeHeader, value);
+        writeRecordData(updatedHeader, value);
         // write the header with the main CRC
-        writeRecordHeaderToIndex(updateMeHeader);
+        writeRecordHeaderToIndex(updatedHeader);
+        // Update memIndex with the final header that has correct CRC
+        memIndex.put(keyWrapper, updatedHeader);
       } else { // Handle cases where in-place update is not possible
-        final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
+        final var endOfRecord = updateMeHeader.dataPointer() + updateMeHeader.dataCapacity();
         final var fileLength =
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
         // header.
         if (endOfRecord == fileLength) {
-          updateMeHeader.dataCount = value.length;
-          setFileLength(fileLength + (value.length - updateMeHeader.getDataCapacity()));
-          updateMeHeader.setDataCapacity(value.length);
-          updateFreeSpaceIndex(updateMeHeader);
-          writeRecordData(updateMeHeader, value);
-          writeRecordHeaderToIndex(updateMeHeader);
-        } else if (value.length > updateMeHeader.getDataCapacity()) {
+          final var updatedHeader =
+              RecordHeader.move(
+                  updateMeHeader,
+                  fileLength + (value.length - updateMeHeader.dataCapacity()),
+                  value.length);
+          setFileLength(fileLength + (value.length - updateMeHeader.dataCapacity()));
+          updateFreeSpaceIndex(updatedHeader);
+          writeRecordData(updatedHeader, value);
+          writeRecordHeaderToIndex(updatedHeader);
+        } else if (value.length > updateMeHeader.dataCapacity()) {
           // allocate to next free space or expand the file
           RecordHeader newRecord = allocateRecord(value.length);
           // new record is expanded old record
-          newRecord.dataCount = value.length;
-          writeRecordData(newRecord, value);
-          writeRecordHeaderToIndex(newRecord);
-          memIndex.put(keyWrapper, newRecord);
-          positionIndex.remove(updateMeHeader.dataPointer);
-          positionIndex.put(newRecord.dataPointer, newRecord);
+          final var updatedNewRecord = RecordHeader.withDataCount(newRecord, value.length);
+          writeRecordData(updatedNewRecord, value);
+          writeRecordHeaderToIndex(updatedNewRecord);
+          memIndex.put(keyWrapper, updatedNewRecord);
+          positionIndex.remove(updateMeHeader.dataPointer());
+          positionIndex.put(updatedNewRecord.dataPointer(), updatedNewRecord);
           assert memIndex.size() == positionIndex.size()
               : String.format(
                   "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
           // if there is a previous record add space to it
-          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousIndex = updateMeHeader.dataPointer() - 1;
           final var previousOptional = getRecordAt(previousIndex);
 
           if (previousOptional.isPresent()) {
             RecordHeader previous = previousOptional.get();
             // append space of deleted record onto previous record
-            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            previous.incrementDataCapacity(updateMeHeader.dataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
           } else {
             // record free space at the end of the index area
-            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+            writeDataStartPtrHeader(updateMeHeader.dataPointer());
           }
         } else {
           // Not last record - need to move to new location
           // This handles both larger records and smaller records when in-place updates are disabled
           RecordHeader newRecord = allocateRecord(value.length);
           // new record is expanded/moved old record
-          newRecord.dataCount = value.length;
-          writeRecordData(newRecord, value);
-          writeRecordHeaderToIndex(newRecord);
-          memIndex.put(keyWrapper, newRecord);
-          positionIndex.remove(updateMeHeader.dataPointer);
-          positionIndex.put(newRecord.dataPointer, newRecord);
+          final var updatedNewRecord = RecordHeader.withDataCount(newRecord, value.length);
+          writeRecordData(updatedNewRecord, value);
+          writeRecordHeaderToIndex(updatedNewRecord);
+          memIndex.put(keyWrapper, updatedNewRecord);
+          positionIndex.remove(updateMeHeader.dataPointer());
+          positionIndex.put(updatedNewRecord.dataPointer(), updatedNewRecord);
           assert memIndex.size() == positionIndex.size()
               : String.format(
                   "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
           // if there is a previous record add space to it
-          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousIndex = updateMeHeader.dataPointer() - 1;
           final var previousOptional = getRecordAt(previousIndex);
 
           if (previousOptional.isPresent()) {
             RecordHeader previous = previousOptional.get();
             // append space of deleted record onto previous record
-            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            previous.incrementDataCapacity(updateMeHeader.dataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
           } else {
             // record free space at the end of the index area
-            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+            writeDataStartPtrHeader(updateMeHeader.dataPointer());
           }
         }
       }
@@ -840,29 +869,33 @@ public class FileRecordStore implements AutoCloseable {
       final var keyWrapper = KeyWrapper.of(key);
       RecordHeader delRec = keyToRecordHeader(keyWrapper);
       int currentNumRecords = getNumRecords();
-      deleteEntryFromIndex(delRec, currentNumRecords);
+      // Remove from maps first before index manipulation
       final var memDeleted = memIndex.remove(keyWrapper);
-      assert delRec == memDeleted;
-      final var posDeleted = positionIndex.remove(delRec.dataPointer);
-      assert delRec == posDeleted;
+      assert delRec.equals(memDeleted)
+          : "memIndex header mismatch: expected " + delRec + " but got " + memDeleted;
+      final var posDeleted = positionIndex.remove(delRec.dataPointer());
+      assert delRec.equals(posDeleted)
+          : "positionIndex header mismatch: expected " + delRec + " but got " + posDeleted;
       assert memIndex.size() == positionIndex.size()
           : String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
       freeMap.remove(delRec);
+      // Now manipulate the index file
+      deleteEntryFromIndex(delRec, currentNumRecords);
 
-      if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
+      if (getFileLength() == delRec.dataPointer() + delRec.dataCapacity()) {
         // shrink file since this is the last record in the file
-        setFileLength(delRec.dataPointer);
+        setFileLength(delRec.dataPointer());
       } else {
-        final var previousOptional = getRecordAt(delRec.dataPointer - 1);
+        final var previousOptional = getRecordAt(delRec.dataPointer() - 1);
         if (previousOptional.isPresent()) {
           // append space of deleted record onto previous record
           final var previous = previousOptional.get();
-          previous.incrementDataCapacity(delRec.getDataCapacity());
+          previous.incrementDataCapacity(delRec.dataCapacity());
           updateFreeSpaceIndex(previous);
           writeRecordHeaderToIndex(previous);
         } else {
           // make free space at the end of the index area
-          writeDataStartPtrHeader(delRec.dataPointer + delRec.getDataCapacity());
+          writeDataStartPtrHeader(delRec.dataPointer() + delRec.dataCapacity());
         }
       }
 
@@ -1027,8 +1060,8 @@ public class FileRecordStore implements AutoCloseable {
     return before.map(
         entry -> {
           final var rh = entry.getValue();
-          if (targetFp >= rh.dataPointer
-              && targetFp < rh.dataPointer + (long) rh.getDataCapacity()) {
+          if (targetFp >= rh.dataPointer()
+              && targetFp < rh.dataPointer() + (long) rh.dataCapacity()) {
             return rh;
           } else {
             return null;
@@ -1080,18 +1113,18 @@ public class FileRecordStore implements AutoCloseable {
 
     writeKeyToIndex(key, currentNumRecords);
 
+    final var updatedNewRecord = RecordHeader.withIndexPosition(newRecord, currentNumRecords);
     fileOperations.seek(indexPositionToRecordHeaderFp(currentNumRecords));
-    write(newRecord, fileOperations);
-    newRecord.setIndexPosition(currentNumRecords);
+    final var writtenHeader = write(updatedNewRecord, fileOperations);
     writeNumRecordsHeader(currentNumRecords + 1);
 
     logger.log(
         Level.FINEST,
         () -> String.format("before maps: %s | %s", memIndex.toString(), positionIndex.toString()));
 
-    final var duplicate = memIndex.put(key, newRecord);
-    if (duplicate != null) positionIndex.remove(duplicate.dataPointer);
-    positionIndex.put(newRecord.dataPointer, newRecord);
+    final var duplicate = memIndex.put(key, writtenHeader);
+    if (duplicate != null) positionIndex.remove(duplicate.dataPointer());
+    positionIndex.put(writtenHeader.dataPointer(), writtenHeader);
 
     logger.log(
         Level.FINEST,
@@ -1101,21 +1134,23 @@ public class FileRecordStore implements AutoCloseable {
         : String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
   }
 
-  private void write(RecordHeader rh, FileOperations out) throws IOException {
-    if (rh.dataCount < 0) {
+  private RecordHeader write(RecordHeader rh, FileOperations out) throws IOException {
+    if (rh.dataCount() < 0) {
       throw new IllegalStateException("dataCount has not been initialized " + this);
     }
     final var fp = out.getFilePointer();
+
+    // Create updated RecordHeader using constructor that computes CRC internally
+    RecordHeader updatedRh =
+        new RecordHeader(rh.dataPointer(), rh.dataCount(), rh.dataCapacity(), rh.indexPosition());
+
     ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
-    buffer.putLong(rh.dataPointer);
-    buffer.putInt(rh.dataCapacity);
-    buffer.putInt(rh.dataCount);
+    buffer.putLong(updatedRh.dataPointer());
+    buffer.putInt(updatedRh.dataCapacity());
+    buffer.putInt(updatedRh.dataCount());
+    buffer.putInt((int) (updatedRh.crc32() & 0xFFFFFFFFL));
     final var array = buffer.array();
-    CRC32 crc = new CRC32();
-    crc.update(array, 0, Long.BYTES + Integer.BYTES + Integer.BYTES);
-    rh.crc32 = crc.getValue();
-    int crc32int = (int) (rh.crc32 & 0xFFFFFFFFL);
-    buffer.putInt(crc32int);
+
     out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
 
     logger.log(
@@ -1123,21 +1158,28 @@ public class FileRecordStore implements AutoCloseable {
         () ->
             String.format(
                 ">h fp:%d idx:%d len:%d end:%d bytes:%s",
-                fp, rh.indexPosition, array.length, fp + array.length, print(array)));
+                fp, updatedRh.indexPosition(), array.length, fp + array.length, print(array)));
+
+    // Return the updated header so caller can use it
+    return updatedRh;
   }
 
   /// Removes the record from the index. Replaces the target with the entry at
   /// the end of the index.
   private void deleteEntryFromIndex(RecordHeader header, int currentNumRecords) throws IOException {
-    if (header.indexPosition != currentNumRecords - 1) {
+    if (header.indexPosition() != currentNumRecords - 1) {
       final var lastKey = readKeyFromIndex(currentNumRecords - 1);
       RecordHeader last = keyToRecordHeader(lastKey);
-      last.setIndexPosition(header.indexPosition);
+      final var updatedLast = RecordHeader.withIndexPosition(last, header.indexPosition());
 
-      writeKeyToIndex(lastKey, last.indexPosition);
+      writeKeyToIndex(lastKey, updatedLast.indexPosition());
 
-      fileOperations.seek(this.indexPositionToRecordHeaderFp(last.indexPosition));
-      write(last, fileOperations);
+      fileOperations.seek(this.indexPositionToRecordHeaderFp(updatedLast.indexPosition()));
+      final var writtenHeader = write(updatedLast, fileOperations);
+
+      // Update the maps with the written header (which has correct CRC)
+      memIndex.put(lastKey, writtenHeader);
+      positionIndex.put(writtenHeader.dataPointer(), writtenHeader);
     }
     writeNumRecordsHeader(currentNumRecords - 1);
   }
@@ -1194,8 +1236,10 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Writes the ith record header to the index.
   private void writeRecordHeaderToIndex(RecordHeader header) throws IOException {
-    fileOperations.seek(indexPositionToRecordHeaderFp(header.indexPosition));
-    write(header, fileOperations);
+    fileOperations.seek(indexPositionToRecordHeaderFp(header.indexPosition()));
+    final var writtenHeader = write(header, fileOperations);
+    // Update the positionIndex with the header that has the correct CRC
+    positionIndex.put(writtenHeader.dataPointer(), writtenHeader);
   }
 
   /// Inserts a new record. It tries to insert into free space at the end of the index space, or
@@ -1227,7 +1271,9 @@ public class FileRecordStore implements AutoCloseable {
       RecordHeader newRecord = allocateRecord(payloadLength(value.length));
       writeRecordData(newRecord, value);
       final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
-      addEntryToIndex(keyWrapper, newRecord, getNumRecords());
+      // Get the updated header from positionIndex since writeRecordData updated it
+      final var updatedRecord = positionIndex.get(newRecord.dataPointer());
+      addEntryToIndex(keyWrapper, updatedRecord, getNumRecords());
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -1258,7 +1304,7 @@ public class FileRecordStore implements AutoCloseable {
           () -> String.format("updateRecord value.len:%d key:%s", value.length, print(key)));
       final var keyWrapper = KeyWrapper.of(key, defensiveCopy);
       final var updateMeHeader = keyToRecordHeader(keyWrapper);
-      final var capacity = updateMeHeader.getDataCapacity();
+      final var capacity = updateMeHeader.dataCapacity();
 
       final var recordIsSameSize = value.length == capacity;
       final var recordIsSmaller = value.length < capacity;
@@ -1268,80 +1314,85 @@ public class FileRecordStore implements AutoCloseable {
       if (recordIsSameSize || (recordIsSmaller && allowInPlaceUpdates)) {
         // write with the backup crc so one of the two CRCs will be valid after a crash
         writeRecordHeaderToIndex(updateMeHeader);
-        updateMeHeader.dataCount = value.length;
-        updateFreeSpaceIndex(updateMeHeader);
+        final var updatedHeader = RecordHeader.withDataCount(updateMeHeader, value.length);
+        updateFreeSpaceIndex(updatedHeader);
         // write the main data
-        writeRecordData(updateMeHeader, value);
+        writeRecordData(updatedHeader, value);
         // write the header with the main CRC
-        writeRecordHeaderToIndex(updateMeHeader);
+        writeRecordHeaderToIndex(updatedHeader);
+        // Update memIndex with the final header that has correct CRC
+        memIndex.put(keyWrapper, updatedHeader);
       } else { // Handle cases where in-place update is not possible
-        final var endOfRecord = updateMeHeader.dataPointer + updateMeHeader.getDataCapacity();
+        final var endOfRecord = updateMeHeader.dataPointer() + updateMeHeader.dataCapacity();
         final var fileLength =
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
         // header.
         if (endOfRecord == fileLength) {
-          updateMeHeader.dataCount = value.length;
-          setFileLength(fileLength + (value.length - updateMeHeader.getDataCapacity()));
-          updateMeHeader.setDataCapacity(value.length);
-          updateFreeSpaceIndex(updateMeHeader);
-          writeRecordData(updateMeHeader, value);
-          writeRecordHeaderToIndex(updateMeHeader);
-        } else if (value.length > updateMeHeader.getDataCapacity()) {
+          final var updatedHeader =
+              RecordHeader.move(
+                  updateMeHeader,
+                  fileLength + (value.length - updateMeHeader.dataCapacity()),
+                  value.length);
+          setFileLength(fileLength + (value.length - updateMeHeader.dataCapacity()));
+          updateFreeSpaceIndex(updatedHeader);
+          writeRecordData(updatedHeader, value);
+          writeRecordHeaderToIndex(updatedHeader);
+        } else if (value.length > updateMeHeader.dataCapacity()) {
           // allocate to next free space or expand the file
           RecordHeader newRecord = allocateRecord(value.length);
           // new record is expanded old record
-          newRecord.dataCount = value.length;
-          writeRecordData(newRecord, value);
-          writeRecordHeaderToIndex(newRecord);
-          memIndex.put(keyWrapper, newRecord);
-          positionIndex.remove(updateMeHeader.dataPointer);
-          positionIndex.put(newRecord.dataPointer, newRecord);
+          final var updatedNewRecord = RecordHeader.withDataCount(newRecord, value.length);
+          writeRecordData(updatedNewRecord, value);
+          writeRecordHeaderToIndex(updatedNewRecord);
+          memIndex.put(keyWrapper, updatedNewRecord);
+          positionIndex.remove(updateMeHeader.dataPointer());
+          positionIndex.put(updatedNewRecord.dataPointer(), updatedNewRecord);
           assert memIndex.size() == positionIndex.size()
               : String.format(
                   "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
           // if there is a previous record add space to it
-          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousIndex = updateMeHeader.dataPointer() - 1;
           final var previousOptional = getRecordAt(previousIndex);
 
           if (previousOptional.isPresent()) {
             RecordHeader previous = previousOptional.get();
             // append space of deleted record onto previous record
-            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            previous.incrementDataCapacity(updateMeHeader.dataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
           } else {
             // record free space at the end of the index area
-            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+            writeDataStartPtrHeader(updateMeHeader.dataPointer());
           }
         } else {
           // Not last record - need to move to new location
           // This handles both larger records and smaller records when in-place updates are disabled
           RecordHeader newRecord = allocateRecord(value.length);
           // new record is expanded/moved old record
-          newRecord.dataCount = value.length;
-          writeRecordData(newRecord, value);
-          writeRecordHeaderToIndex(newRecord);
-          memIndex.put(keyWrapper, newRecord);
-          positionIndex.remove(updateMeHeader.dataPointer);
-          positionIndex.put(newRecord.dataPointer, newRecord);
+          final var updatedNewRecord = RecordHeader.withDataCount(newRecord, value.length);
+          writeRecordData(updatedNewRecord, value);
+          writeRecordHeaderToIndex(updatedNewRecord);
+          memIndex.put(keyWrapper, updatedNewRecord);
+          positionIndex.remove(updateMeHeader.dataPointer());
+          positionIndex.put(updatedNewRecord.dataPointer(), updatedNewRecord);
           assert memIndex.size() == positionIndex.size()
               : String.format(
                   "memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
 
           // if there is a previous record add space to it
-          final var previousIndex = updateMeHeader.dataPointer - 1;
+          final var previousIndex = updateMeHeader.dataPointer() - 1;
           final var previousOptional = getRecordAt(previousIndex);
 
           if (previousOptional.isPresent()) {
             RecordHeader previous = previousOptional.get();
             // append space of deleted record onto previous record
-            previous.incrementDataCapacity(updateMeHeader.getDataCapacity());
+            previous.incrementDataCapacity(updateMeHeader.dataCapacity());
             updateFreeSpaceIndex(previous);
             writeRecordHeaderToIndex(previous);
           } else {
             // record free space at the end of the index area
-            writeDataStartPtrHeader(updateMeHeader.dataPointer);
+            writeDataStartPtrHeader(updateMeHeader.dataPointer());
           }
         }
       }
@@ -1357,12 +1408,14 @@ public class FileRecordStore implements AutoCloseable {
   /// The header's data count is updated, but not written to the fileOperations.
   private void writeRecordData(RecordHeader header, byte[] data) throws IOException {
 
-    assert data.length <= header.getDataCapacity() : "Record data does not fit";
-    header.dataCount = data.length;
+    assert data.length <= header.dataCapacity() : "Record data does not fit";
+    // Use atomic update pattern to update the header in the positionIndex map
+    final var updatedHeader = RecordHeader.withDataCount(header, data.length);
+    positionIndex.put(header.dataPointer(), updatedHeader);
 
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     DataOutputStream out = new DataOutputStream(bout);
-    out.writeInt(header.dataCount);
+    out.writeInt(data.length);
     out.write(data);
     long crc = -1;
     if (!disableCrc32) {
@@ -1373,7 +1426,7 @@ public class FileRecordStore implements AutoCloseable {
     }
     out.close();
     final var payload = bout.toByteArray();
-    fileOperations.seek(header.dataPointer);
+    fileOperations.seek(header.dataPointer());
     fileOperations.write(payload, 0, payload.length); // drop
     byte[] lenBytes = Arrays.copyOfRange(payload, 0, Integer.BYTES);
 
@@ -1382,9 +1435,9 @@ public class FileRecordStore implements AutoCloseable {
         () ->
             String.format(
                 ">d fp:%d len:%d end:%d bytes:%s",
-                header.dataPointer,
+                header.dataPointer(),
                 payload.length,
-                header.dataPointer + payload.length,
+                header.dataPointer() + payload.length,
                 print(lenBytes)));
 
     logger.log(
@@ -1392,9 +1445,9 @@ public class FileRecordStore implements AutoCloseable {
         () ->
             String.format(
                 ">d fp:%d len:%d end:%d crc:%d data:%s",
-                header.dataPointer + Integer.BYTES,
+                header.dataPointer() + Integer.BYTES,
                 payload.length,
-                header.dataPointer + payload.length,
+                header.dataPointer() + payload.length,
                 crc,
                 print(data)));
   }
@@ -1415,27 +1468,29 @@ public class FileRecordStore implements AutoCloseable {
       int currentNumRecords = getNumRecords();
       deleteEntryFromIndex(delRec, currentNumRecords);
       final var memDeleted = memIndex.remove(keyWrapper);
-      assert delRec == memDeleted;
-      final var posDeleted = positionIndex.remove(delRec.dataPointer);
-      assert delRec == posDeleted;
+      assert delRec.equals(memDeleted)
+          : "memIndex header mismatch: expected " + delRec + " but got " + memDeleted;
+      final var posDeleted = positionIndex.remove(delRec.dataPointer());
+      assert delRec.equals(posDeleted)
+          : "positionIndex header mismatch: expected " + delRec + " but got " + posDeleted;
       assert memIndex.size() == positionIndex.size()
           : String.format("memIndex:%d, positionIndex:%d", memIndex.size(), positionIndex.size());
       freeMap.remove(delRec);
 
-      if (getFileLength() == delRec.dataPointer + delRec.getDataCapacity()) {
+      if (getFileLength() == delRec.dataPointer() + delRec.dataCapacity()) {
         // shrink file since this is the last record in the file
-        setFileLength(delRec.dataPointer);
+        setFileLength(delRec.dataPointer());
       } else {
-        final var previousOptional = getRecordAt(delRec.dataPointer - 1);
+        final var previousOptional = getRecordAt(delRec.dataPointer() - 1);
         if (previousOptional.isPresent()) {
           // append space of deleted record onto previous record
           final var previous = previousOptional.get();
-          previous.incrementDataCapacity(delRec.getDataCapacity());
+          previous.incrementDataCapacity(delRec.dataCapacity());
           updateFreeSpaceIndex(previous);
           writeRecordHeaderToIndex(previous);
         } else {
           // make free space at the end of the index area
-          writeDataStartPtrHeader(delRec.dataPointer + delRec.getDataCapacity());
+          writeDataStartPtrHeader(delRec.dataPointer() + delRec.dataCapacity());
         }
       }
 
@@ -1480,19 +1535,20 @@ public class FileRecordStore implements AutoCloseable {
       final var first =
           firstOptional.orElseThrow(
               () -> new IllegalStateException("no record at dataStartPtr " + dataStartPtr));
-      positionIndex.remove(first.dataPointer);
+      positionIndex.remove(first.dataPointer());
       freeMap.remove(first);
       byte[] data = readRecordData(first);
       long fileLen = getFileLength();
-      first.dataPointer = fileLen;
-      int dataLength = payloadLength(data.length);
-      int dataLengthPadded = getDataLengthPadded(dataLength);
-      first.setDataCapacity(dataLengthPadded);
-      setFileLength(fileLen + dataLengthPadded);
-      writeRecordData(first, data);
-      writeRecordHeaderToIndex(first);
-      positionIndex.put(first.dataPointer, first);
-      dataStartPtr = positionIndex.ceilingEntry(dataStartPtr).getValue().dataPointer;
+
+      // Use atomic update pattern with computeIfPresent and move
+      final var updatedFirst =
+          RecordHeader.move(first, fileLen, getDataLengthPadded(payloadLength(data.length)));
+
+      setFileLength(fileLen + getDataLengthPadded(payloadLength(data.length)));
+      writeRecordData(updatedFirst, data);
+      writeRecordHeaderToIndex(updatedFirst);
+      positionIndex.put(updatedFirst.dataPointer(), updatedFirst);
+      dataStartPtr = positionIndex.ceilingEntry(dataStartPtr).getValue().dataPointer();
       writeDataStartPtrHeader(dataStartPtr);
     }
   }
@@ -1523,14 +1579,14 @@ public class FileRecordStore implements AutoCloseable {
             level,
             () ->
                 String.format(
-                    "%d header Key=%s, indexPosition=%s, getDataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
+                    "%d header Key=%s, indexPosition=%s, dataCapacity()=%s, dataCount=%s, dataPointer=%s, crc32=%s",
                     finalIndex,
                     k,
-                    header.indexPosition,
-                    header.getDataCapacity(),
-                    header.dataCount,
-                    header.dataPointer,
-                    header.crc32));
+                    header.indexPosition(),
+                    header.dataCapacity(),
+                    header.dataCount(),
+                    header.dataPointer(),
+                    header.crc32()));
         final byte[] data = readRecordData(bk.bytes());
 
         String d = java.util.Base64.getEncoder().encodeToString(data);
@@ -1592,20 +1648,6 @@ public class FileRecordStore implements AutoCloseable {
     this.allowHeaderExpansion = allow;
   }
 
-  /// Returns whether header region expansion is allowed.
-  ///
-  /// @return true if header region expansion is allowed
-  public boolean isAllowHeaderExpansion() {
-    return allowHeaderExpansion;
-  }
-
-  /// Returns whether in-place updates are allowed for smaller records.
-  ///
-  /// @return true if in-place updates are allowed for smaller records
-  public boolean isAllowInPlaceUpdates() {
-    return allowInPlaceUpdates;
-  }
-
   /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
   /// Example usage:
   /// <pre>
@@ -1618,5 +1660,4 @@ public class FileRecordStore implements AutoCloseable {
   public static FileRecordStoreBuilder Builder() {
     return new FileRecordStoreBuilder();
   }
-
 }

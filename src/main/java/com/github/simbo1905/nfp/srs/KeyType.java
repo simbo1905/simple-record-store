@@ -5,7 +5,7 @@ package com.github.simbo1905.nfp.srs;
 ///
 /// @see FileRecordStore
 /// @see KeyWrapper
-enum KeyType {
+public enum KeyType {
   /// Standard byte array keys - general purpose binary key support
   BYTE_ARRAY,
 

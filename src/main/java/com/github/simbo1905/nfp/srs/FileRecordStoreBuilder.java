@@ -22,29 +22,31 @@ import java.util.logging.Logger;
 ///     .open();
 /// </pre>
 public class FileRecordStoreBuilder {
-  
+
   private static final Logger logger = Logger.getLogger(FileRecordStoreBuilder.class.getName());
-  
+
   /// Access mode for the FileRecordStore.
+  @SuppressWarnings("LombokGetterMayBeUsed")
   public enum AccessMode {
     READ_ONLY("r"),
     READ_WRITE("rw");
-    
+
     final String mode;
-    
+
     AccessMode(String mode) {
       this.mode = mode;
     }
-    
+
     public String getMode() {
       return mode;
     }
   }
-  
+
   /// Key type for optimized key handling.
   /// Uses the KeyType enum from the main package.
-  private com.github.simbo1905.nfp.srs.KeyType keyType = com.github.simbo1905.nfp.srs.KeyType.BYTE_ARRAY;
-  
+  private com.github.simbo1905.nfp.srs.KeyType keyType =
+      com.github.simbo1905.nfp.srs.KeyType.BYTE_ARRAY;
+
   // Core constants moved from FileRecordStore
   /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
   /// Placed at the start of every file to detect corruption and incompatible formats.
@@ -53,7 +55,7 @@ public class FileRecordStoreBuilder {
   public static final int DEFAULT_MAX_KEY_LENGTH = 128;
   /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
   public static final int MAX_KEY_LENGTH_THEORETICAL = Short.MAX_VALUE - Integer.BYTES;
-  
+
   // File format constants
   /// File index to the magic number header.
   static final long MAGIC_NUMBER_HEADER_LOCATION = 0;
@@ -64,27 +66,28 @@ public class FileRecordStoreBuilder {
   /// File index to the start of the data region beyond the index region
   static final long DATA_START_HEADER_LOCATION = Integer.BYTES + Short.BYTES + Integer.BYTES;
   /// Total length in bytes of the global database headers.
-  static final int FILE_HEADERS_REGION_LENGTH = Integer.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
-  
+  static final int FILE_HEADERS_REGION_LENGTH =
+      Integer.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
+
   // Default sizing constants
-  private static final int DEFAULT_EXPANSION_SIZE = 1024 * 1024; // 1 MiB
-  private static final int DEFAULT_BLOCK_SIZE = 4 * 1024; // 4 KiB
+  // 1 MiB
+  // 4 KiB
   private static final int DEFAULT_INITIAL_HEADER_SIZE = 64 * 1024; // 64 KiB
-  
+
   private Path path;
   private String tempFilePrefix;
   private String tempFileSuffix;
-  private int preallocatedRecords = 1024;  // SSD optimized: pre-allocate for better sequential performance
-  private int maxKeyLength = FileRecordStore.DEFAULT_MAX_KEY_LENGTH;  // 128 bytes - optimized for SHA256/SHA512
-  private boolean disablePayloadCrc32 = false;  // SSD optimized: keep CRC32 enabled
-  private boolean useMemoryMapping = true;  // SSD optimized: enable by default
+  private int preallocatedRecords =
+      1024; // SSD optimized: pre-allocate for better sequential performance
+  private int maxKeyLength =
+      FileRecordStore.DEFAULT_MAX_KEY_LENGTH; // 128 bytes - optimized for SHA256/SHA512
+  private boolean disablePayloadCrc32 = false; // SSD optimized: keep CRC32 enabled
+  private boolean useMemoryMapping = true; // SSD optimized: enable by default
   private AccessMode accessMode = AccessMode.READ_WRITE;
   private boolean defensiveCopy = true;
-  private boolean allowInPlaceUpdates = true;
-  private boolean allowHeaderExpansion = true;
-  private int hintInitialKeyCount = 0;  // 0 means use default calculation
-  private int hintPreferredBlockSize = 4;  // 4 KiB default
-  private int hintPreferredExpandSize = 1;  // 1 MiB default
+  private int hintInitialKeyCount = 0; // 0 means use default calculation
+  private int hintPreferredBlockSize = 4; // 4 KiB default
+  private int hintPreferredExpandSize = 1; // 1 MiB default
 
   /// Sets the path for the database file.
   ///
@@ -136,17 +139,6 @@ public class FileRecordStoreBuilder {
     return this;
   }
 
-  /// Configures the store to use byte array keys with specified maximum length.
-  /// This is the default mode if neither uuidKeys() nor byteArrayKeys() is called.
-  ///
-  /// @param maxKeyLength the maximum key length in bytes
-  /// @return this builder for chaining
-  public FileRecordStoreBuilder byteArrayKeys(int maxKeyLength) {
-    this.keyType = com.github.simbo1905.nfp.srs.KeyType.BYTE_ARRAY;
-    this.maxKeyLength = maxKeyLength;
-    return this;
-  }
-
   /// Sets whether to use defensive copying for byte array keys.
   /// When true (default), byte arrays are cloned before storage to prevent external mutation.
   /// When false, zero-copy is used for performance-critical code with trusted callers.
@@ -166,7 +158,8 @@ public class FileRecordStoreBuilder {
   public FileRecordStoreBuilder maxKeyLength(int maxKeyLength) {
     if (maxKeyLength < 1 || maxKeyLength > FileRecordStore.MAX_KEY_LENGTH_THEORETICAL) {
       throw new IllegalArgumentException(
-          String.format("maxKeyLength must be between 1 and %d, got %d",
+          String.format(
+              "maxKeyLength must be between 1 and %d, got %d",
               FileRecordStore.MAX_KEY_LENGTH_THEORETICAL, maxKeyLength));
     }
     this.maxKeyLength = maxKeyLength;
@@ -200,36 +193,12 @@ public class FileRecordStoreBuilder {
     return this;
   }
 
-  /// Sets whether to allow header region expansion during operations.
-  /// When true (default), the header region can expand to accommodate more records.
-  /// When false, header expansion is disabled and operations will fail if pre-allocated
-  /// space is exceeded. This is useful for snapshotting to maintain stable memory layout.
-  ///
-  /// @param allow true to allow header expansion, false to disable it
-  /// @return this builder for chaining
-  public FileRecordStoreBuilder allowHeaderExpansion(boolean allow) {
-    this.allowHeaderExpansion = allow;
-    return this;
-  }
-
   /// Sets the access mode for the store.
   ///
   /// @param accessMode the access mode (READ_ONLY or READ_WRITE)
   /// @return this builder for chaining
   public FileRecordStoreBuilder accessMode(AccessMode accessMode) {
     this.accessMode = accessMode;
-    return this;
-  }
-
-  /// Sets whether to allow in-place updates for smaller records regardless of CRC32 setting.
-  /// When true (default), smaller records can be updated in-place even when CRC32 is disabled.
-  /// When false, smaller records will use the dual-write pattern (old behavior).
-  /// Same-size records can always be updated in-place regardless of this setting.
-  ///
-  /// @param allow true to allow in-place updates for smaller records, false to force dual-write
-  /// @return this builder for chaining
-  public FileRecordStoreBuilder allowInPlaceUpdates(boolean allow) {
-    this.allowInPlaceUpdates = allow;
     return this;
   }
 
@@ -241,7 +210,8 @@ public class FileRecordStoreBuilder {
   /// @return this builder for chaining
   public FileRecordStoreBuilder hintInitialKeyCount(int keyCount) {
     if (keyCount < 0) {
-      throw new IllegalArgumentException("hintInitialKeyCount must be non-negative, got " + keyCount);
+      throw new IllegalArgumentException(
+          "hintInitialKeyCount must be non-negative, got " + keyCount);
     }
     this.hintInitialKeyCount = keyCount;
     return this;
@@ -255,7 +225,8 @@ public class FileRecordStoreBuilder {
   /// @return this builder for chaining
   public FileRecordStoreBuilder hintPreferredBlockSize(int blockSizeKiB) {
     if (blockSizeKiB <= 0 || (blockSizeKiB & (blockSizeKiB - 1)) != 0) {
-      throw new IllegalArgumentException("hintPreferredBlockSize must be positive and power of 2, got " + blockSizeKiB);
+      throw new IllegalArgumentException(
+          "hintPreferredBlockSize must be positive and power of 2, got " + blockSizeKiB);
     }
     this.hintPreferredBlockSize = blockSizeKiB;
     return this;
@@ -268,7 +239,8 @@ public class FileRecordStoreBuilder {
   /// @return this builder for chaining
   public FileRecordStoreBuilder hintPreferredExpandSize(int expandSizeMiB) {
     if (expandSizeMiB <= 0) {
-      throw new IllegalArgumentException("hintPreferredExpandSize must be positive, got " + expandSizeMiB);
+      throw new IllegalArgumentException(
+          "hintPreferredExpandSize must be positive, got " + expandSizeMiB);
     }
     this.hintPreferredExpandSize = expandSizeMiB;
     return this;
@@ -281,29 +253,33 @@ public class FileRecordStoreBuilder {
   Config build() {
     // Apply 8-byte alignment: round key length + CRC up to nearest 8 bytes
     int alignedKeyLength = ((maxKeyLength + 4 + 7) / 8) * 8;
-    
+
     // Convert user-friendly units to bytes
     int expansionSize = hintPreferredExpandSize * 1024 * 1024; // MiB to bytes
     int blockSize = hintPreferredBlockSize * 1024; // KiB to bytes
-    
+
     // Calculate initial header region size based on key count hint
     int initialHeaderSize;
     if (hintInitialKeyCount > 0) {
       // User provided hint: calculate based on key count
       int indexEntryLength = alignedKeyLength + 1 + 4 + 20; // key + len + crc + header
-      initialHeaderSize = Math.max(hintInitialKeyCount * indexEntryLength, DEFAULT_INITIAL_HEADER_SIZE);
+      initialHeaderSize =
+          Math.max(hintInitialKeyCount * indexEntryLength, DEFAULT_INITIAL_HEADER_SIZE);
     } else {
       // Use default
       initialHeaderSize = DEFAULT_INITIAL_HEADER_SIZE;
     }
-    
-    logger.log(Level.FINE, 
-        () -> String.format("Resolved sizing: alignedKeyLength=%d, expansionSize=%d, blockSize=%d, initialHeaderSize=%d",
-            alignedKeyLength, expansionSize, blockSize, initialHeaderSize));
-    
+
+    logger.log(
+        Level.FINE,
+        () ->
+            String.format(
+                "Resolved sizing: alignedKeyLength=%d, expansionSize=%d, blockSize=%d, initialHeaderSize=%d",
+                alignedKeyLength, expansionSize, blockSize, initialHeaderSize));
+
     return new Config(expansionSize, blockSize, initialHeaderSize);
   }
-  
+
   /// Package-private record to hold resolved sizing parameters
   record Config(int expansionSize, int blockSize, int initialHeaderSize) {}
 
@@ -316,7 +292,7 @@ public class FileRecordStoreBuilder {
   public FileRecordStore open() throws IOException {
     // Build the configuration first
     Config config = build();
-    
+
     if (tempFilePrefix != null && tempFileSuffix != null) {
       // Create temporary file - always creates new
       Path tempPath = Files.createTempFile(tempFilePrefix, tempFileSuffix);

@@ -160,6 +160,6 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
   /// Reset the operation count to zero
   public void resetOperationCount() {
     this.operationCount = 0;
-    logger.log(Level.FINE, () -> String.format("Reset operation count to 0"));
+    logger.log(Level.FINE, () -> "Reset operation count to 0");
   }
 }

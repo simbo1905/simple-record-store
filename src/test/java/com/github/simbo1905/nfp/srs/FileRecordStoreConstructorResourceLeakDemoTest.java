@@ -5,7 +5,6 @@ import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.logging.Level;
-import com.github.simbo1905.nfp.srs.KeyType;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -38,7 +37,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
       // This should fail with IllegalArgumentException during constructor
       // THE BUG: RandomAccessFile will be created but never closed!
       try {
-        FileRecordStore store =
+        try (FileRecordStore store =
             new FileRecordStore(
                 tempFile.toFile(),
                 0, // preallocatedRecords
@@ -48,11 +47,12 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                 "rw", // accessMode
                 KeyType.BYTE_ARRAY, // keyType
                 true, // defensiveCopy
-                1024*1024, // preferredExpansionSize
-                4*1024, // preferredBlockSize
-                64*1024); // initialHeaderRegionSize
+                1024 * 1024, // preferredExpansionSize
+                4 * 1024, // preferredBlockSize
+                64 * 1024)) { // initialHeaderRegionSize
 
-        Assert.fail("Should have thrown IllegalArgumentException");
+          Assert.fail("Should have thrown IllegalArgumentException");
+        }
       } catch (IllegalArgumentException e) {
         logger.log(Level.FINE, "✓ Got expected validation exception: " + e.getMessage());
 
@@ -100,8 +100,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
           "Calling constructor directly with file that will fail file size validation...");
 
       try {
-        // Use the package-private constructor directly
-        FileRecordStore store =
+        // Use the public constructor directly
+        try (FileRecordStore store =
             new FileRecordStore(
                 tempFile.toFile(),
                 0, // preallocatedRecords
@@ -111,11 +111,12 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                 "rw", // accessMode
                 KeyType.BYTE_ARRAY, // keyType
                 true, // defensiveCopy
-                1024*1024, // preferredExpansionSize
-                4*1024, // preferredBlockSize
-                64*1024); // initialHeaderRegionSize
+                1024 * 1024, // preferredExpansionSize
+                4 * 1024, // preferredBlockSize
+                64 * 1024)) { // initialHeaderRegionSize
 
-        Assert.fail("Should have thrown IOException for file size validation");
+          Assert.fail("Should have thrown IOException for file size validation");
+        }
       } catch (IOException e) {
         logger.log(Level.FINE, "✓ Got expected file size exception: " + e.getMessage());
 
@@ -142,9 +143,21 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
             }
 
             try {
-              FileRecordStore store =
-                  new FileRecordStore(testFile.toFile(), 0, 64, false, false, "rw", 
-                                     KeyType.BYTE_ARRAY, true, 1024*1024, 4*1024, 64*1024);
+              try (FileRecordStore store =
+                  new FileRecordStore(
+                      testFile.toFile(),
+                      0,
+                      64,
+                      false,
+                      false,
+                      "rw",
+                      KeyType.BYTE_ARRAY,
+                      true,
+                      1024 * 1024,
+                      4 * 1024,
+                      64 * 1024)) {
+                // Constructor should fail
+              }
             } catch (IOException expected) {
               // Expected - validation should fail
             }
@@ -191,9 +204,9 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
               "rw", // accessMode
               KeyType.BYTE_ARRAY, // keyType
               true, // defensiveCopy
-              1024*1024, // preferredExpansionSize
-              4*1024, // preferredBlockSize
-              64*1024)) { // initialHeaderRegionSize
+              1024 * 1024, // preferredExpansionSize
+              4 * 1024, // preferredBlockSize
+              64 * 1024)) { // initialHeaderRegionSize
 
         logger.log(Level.FINE, "✓ Store opened successfully - constructor flow completed");
 

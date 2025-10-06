@@ -114,7 +114,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
       Assert.assertArrayEquals("Data should match after insert", data, readData);
 
       // Update record
-      byte[] updatedData = "updateddata".getBytes();
+      byte[] updatedData = "updated-data".getBytes();
       store.updateRecord(key, updatedData);
 
       // Verify updated data
@@ -317,7 +317,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     assertOperationFails(() -> store.readRecordData(key), "readRecordData");
     assertOperationFails(() -> store.updateRecord(key, data), "updateRecord");
     assertOperationFails(() -> store.deleteRecord(key), "deleteRecord");
-    assertOperationFails(() -> store.keysBytes(), "keys");
+    assertOperationFails(store::keysBytes, "keys");
     assertOperationFails(store::isEmpty, "isEmpty");
     assertOperationFails(() -> store.recordExists(key), "recordExists");
     assertOperationFails(store::fsync, "fsync");

@@ -4,7 +4,6 @@ import static com.github.simbo1905.nfp.srs.FileRecordStore.MAX_KEY_LENGTH_PROPER
 
 import com.github.simbo1905.nfp.srs.*;
 import java.io.File;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -22,8 +21,6 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   String fileName;
   FileRecordStore recordsFile = null;
   int initialSize;
-  static final String TMP =
-      System.getProperty("java.io.tmpdir") + FileSystems.getDefault().getSeparator();
 
   private static final Logger LOGGER = Logger.getLogger(SimpleRecordStoreApiTest.class.getName());
 
@@ -38,11 +35,11 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
   }
 
   @After
-  public void cleanup() throws Exception {
+  public void cleanup() {
     cleanupFiles();
   }
 
-  private void cleanupFiles() throws Exception {
+  private void cleanupFiles() {
     if (fileName != null) {
       File db = new File(fileName);
       if (db.exists()) {
@@ -748,8 +745,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
       int keyCount = 0;
       for (byte[] key : store.keysBytes()) {
         keyCount++;
-        Assert.assertTrue(
-            "Key should be byte-key-1", java.util.Arrays.equals(key, "byte-key-1".getBytes()));
+        Assert.assertArrayEquals("Key should be byte-key-1", key, "byte-key-1".getBytes());
       }
       Assert.assertEquals("Should have 1 key", 1, keyCount);
 

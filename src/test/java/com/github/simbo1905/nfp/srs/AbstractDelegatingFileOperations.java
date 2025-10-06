@@ -157,6 +157,18 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
     return delegate.readShort();
   }
 
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    checkOperation();
+    return delegate.readRecordHeader(indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    checkOperation();
+    delegate.writeRecordHeader(header);
+  }
+
   /// Reset the operation count to zero
   public void resetOperationCount() {
     this.operationCount = 0;

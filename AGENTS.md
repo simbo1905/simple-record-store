@@ -56,6 +56,34 @@
 - Logging should be permanent and controlled via configuration, not added/removed from code
 - Adding temporary logging and then removing it is considered fraudulent practice
 
+### Comprehensive Debug Logging Guidelines
+
+**More logging is better** - detailed logging is essential for debugging complex state issues:
+
+1. **Always include current record state**: Every debug log line must include the current RecordHeader state
+2. **Use consistent format**: Use `toDebugString(RecordHeader, data, showData)` for standardized output
+3. **Log level checking**: Always check `logger.isLoggable(Level.FINEST)` before expensive debug operations
+4. **State change logging**: Use `logStateChange()` to track all header/index map updates
+5. **Consistency checks**: Use `logConsistencyCheck()` to verify memory vs disk state matches
+6. **Method entry/exit**: Log method entry with current state and exit with final state
+7. **Path identification**: Clearly identify which code path is being taken (INPLACE, EXTEND, ALLOCATE, MOVE)
+
+**Logging Level Hierarchy**:
+- **FINE**: Method entry/exit with parameters and return values - shows major method flow
+- **FINER**: Branch decisions within methods - shows which code paths are taken
+- **FINEST**: Detailed state changes and internal operations - shows exactly what happened
+
+**Example debug format**:
+```
+FINE  updateRecord: ENTER key=[0x01...0x20], value.length=512
+FINER updateRecordInternal: INPLACE current=RecordHeader[dp=160,dl=26,dc=38,ip=0,crc=73275e82]
+FINEST updateRecordInternal: writeRecordData fp=160, len=520, data=[0x00...0xFF]
+STATE updateRecordInternal: key=[0x01...0x20], old=RecordHeader[dp=160,dl=26,dc=38,ip=0,crc=73275e82], new=RecordHeader[dp=928,dl=512,dc=524,ip=0,crc=e5eeac5b]
+```
+
+8. **Debug helper methods**: Use `final` debug methods to encourage JIT inlining and reduce overhead when disabled
+9. **Never delete debug logging**: Once added, debug logging becomes permanent infrastructure for future debugging
+
 ## Critical API Behavior
 
 ### maxKeyLength Enforcement
@@ -78,6 +106,13 @@ The FileRecordStore constructor now requires explicit sizing parameters:
 - **maxKeyLength**: Required parameter - no default value
 
 These parameters replace the previous default-based approach with explicit sizing hints that the builder computes based on user-friendly KiB/MiB inputs.
+
+### Block Size Alignment Requirements
+When growing header space, we must always align by `preferredBlockSize` for SSD optimization:
+- **SSD Alignment**: Block size must be power of 2 (4 KiB, 8 KiB, 16 KiB, etc.)
+- **Header Expansion**: When `ensureIndexSpace` moves records, new positions must be `preferredBlockSize` aligned
+- **Data Region**: All data pointers must align to block boundaries for optimal SSD performance
+- **Default Values**: 4 KiB blocks provide good balance for most SSDs, 8 KiB+ for high-performance storage
 
 ## Build Output Analysis
 - Always redirect compile output to a file in `/tmp`, then use `tail` and `rg` to analyze errors systematically

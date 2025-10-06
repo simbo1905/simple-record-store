@@ -77,4 +77,14 @@ record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements Fi
   public void writeLong(long v) throws IOException {
     randomAccessFile.writeLong(v);
   }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    return RecordHeader.readFrom(this, indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    RecordHeader.writeTo(this, header);
+  }
 }

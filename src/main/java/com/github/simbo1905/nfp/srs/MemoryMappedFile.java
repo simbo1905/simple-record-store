@@ -409,4 +409,14 @@ class MemoryMappedFile implements FileOperations {
       setLength(requiredSize);
     }
   }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    return RecordHeader.readFrom(this, indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    RecordHeader.writeTo(this, header);
+  }
 }

@@ -55,6 +55,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
             .preallocatedRecords(initialSize)
+            .allowZeroPreallocation()
             .maxKeyLength(64)
             .open();
     String uuid = UUIDGenerator.generateUUID().toString();
@@ -825,6 +826,7 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
         new FileRecordStoreBuilder()
             .path(Paths.get(fileName))
             .preallocatedRecords(initialSize)
+            .allowZeroPreallocation()
             .maxKeyLength(FileRecordStoreBuilder.MAX_KEY_LENGTH)
             .open();
 

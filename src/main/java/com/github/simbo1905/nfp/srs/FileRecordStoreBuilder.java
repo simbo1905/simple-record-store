@@ -7,7 +7,7 @@ import java.nio.file.Paths;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.github.simbo1905.nfp.srs.FileRecordStore.ENVELOPE_SIZE;
+import static com.github.simbo1905.nfp.srs.RecordHeader.ENVELOPE_SIZE;
 
 /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
 /// Provides user-friendly sizing hints that are converted to constructor parameters.
@@ -89,6 +89,9 @@ public class FileRecordStoreBuilder {
   private boolean disablePayloadCrc32 = false; // SSD optimized: keep CRC32 enabled
   private boolean useMemoryMapping = true; // SSD optimized: enable by default
   private AccessMode accessMode = AccessMode.READ_WRITE;
+  
+  /// Safety flag to allow zero pre-allocation (dangerous configuration)
+  private boolean allowZeroPreallocation = false;
   private boolean defensiveCopy = true;
   private int hintInitialKeyCount = 0; // 0 means use default calculation
   private int hintPreferredBlockSize = 4; // 4 KiB default
@@ -168,6 +171,14 @@ public class FileRecordStoreBuilder {
               MAX_KEY_LENGTH, maxKeyLength));
     }
     this.maxKeyLength = maxKeyLength;
+    return this;
+  }
+
+  /// Opt-in to dangerous zero pre-allocation (header expansion on first insert).
+  ///
+  /// @return this builder for chaining
+  public FileRecordStoreBuilder allowZeroPreallocation() {
+    this.allowZeroPreallocation = true;
     return this;
   }
 
@@ -302,10 +313,30 @@ public class FileRecordStoreBuilder {
     // Build the configuration first
     Config config = build();
 
+    // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted in
+    if (accessMode == AccessMode.READ_WRITE && preallocatedRecords == 0 && !allowZeroPreallocation) {
+      throw new IllegalArgumentException(
+          "Cannot create read-write FileRecordStore with zero pre-allocation. " +
+          "This dangerous configuration can lead to header space exhaustion. " +
+          "Either: (1) Add .allowZeroPreallocation() to explicitly opt-in, " +
+          "(2) Use .preallocatedRecords(n) with n > 0, or " +
+          "(3) Open in read-only mode with .accessMode(AccessMode.READ_ONLY)");
+    }
+
     if (tempFilePrefix != null && tempFileSuffix != null) {
       // Create temporary file - always creates new
       Path tempPath = Files.createTempFile(tempFilePrefix, tempFileSuffix);
       tempPath.toFile().deleteOnExit();
+      
+      // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted in
+      if (accessMode == AccessMode.READ_WRITE && preallocatedRecords == 0 && !allowZeroPreallocation) {
+        throw new IllegalArgumentException(
+            "Cannot create read-write FileRecordStore with zero pre-allocation. " +
+            "This dangerous configuration can lead to header space exhaustion. " +
+            "Either: (1) Add .allowZeroPreallocation() to explicitly opt-in, " +
+            "(2) Use .preallocatedRecords(n) with n > 0, or " +
+            "(3) Open in read-only mode with .accessMode(AccessMode.READ_ONLY)");
+      }
       
       // Log severe error if maxKeyLength is 0 to help identify test issues
       if (maxKeyLength == 0) {
@@ -366,6 +397,17 @@ public class FileRecordStoreBuilder {
         } else {
           // File exists but isn't a valid store - create new store (overwrite)
           // This preserves backward compatibility with tests that expect overwrite behavior
+          
+          // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted in
+          if (accessMode == AccessMode.READ_WRITE && preallocatedRecords == 0 && !allowZeroPreallocation) {
+            throw new IllegalArgumentException(
+                "Cannot create read-write FileRecordStore with zero pre-allocation. " +
+                "This dangerous configuration can lead to header space exhaustion. " +
+                "Either: (1) Add .allowZeroPreallocation() to explicitly opt-in, " +
+                "(2) Use .preallocatedRecords(n) with n > 0, or " +
+                "(3) Open in read-only mode with .accessMode(AccessMode.READ_ONLY)");
+          }
+          
           return new FileRecordStore(
               path.toFile(),
               preallocatedRecords,
@@ -381,6 +423,17 @@ public class FileRecordStoreBuilder {
         }
       } catch (IOException e) {
         // Can't read file - create new store (overwrite existing)
+        
+        // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted in
+        if (accessMode == AccessMode.READ_WRITE && preallocatedRecords == 0 && !allowZeroPreallocation) {
+          throw new IllegalArgumentException(
+              "Cannot create read-write FileRecordStore with zero pre-allocation. " +
+              "This dangerous configuration can lead to header space exhaustion. " +
+              "Either: (1) Add .allowZeroPreallocation() to explicitly opt-in, " +
+              "(2) Use .preallocatedRecords(n) with n > 0, or " +
+              "(3) Open in read-only mode with .accessMode(AccessMode.READ_ONLY)");
+        }
+        
         return new FileRecordStore(
             path.toFile(),
             preallocatedRecords,
@@ -396,6 +449,17 @@ public class FileRecordStoreBuilder {
       }
     } else {
       // File doesn't exist - create new
+      
+      // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted in
+      if (accessMode == AccessMode.READ_WRITE && preallocatedRecords == 0 && !allowZeroPreallocation) {
+        throw new IllegalArgumentException(
+            "Cannot create read-write FileRecordStore with zero pre-allocation. " +
+            "This dangerous configuration can lead to header space exhaustion. " +
+            "Either: (1) Add .allowZeroPreallocation() to explicitly opt-in, " +
+            "(2) Use .preallocatedRecords(n) with n > 0, or " +
+            "(3) Open in read-only mode with .accessMode(AccessMode.READ_ONLY)");
+      }
+      
       // Log severe error if maxKeyLength is 0 to help identify test issues
       if (maxKeyLength == 0) {
         logger.log(Level.SEVERE, 

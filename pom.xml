@@ -4,7 +4,7 @@
 
     <groupId>io.github.simbo1905.nfp</groupId>
     <artifactId>simple-record-store</artifactId>
-    <version>1.0.0-RC7-SNAPSHOT</version>
+    <version>1.0.0-RC8-SNAPSHOT</version>
 
     <name>Simple Record Store</name>
     <description>simple single file key value storage</description>

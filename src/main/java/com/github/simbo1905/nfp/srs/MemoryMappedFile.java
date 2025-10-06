@@ -24,7 +24,7 @@ class MemoryMappedFile implements FileOperations {
 
   final RandomAccessFile randomAccessFile;
   final FileChannel channel;
-  volatile Epoch currentEpoch; // Atomic reference to current mapping state
+  volatile Epoch currentEpoch; // current mapping state
   private long position = 0;
 
   /// Immutable holder for a complete memory mapping epoch.

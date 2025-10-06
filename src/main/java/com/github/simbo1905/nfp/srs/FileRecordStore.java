@@ -1,9 +1,9 @@
 package com.github.simbo1905.nfp.srs;
 
-import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.AccessMode;
+import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.*;
 import static java.util.Optional.of;
 
-import java.io.*;
+import java.io.*; // FIXME remote any Input/Output streams push down to file ops which may use ByteBuffer not old IO
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.*;
@@ -23,69 +23,70 @@ import lombok.Synchronized;
 public class FileRecordStore implements AutoCloseable {
 
   private static final Logger logger = Logger.getLogger(FileRecordStore.class.getName());
-  /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
-  /// Placed at the start of every file to detect corruption and incompatible formats.
-  static final int MAGIC_NUMBER = FileRecordStoreBuilder.MAGIC_NUMBER;
-  /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
-  public static final int DEFAULT_MAX_KEY_LENGTH = FileRecordStoreBuilder.DEFAULT_MAX_KEY_LENGTH;
-  /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
-  public static final int MAX_KEY_LENGTH_THEORETICAL =
-      FileRecordStoreBuilder.MAX_KEY_LENGTH_THEORETICAL;
-  // Number of bytes in the record header.
-  private static final int RECORD_HEADER_LENGTH = 20;
+
   // this is an unsigned 32 int
-  private static final int CRC32_LENGTH = Integer.BYTES;
-  /// System property name for configuring the maximum key length.
-  public static String MAX_KEY_LENGTH_PROPERTY = "MAX_KEY_LENGTH";
-  private static final boolean PAD_DATA_TO_KEY_LENGTH = getPadDataToKeyLengthOrDefaultTrue();
+  static final int CRC32_LENGTH = Integer.BYTES;
+  
+  /// The fixed size of the envelope (metadata) that follows each key in the index.
+  /// Contains: 8 bytes (dataPointer) + 4 bytes (dataCapacity) + 4 bytes (dataCount) + 4 bytes (crc32) = 20 bytes total
+  static final int ENVELOPE_SIZE = 20;
+
   /// The maximum key length this store was configured with. Immutable after creation.
   public final int maxKeyLength;
-  /// The total length of one index entry - the key length plus the record
-  /// header length and the CRC of the key which is an unsigned 32 bits.
+
+  /// The total length of one index entry - the key length plus the envelope
+  /// size (20 bytes) and the CRC of the key which is an unsigned 32 bits.
   private final int indexEntryLength;
 
   @Getter private final Path filePath;
-  /// Flag indicating if this store is read-only
+
+  /// Flag indicating if this store was opened as read-only
   private final boolean readOnly;
+
   private final Comparator<RecordHeader> compareRecordHeaderByFreeSpace =
       Comparator.comparingInt(o -> o.getFreeSpace(true));
 
+  ///  FileOperations abstracts over memory mapped files and traditional IO ranom access file.
   /*default*/ FileOperations fileOperations;
-  /// In-memory index mapping keys to record headers. Uses KeyWrapper for efficient
-  /// hash code caching and optional defensive copying. Supports both byte array and UUID keys.
+
+  /// In-memory index mapping keys to record headers. Uses KeyWrapper for efficient hash code caching and optional defensive copying. Supports both byte array and UUID keys.
   private Map<KeyWrapper, RecordHeader> memIndex;
 
-  /// Key type for optimized handling - enables JIT branch elimination since this is final after
-  /// construction
+  /// Key type for optimized handling - enables JIT branch elimination since this is final after construction
   private final KeyType keyType;
 
-  /// Whether to use defensive copying for byte array keys
+  /// Whether to use defensive copying for byte array keys for example is not needed when the actual keys ware UUID or Strings
   private final boolean defensiveCopy;
 
-  /// Returns whether in-place updates are allowed for smaller records.
-  /// Whether to allow in-place updates for smaller records regardless of CRC32 setting
+  /// Returns whether in-place updates are allowed for smaller records. We will toggle this to do online backups.
   @Getter private volatile boolean allowInPlaceUpdates = true;
 
-  /// Returns whether header region expansion is allowed.
+  /// Returns whether header region expansion is allowed. We will toggle this to do online backups.
   ///
   /// Whether to allow header region expansion during operations
   @Getter private volatile boolean allowHeaderExpansion = true;
 
-  /// Expansion size in bytes for header region growth
+  /// Expansion size in bytes for extending the file. These days on cloud hosts with SSDs 2 MiB is sensible default.
   final int preferredExpansionSize;
 
-  /// Block size in bytes for data alignment (must be power of 2)
+  /// Block size in bytes for data alignment (must be power of 2). Typical with SSD a 4 KiB, 8 KiB or even higher may be sensible.
   final int preferredBlockSize;
 
-  /// Initial header region size in bytes
+  /// Initial header region size in bytes. If you know you have small keys and will only have a hundred thousand we can just preallocate the space to avoid moving records to ever expand the header region.
   final int initialHeaderRegionSize;
 
   /// Store state tracking for proper lifecycle management
+  /// <ul>
+  ///   <li><b>NEW</b> - Initial state - store created but not yet validated/opened</li>
+  ///   <li><b>OPEN</b> - Store successfully opened and operational</li>
+  ///   <li><b>CLOSED</b> - Store cleanly closed via close() method</li>
+  ///   <li><b>UNKNOWN</b> - Store encountered an exception, state is uncertain</li>
+  /// </ul>
   enum StoreState {
-    NEW, // Initial state - store created but not yet validated/opened
-    OPEN, // Store successfully opened and operational
-    CLOSED, // Store cleanly closed via close() method
-    UNKNOWN // Store encountered an exception, state is uncertain
+    NEW,
+    OPEN,
+    CLOSED,
+    UNKNOWN
   }
 
   /// Current state of the store
@@ -93,7 +94,7 @@ public class FileRecordStore implements AutoCloseable {
   /// TreeMap of headers by file index.
   private TreeMap<Long, RecordHeader> positionIndex;
   /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free
-  // space first
+  /// space first
   private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
       new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
   // Current file pointer to the start of the record data.
@@ -105,7 +106,7 @@ public class FileRecordStore implements AutoCloseable {
   ///
   /// @param file              the database file handle
   /// @param preallocatedRecords number of index entries to pre-allocate; inserts beyond this force
-  // record movement to expand the index region.
+  /// record movement to expand the index region.
   ///                            Set to 0 for testing to force movement on every insert.
   /// @param maxKeyLength        maximum key length in bytes
   /// @param preferredExpansionSize expansion size in bytes for header region growth
@@ -125,12 +126,25 @@ public class FileRecordStore implements AutoCloseable {
       int initialHeaderRegionSize)
       throws IOException {
     try {
-      // Validate maxKeyLength early
-      if (maxKeyLength < 1 || maxKeyLength > MAX_KEY_LENGTH_THEORETICAL) {
+      // Validate and store sizing parameters
+      if (preferredExpansionSize <= 0) {
+        throw new IllegalArgumentException(
+            "preferredExpansionSize must be positive, got " + preferredExpansionSize);
+      }
+      if (preferredBlockSize <= 0 || (preferredBlockSize & (preferredBlockSize - 1)) != 0) {
+        throw new IllegalArgumentException(
+            "preferredBlockSize must be positive and power of 2, got " + preferredBlockSize);
+      }
+      if (initialHeaderRegionSize <= 0) {
+        throw new IllegalArgumentException(
+            "initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
+      }
+      // Validate maxKeyLength early - must be greater than zero
+      if (maxKeyLength < 1 || maxKeyLength > FileRecordStoreBuilder.MAX_KEY_LENGTH) {
         throw new IllegalArgumentException(
             String.format(
-                "maxKeyLength must be between 1 and %d, got %d",
-                MAX_KEY_LENGTH_THEORETICAL, maxKeyLength));
+                "maxKeyLength must be greater than zero and no more than %d (8-byte aligned maximum), got %d",
+                FileRecordStoreBuilder.MAX_KEY_LENGTH, maxKeyLength));
       }
 
       java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, accessMode);
@@ -149,24 +163,10 @@ public class FileRecordStore implements AutoCloseable {
 
         this.disableCrc32 = disablePayloadCrc32;
         this.maxKeyLength = maxKeyLength;
-        this.indexEntryLength = maxKeyLength + 1 + CRC32_LENGTH + RECORD_HEADER_LENGTH;
+        this.indexEntryLength = Short.BYTES + maxKeyLength + CRC32_LENGTH + ENVELOPE_SIZE;
         this.readOnly = !"rw".equals(accessMode);
         this.keyType = keyType;
         this.defensiveCopy = defensiveCopy;
-
-        // Validate and store sizing parameters
-        if (preferredExpansionSize <= 0) {
-          throw new IllegalArgumentException(
-              "preferredExpansionSize must be positive, got " + preferredExpansionSize);
-        }
-        if (preferredBlockSize <= 0 || (preferredBlockSize & (preferredBlockSize - 1)) != 0) {
-          throw new IllegalArgumentException(
-              "preferredBlockSize must be positive and power of 2, got " + preferredBlockSize);
-        }
-        if (initialHeaderRegionSize <= 0) {
-          throw new IllegalArgumentException(
-              "initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
-        }
         this.preferredExpansionSize = preferredExpansionSize;
         this.preferredBlockSize = preferredBlockSize;
         this.initialHeaderRegionSize = initialHeaderRegionSize;
@@ -344,9 +344,13 @@ public class FileRecordStore implements AutoCloseable {
     final var fp = indexPositionToKeyFp(position);
     fileOperations.seek(fp);
 
-    int len =
-        fileOperations.readByte()
-            & 0xFF; // interpret as unsigned byte https://stackoverflow.com/a/56052675/329496
+    final var keyLengthShort = fileOperations.readShort();
+    final var len = keyLengthShort & 0xFFFF; // interpret as unsigned short
+    final var writeLen = Short.BYTES + len + CRC32_LENGTH;
+
+    // FINER logging: Key and envelope details coming from disk //// TODO remove this after two zeros gon
+    FileRecordStore.logger.log(Level.FINER,
+        "key and envelope details: position=" + position + ", width=" + len + ", fp=" + fp + ", writeLen=" + writeLen);
 
     assert len <= maxKeyLength : String.format("%d > %d", len, maxKeyLength);
 
@@ -361,33 +365,29 @@ public class FileRecordStore implements AutoCloseable {
     long crc32expected =
         buffer.getInt() & 0xffffffffL; // https://stackoverflow.com/a/22938125/329496
 
+    // Compute CRC over key length (short) + key bytes to match write logic
     CRC32 crc = new CRC32();
-    crc.update(key, 0, key.length);
+    ByteBuffer keyDataBuffer = ByteBuffer.allocate(Short.BYTES + len);
+    keyDataBuffer.putShort((short) len);
+    keyDataBuffer.put(key);
+    crc.update(keyDataBuffer.array());
     final var crc32actual = crc.getValue();
 
-    FileRecordStore.logger.log(
-        Level.FINEST,
-        () ->
-            String.format(
-                "<k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
-                fp,
-                position,
-                len,
-                fp + len,
-                crc32actual,
-                java.util.Base64.getEncoder().encodeToString(key),
-                print(key)));
+    // FINEST logging: Key and envelope details with first 256 bytes //// TODO remove this after two zeros gon
+    byte[] first256Bytes = Arrays.copyOf(key, Math.min(256, key.length));
+    FileRecordStore.logger.log(Level.FINEST,
+        "key and envelope details: position=" + position + ", width=" + len + ", fp=" + fp + ", writeLen=" + writeLen + ", expectedCrc32=" + crc32expected + ", actualCrc32=" + crc32actual + ", first256Bytes=" + print(first256Bytes));
 
     if (crc32actual != crc32expected) {
       throw new IllegalStateException(
           String.format(
-              "invalid key CRC32 expected %d and actual %s for len %d and fp %d found key %s with bytes %s",
-              crc32expected,
-              crc32actual,
+              "key and envelope details: position=%d, width=%d, fp=%d, expectedCrc32=%d, actualCrc32=%d, first256Bytes=%s",
+              position,
               len,
               fp,
-              java.util.Base64.getEncoder().encodeToString(key),
-              print(key)));
+              crc32expected,
+              crc32actual,
+              print(Arrays.copyOf(key, Math.min(256, key.length)))));
     }
 
     return KeyWrapper.of(key, defensiveCopy);
@@ -434,7 +434,7 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   private static RecordHeader read(int index, FileOperations in) throws IOException {
-    byte[] header = new byte[RECORD_HEADER_LENGTH];
+    byte[] header = new byte[ENVELOPE_SIZE];
     final var fp = in.getFilePointer();
     in.readFully(header);
 
@@ -444,7 +444,7 @@ public class FileRecordStore implements AutoCloseable {
             String.format(
                 "<h fp:%d idx:%d len:%d bytes:%s", fp, index, header.length, print(header)));
 
-    ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
+    ByteBuffer buffer = ByteBuffer.allocate(ENVELOPE_SIZE);
     buffer.put(header);
     buffer.flip();
 
@@ -482,22 +482,13 @@ public class FileRecordStore implements AutoCloseable {
 
   static int getMaxKeyLengthOrDefault() {
     final String key =
-        String.format("%s.%s", FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY);
+        String.format("%s.%s", FileRecordStore.class.getName(), "MAX_KEY_LENGTH");
     String keyLength =
         System.getenv(key) == null
             ? Integer.valueOf(DEFAULT_MAX_KEY_LENGTH).toString()
             : System.getenv(key);
     keyLength = System.getProperty(key, keyLength);
     return Integer.parseInt(keyLength);
-  }
-
-  private static boolean getPadDataToKeyLengthOrDefaultTrue() {
-    final String key =
-        String.format("%s.%s", FileRecordStore.class.getName(), MAX_KEY_LENGTH_PROPERTY);
-    String keyLength =
-        System.getenv(key) == null ? Boolean.valueOf(true).toString() : System.getenv(key);
-    keyLength = System.getProperty(key, keyLength);
-    return Boolean.parseBoolean(keyLength);
   }
 
   @SuppressWarnings("unused")
@@ -775,12 +766,13 @@ public class FileRecordStore implements AutoCloseable {
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
         // header.
         if (endOfRecord == fileLength) {
+          long length = fileLength + (value.length - updateMeHeader.dataCapacity());
           final var updatedHeader =
               RecordHeader.move(
                   updateMeHeader,
-                  fileLength + (value.length - updateMeHeader.dataCapacity()),
+                  length,
                   value.length);
-          setFileLength(fileLength + (value.length - updateMeHeader.dataCapacity()));
+          setFileLength(length);
           updateFreeSpaceIndex(updatedHeader);
           writeRecordData(updatedHeader, value);
           writeRecordHeaderToIndex(updatedHeader);
@@ -843,7 +835,6 @@ public class FileRecordStore implements AutoCloseable {
           }
         }
       }
-
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -898,7 +889,6 @@ public class FileRecordStore implements AutoCloseable {
           writeDataStartPtrHeader(delRec.dataPointer() + delRec.dataCapacity());
         }
       }
-
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -922,7 +912,7 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   private int getDataLengthPadded(int dataLength) {
-    return (PAD_DATA_TO_KEY_LENGTH) ? Math.max(indexEntryLength, dataLength) : dataLength;
+    return Math.max(indexEntryLength, dataLength);
   }
 
   /// Generates a defensive copy of all the keys in a thread safe manner.
@@ -1107,7 +1097,7 @@ public class FileRecordStore implements AutoCloseable {
               "Key of len %d is larger than permitted max size of %d bytes. You can increase this to %d using env var or system property %s.MAX_KEY_LENGTH",
               key.length(),
               maxKeyLength,
-              MAX_KEY_LENGTH_THEORETICAL,
+              FileRecordStoreBuilder.MAX_KEY_LENGTH,
               FileRecordStore.class.getName()));
     }
 
@@ -1144,14 +1134,14 @@ public class FileRecordStore implements AutoCloseable {
     RecordHeader updatedRh =
         new RecordHeader(rh.dataPointer(), rh.dataCount(), rh.dataCapacity(), rh.indexPosition());
 
-    ByteBuffer buffer = ByteBuffer.allocate(RECORD_HEADER_LENGTH);
+    ByteBuffer buffer = ByteBuffer.allocate(ENVELOPE_SIZE);
     buffer.putLong(updatedRh.dataPointer());
     buffer.putInt(updatedRh.dataCapacity());
     buffer.putInt(updatedRh.dataCount());
     buffer.putInt((int) (updatedRh.crc32() & 0xFFFFFFFFL));
     final var array = buffer.array();
 
-    out.write(buffer.array(), 0, RECORD_HEADER_LENGTH);
+    out.write(buffer.array(), 0, ENVELOPE_SIZE);
 
     logger.log(
         Level.FINEST,
@@ -1200,38 +1190,35 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   private void writeKeyToIndex(KeyWrapper key, int index) throws IOException {
-    final var len = (byte) key.length();
-    final var writeLen = key.length() + 1 + CRC32_LENGTH;
+    final var len = (short) key.length();
+    // Write only the actual data length - no padding or uninitialized memory
+    final var writeLen = Short.BYTES + len + CRC32_LENGTH;
+
+    // FINER logging: Key and envelope details going to disk //// TODO remove this after two zeros gon
+    final var fpk = indexPositionToKeyFp(index);
+    FileRecordStore.logger.log(Level.FINER, 
+        "key and envelope details: position=" + index + ", width=" + len + ", fp=" + fpk + ", writeLen=" + writeLen);
 
     ByteBuffer buffer = ByteBuffer.allocate(writeLen);
-    buffer.put(len);
-    buffer.put(key.bytes(), 0, key.length());
+    buffer.putShort(len);
+    buffer.put(key.bytes(), 0, key.length());  // Only actual key bytes
 
-    // compute crc from the backing array with what we have written
+    // compute crc from exactly what we wrote (no padding or uninitialized memory)
     final var array = buffer.array();
     CRC32 crc = new CRC32();
-    crc.update(array, 1, key.length());
+    crc.update(array, 0, array.length);  // CRC covers length + key data only
     int crc32 = (int) (crc.getValue() & 0xFFFFFFFFL);
 
     // add the crc which will write through to the backing array
     buffer.putInt(crc32);
 
-    final var fpk = indexPositionToKeyFp(index);
-    fileOperations.seek(fpk);
-    fileOperations.write(array, 0, writeLen);
+    // FINEST logging: Key and envelope details with first 256 bytes //// TODO remove this after two zeros gon
+    byte[] first256Bytes = Arrays.copyOf(array, Math.min(256, array.length));
+    FileRecordStore.logger.log(Level.FINEST,
+        "key and envelope details: position=" + index + ", width=" + len + ", fp=" + fpk + ", writeLen=" + writeLen + ", crc32=" + crc32 + ", first256Bytes=" + print(first256Bytes));
 
-    FileRecordStore.logger.log(
-        Level.FINEST,
-        () ->
-            String.format(
-                ">k fp:%d idx:%d len:%d end:%d crc:%d key:%s bytes:%s",
-                fpk,
-                index,
-                len & 0xFF,
-                fpk + (len & 0xFF),
-                crc32,
-                java.util.Base64.getEncoder().encodeToString(key.bytes()),
-                print(key.bytes())));
+    fileOperations.seek(fpk);
+    fileOperations.write(array, 0, writeLen);  // Write only actual data
   }
 
   /// Writes the ith record header to the index.
@@ -1243,13 +1230,13 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Inserts a new record. It tries to insert into free space at the end of the index space, or
-  // free space between
+  /// free space between
   /// records, then finally extends the fileOperations. If the file has been set to a large initial
-  // file it will initially all
+  /// file it will initially all
   /// be considered space at the end of the index space such that inserts will be prepended into the
-  // back of the
+  /// back of the
   /// fileOperations. When there is no more space in the index area the file will be expanded and
-  // record(s) will be into the new
+  /// record(s) will be into the new
   /// space to make space for headers.
   ///
   /// @param key the key for the new record
@@ -1328,12 +1315,13 @@ public class FileRecordStore implements AutoCloseable {
             getFileLength(); // perform a move. insert data to the end of the file then overwrite
         // header.
         if (endOfRecord == fileLength) {
+          long length = fileLength + (value.length - updateMeHeader.dataCapacity());
           final var updatedHeader =
               RecordHeader.move(
                   updateMeHeader,
-                  fileLength + (value.length - updateMeHeader.dataCapacity()),
+                  length,
                   value.length);
-          setFileLength(fileLength + (value.length - updateMeHeader.dataCapacity()));
+          setFileLength(length);
           updateFreeSpaceIndex(updatedHeader);
           writeRecordData(updatedHeader, value);
           writeRecordHeaderToIndex(updatedHeader);
@@ -1396,7 +1384,6 @@ public class FileRecordStore implements AutoCloseable {
           }
         }
       }
-
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -1413,6 +1400,7 @@ public class FileRecordStore implements AutoCloseable {
     final var updatedHeader = RecordHeader.withDataCount(header, data.length);
     positionIndex.put(header.dataPointer(), updatedHeader);
 
+    // FIXME this should delegate to the underlying which can do ByteBuffer stuff.
     ByteArrayOutputStream bout = new ByteArrayOutputStream();
     DataOutputStream out = new DataOutputStream(bout);
     out.writeInt(data.length);
@@ -1493,7 +1481,6 @@ public class FileRecordStore implements AutoCloseable {
           writeDataStartPtrHeader(delRec.dataPointer() + delRec.dataCapacity());
         }
       }
-
     } catch (Exception e) {
       state = StoreState.UNKNOWN;
       throw e;
@@ -1530,6 +1517,16 @@ public class FileRecordStore implements AutoCloseable {
     // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
     while (endIndexPtr > dataStartPtr) {
       final var firstOptional = getRecordAt(dataStartPtr);
+      if( firstOptional.isEmpty()){ // TODO this is slow so remove
+        for (RecordHeader h : this.memIndex.values()) {
+          RecordHeader other = this.positionIndex.get(h.dataPointer());
+          if (other == null || other != h) {
+            logger.severe(()->"MISMATCH: key=" + h
+               + ", memIndex=" + h
+                + ", positionIndex=" + other);
+          }
+        }
+      }
       // TODO figure out if there is some case where someone could trigger the following
       // IllegalStateException
       final var first =

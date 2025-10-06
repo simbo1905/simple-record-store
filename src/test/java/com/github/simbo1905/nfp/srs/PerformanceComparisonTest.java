@@ -25,6 +25,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
         new FileRecordStoreBuilder()
             .path(directFile)
             .preallocatedRecords(10000)
+            .maxKeyLength(64)
             .disablePayloadCrc32(false)
             .open()) {
       for (int i = 0; i < RECORD_COUNT; i++) {
@@ -42,6 +43,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
         new FileRecordStoreBuilder()
             .path(mmapFile)
             .preallocatedRecords(10000)
+            .maxKeyLength(64)
             .useMemoryMapping(true)
             .open()) {
       for (int i = 0; i < RECORD_COUNT; i++) {
@@ -85,11 +87,11 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       Arrays.fill(value2, (byte) 'B');
 
       // Test direct I/O updates
-      Path path = directPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
-              .path(path)
+              .path(directPath)
               .preallocatedRecords(10000)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .open()) {
         for (int i = 0; i < RECORD_COUNT / 2; i++) {
@@ -101,7 +103,8 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long directStart = System.nanoTime();
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
-              .path(path)
+              .path(directPath)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -118,6 +121,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
           new FileRecordStoreBuilder()
               .path(path1)
               .preallocatedRecords(10000)
+              .maxKeyLength(64)
               .useMemoryMapping(true)
               .open()) {
         for (int i = 0; i < RECORD_COUNT / 2; i++) {
@@ -130,6 +134,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path1)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
               .open()) {

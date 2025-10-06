@@ -160,6 +160,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
     try (FileRecordStore store =
         new FileRecordStoreBuilder()
             .tempFile("example-mixed-", ".db")
+            .maxKeyLength(64)
             .preallocatedRecords(10000)
             .disablePayloadCrc32(false)
             .open()) {
@@ -171,6 +172,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
     try (FileRecordStore store =
         new FileRecordStoreBuilder()
             .path(tempFile)
+            .maxKeyLength(64)
             .disablePayloadCrc32(false)
             .useMemoryMapping(true)
             .open()) {
@@ -182,6 +184,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
     try (FileRecordStore store =
         new FileRecordStoreBuilder()
             .path(tempFile)
+            .maxKeyLength(64)
             .disablePayloadCrc32(false)
             .useMemoryMapping(false)
             .open()) {

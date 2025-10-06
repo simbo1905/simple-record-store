@@ -7,6 +7,8 @@ import java.nio.file.Paths;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import static com.github.simbo1905.nfp.srs.FileRecordStore.ENVELOPE_SIZE;
+
 /// Builder for creating FileRecordStore instances with a fluent API inspired by H2 MVStore.
 /// Provides user-friendly sizing hints that are converted to constructor parameters.
 ///
@@ -24,6 +26,7 @@ import java.util.logging.Logger;
 public class FileRecordStoreBuilder {
 
   private static final Logger logger = Logger.getLogger(FileRecordStoreBuilder.class.getName());
+  private int maxKeyLength;
 
   /// Access mode for the FileRecordStore.
   @SuppressWarnings("LombokGetterMayBeUsed")
@@ -47,14 +50,17 @@ public class FileRecordStoreBuilder {
   private com.github.simbo1905.nfp.srs.KeyType keyType =
       com.github.simbo1905.nfp.srs.KeyType.BYTE_ARRAY;
 
-  // Core constants moved from FileRecordStore
   /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
   /// Placed at the start of every file to detect corruption and incompatible formats.
   static final int MAGIC_NUMBER = 0xBEEBBEEB;
   /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
   public static final int DEFAULT_MAX_KEY_LENGTH = 128;
-  /// Theoretical maximum key length based on file format constraints (Short.MAX_VALUE - 4).
-  public static final int MAX_KEY_LENGTH_THEORETICAL = Short.MAX_VALUE - Integer.BYTES;
+  /// Theoretical maximum key length based on file format constraints
+  private static final int MAX_KEY_LENGTH_THEORETICAL = Short.MAX_VALUE - ENVELOPE_SIZE;
+  /// Maximum key length allowing for 8-byte alignment = 32760 bytes.
+  /// This is the largest multiple of 8 that fits within the theoretical maximum.
+  /// Calculated as (MAX_KEY_LENGTH_THEORETICAL / 8) * 8 to ensure proper memory alignment.
+  public static final int MAX_KEY_LENGTH = (MAX_KEY_LENGTH_THEORETICAL / 8) * 8;
 
   // File format constants
   /// File index to the magic number header.
@@ -79,8 +85,7 @@ public class FileRecordStoreBuilder {
   private String tempFileSuffix;
   private int preallocatedRecords =
       1024; // SSD optimized: pre-allocate for better sequential performance
-  private int maxKeyLength =
-      FileRecordStore.DEFAULT_MAX_KEY_LENGTH; // 128 bytes - optimized for SHA256/SHA512
+
   private boolean disablePayloadCrc32 = false; // SSD optimized: keep CRC32 enabled
   private boolean useMemoryMapping = true; // SSD optimized: enable by default
   private AccessMode accessMode = AccessMode.READ_WRITE;
@@ -153,14 +158,14 @@ public class FileRecordStoreBuilder {
   /// Sets the maximum key length in bytes.
   /// Required parameter - no default value provided by builder.
   ///
-  /// @param maxKeyLength the maximum key length (1-32763 bytes)
+  /// @param maxKeyLength the maximum key length (1-32760 bytes for 8-byte alignment)
   /// @return this builder for chaining
   public FileRecordStoreBuilder maxKeyLength(int maxKeyLength) {
-    if (maxKeyLength < 1 || maxKeyLength > FileRecordStore.MAX_KEY_LENGTH_THEORETICAL) {
+    if (maxKeyLength < 1 || maxKeyLength > MAX_KEY_LENGTH) {
       throw new IllegalArgumentException(
           String.format(
-              "maxKeyLength must be between 1 and %d, got %d",
-              FileRecordStore.MAX_KEY_LENGTH_THEORETICAL, maxKeyLength));
+              "maxKeyLength must be between 1 and %d (8-byte aligned maximum), got %d",
+              MAX_KEY_LENGTH, maxKeyLength));
     }
     this.maxKeyLength = maxKeyLength;
     return this;
@@ -251,8 +256,12 @@ public class FileRecordStoreBuilder {
   ///
   /// @return Config object containing resolved values
   Config build() {
-    // Apply 8-byte alignment: round key length + CRC up to nearest 8 bytes
-    int alignedKeyLength = ((maxKeyLength + 4 + 7) / 8) * 8;
+    // Apply 8-byte alignment: round key length + short length + CRC up to nearest 8 bytes, but cap at maxKeyLength
+    int keyDataLength = maxKeyLength + Short.BYTES + Integer.BYTES; // key + short length + int CRC
+    int alignedKeyLength = ((keyDataLength + 7) / 8) * 8;
+    // Ensure we don't exceed the actual max key length to avoid padding issues
+    alignedKeyLength = Math.min(alignedKeyLength, maxKeyLength + Short.BYTES + Integer.BYTES);
+    final var finalAlignedKeyLength = alignedKeyLength;
 
     // Convert user-friendly units to bytes
     int expansionSize = hintPreferredExpandSize * 1024 * 1024; // MiB to bytes
@@ -262,7 +271,7 @@ public class FileRecordStoreBuilder {
     int initialHeaderSize;
     if (hintInitialKeyCount > 0) {
       // User provided hint: calculate based on key count
-      int indexEntryLength = alignedKeyLength + 1 + 4 + 20; // key + len + crc + header
+      int indexEntryLength = alignedKeyLength + Short.BYTES + Integer.BYTES + 20; // key + short len + int crc + header
       initialHeaderSize =
           Math.max(hintInitialKeyCount * indexEntryLength, DEFAULT_INITIAL_HEADER_SIZE);
     } else {
@@ -275,7 +284,7 @@ public class FileRecordStoreBuilder {
         () ->
             String.format(
                 "Resolved sizing: alignedKeyLength=%d, expansionSize=%d, blockSize=%d, initialHeaderSize=%d",
-                alignedKeyLength, expansionSize, blockSize, initialHeaderSize));
+                finalAlignedKeyLength, expansionSize, blockSize, initialHeaderSize));
 
     return new Config(expansionSize, blockSize, initialHeaderSize);
   }
@@ -297,6 +306,15 @@ public class FileRecordStoreBuilder {
       // Create temporary file - always creates new
       Path tempPath = Files.createTempFile(tempFilePrefix, tempFileSuffix);
       tempPath.toFile().deleteOnExit();
+      
+      // Log severe error if maxKeyLength is 0 to help identify test issues
+      if (maxKeyLength == 0) {
+        logger.log(Level.SEVERE, 
+            "FileRecordStoreBuilder.open() called with maxKeyLength=0. This will cause IllegalArgumentException. " +
+            "Builder configuration: tempFilePrefix={0}, tempFileSuffix={1}, preallocatedRecords={2}, keyType={3}", 
+            new Object[]{tempFilePrefix, tempFileSuffix, preallocatedRecords, keyType});
+      }
+      
       return new FileRecordStore(
           tempPath.toFile(),
           preallocatedRecords,
@@ -319,6 +337,14 @@ public class FileRecordStoreBuilder {
     if (Files.exists(path)) {
       // File exists - try to validate and open existing store
       try {
+        // Log severe error if maxKeyLength is 0 to help identify test issues
+        if (maxKeyLength == 0) {
+          logger.log(Level.SEVERE, 
+              "FileRecordStoreBuilder.open() called with maxKeyLength=0 for existing file. This will cause IllegalArgumentException. " +
+              "Builder configuration: path={0}, accessMode={1}, keyType={2}", 
+              new Object[]{path, accessMode, keyType});
+        }
+        
         // Check if it's a valid FileRecordStore file
         boolean isValid = isValidFileRecordStore(path, maxKeyLength);
         logger.log(Level.FINE, "File validation for " + path + ": " + isValid);
@@ -370,6 +396,14 @@ public class FileRecordStoreBuilder {
       }
     } else {
       // File doesn't exist - create new
+      // Log severe error if maxKeyLength is 0 to help identify test issues
+      if (maxKeyLength == 0) {
+        logger.log(Level.SEVERE, 
+            "FileRecordStoreBuilder.open() called with maxKeyLength=0 for new file. This will cause IllegalArgumentException. " +
+            "Builder configuration: path={0}, preallocatedRecords={1}, accessMode={2}, keyType={3}", 
+            new Object[]{path, preallocatedRecords, accessMode, keyType});
+      }
+      
       return new FileRecordStore(
           path.toFile(),
           preallocatedRecords,
@@ -426,7 +460,7 @@ public class FileRecordStoreBuilder {
       int keyLength;
       int numRecords;
 
-      if (magicNumber == FileRecordStore.MAGIC_NUMBER) {
+      if (magicNumber == MAGIC_NUMBER) {
         // New format with magic number
         try {
           raf.seek(KEY_LENGTH_HEADER_LOCATION);
@@ -444,7 +478,7 @@ public class FileRecordStoreBuilder {
       }
 
       // Validate key length
-      if (keyLength > FileRecordStore.MAX_KEY_LENGTH_THEORETICAL) {
+      if (keyLength > MAX_KEY_LENGTH_THEORETICAL) {
         logger.log(Level.FINE, "Validation failed: invalid key length " + keyLength);
         return false;
       }

@@ -29,7 +29,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
 
   private int discoverDeleteOperationCount() throws Exception {
     FileRecordStoreBuilder builder =
-        new FileRecordStoreBuilder().tempFile("delete-discovery-", ".db");
+        new FileRecordStoreBuilder().tempFile("delete-discovery-", ".db").maxKeyLength(64);
 
     FileRecordStore baseStore = builder.open();
 
@@ -98,7 +98,7 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
   }
 
   private FileRecordStore createStoreWithData() throws IOException {
-    FileRecordStore store = new FileRecordStoreBuilder().tempFile("delete-test-", ".db").open();
+    FileRecordStore store = new FileRecordStoreBuilder().tempFile("delete-test-", ".db").maxKeyLength(64).open();
 
     byte[] key = "testkey".getBytes();
     byte[] data = "testdata".getBytes();

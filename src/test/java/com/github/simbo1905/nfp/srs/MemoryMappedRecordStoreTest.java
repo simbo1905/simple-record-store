@@ -24,6 +24,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert
         final var key1 = ("key1".getBytes());
@@ -52,6 +53,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(0, store.getNumRecords());
       }
@@ -71,6 +73,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert multiple records
         for (int i = 0; i < 100; i++) {
@@ -96,6 +99,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(100, store.getNumRecords());
         for (int i = 0; i < 100; i++) {
@@ -118,6 +122,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(tempPath)
               .preallocatedRecords(10000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert large records
         final var key1 = ("largekey1".getBytes());
@@ -155,6 +160,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(tempPath)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         store.insertRecord(key, data1);
@@ -180,6 +186,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(tempPath)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("key1".getBytes());
         final var value = "value1".getBytes();
@@ -200,6 +207,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("key1".getBytes());
         Assert.assertTrue(store.recordExists(key));
@@ -221,6 +229,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .preallocatedRecords(1000)
               .disablePayloadCrc32(false)
+              .maxKeyLength(64)
               .open()) {
         final var key1 = ("key1".getBytes());
         final var value1 = "value1".getBytes();
@@ -233,6 +242,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key2 = ("key2".getBytes());
         final var value2 = "value2".getBytes();
@@ -250,6 +260,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(2, store.getNumRecords());
       }
@@ -269,6 +280,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(tempPath)
               .preallocatedRecords(100)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert records that will require file growth
         for (int i = 0; i < 50; i++) {
@@ -310,6 +322,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         for (int i = 0; i < 10; i++) {
           final byte[] key = ("key" + i).getBytes();
@@ -326,6 +339,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         // Due to close() calling fsync(), all data should be present
         Assert.assertEquals(10, store.getNumRecords());
@@ -357,6 +371,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .path(path)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         store.insertRecord(key, data1);
@@ -377,6 +392,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         byte[] read = store.readRecordData(key);

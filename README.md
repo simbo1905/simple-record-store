@@ -455,12 +455,11 @@ This implementation:
 1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
 1. Has no dependencies outside the JDK and uses `java.logging` aka JUL for logging.  
 1. Is thread-safe. It uses an internal lock to protect all public methods. 
-1. Uses an in-memory HashMap to cache record headers by key. A record header is the key and compact metadata, such as the  
-offset, data and checksum. This makes locating a record by key an `O(1)` lookup.
+1. Uses an in-memory HashMap to cache record headers by key. A record header is the complete on-disk structure containing both the key and its envelope (20-byte metadata). This makes locating a record by key an `O(1)` lookup.
 1. Stores the key with a single byte length and CRC footer
 1. The records are held in a single `RandomAccessFile` comprising: 
    1. A four-byte header, which is the number of records. 
-   2. An index region, which is all the headers with possibly some free space at the end. The index region can be 
+   2. An index region, which contains all record headers (key + envelope) with possibly some free space at the end. The index region can be 
    pre-allocated when the store is first created. Once the index is filled up, fresh inserts will expand this region 
    by moving the records beyond it.  
    3. The data region. Past deletes or updates may have created free space between records. Record inserts or moves will 
@@ -508,9 +507,9 @@ You can set the following properties with either an environment variable or a `-
 | Property                                                | Default | Comment                 |
 |---------------------------------------------------------|---------|-------------------------|
 | com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
-| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of RECORD_HEADER_LENGTH bytes. |
+| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of ENVELOPE_SIZE bytes. |
 
-Note that the actual record header length is MAX_KEY_LENGTH + RECORD_HEADER_LENGTH. If you have UUID string keys and set the max key size to 36, then each record header will be 68 characters. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write amplification effect when growing the index region. If your values are 8-byte longs keyed by UUID string keys, growing the index region to hold one more header would mean moving 9 values to the back of the file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file, the index space shrinks rather than grows, so there is write amplification, and you can disable padding to save space. 
+Note that the actual record header length is MAX_KEY_LENGTH + ENVELOPE_SIZE (20 bytes). If you have UUID string keys and set the max key size to 36, then each record header will be 56 bytes. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write amplification effect when growing the index region. If your values are 8-byte longs keyed by UUID string keys, growing the index region to hold one more header would mean moving 9 values to the back of the file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file, the index space shrinks rather than grows, so there is write amplification, and you can disable padding to save space. 
 
 ## Build
 

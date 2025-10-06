@@ -103,7 +103,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         Level.FINE,
         () -> String.format("Creating store with exception at operation %d", throwAtOperation));
 
-    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("debug-test-", ".db");
+    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("debug-test-", ".db").maxKeyLength(64);
 
     FileRecordStore baseStore = builder.open();
 
@@ -113,7 +113,7 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
     DelegatingExceptionOperations exceptionOps =
         new DelegatingExceptionOperations(directOps, throwAtOperation);
 
-    FileRecordStore exceptionStore = builder.path(baseStore.getFilePath()).open();
+    FileRecordStore exceptionStore = builder.path(baseStore.getFilePath()).maxKeyLength(64).open();
     exceptionStore.fileOperations = exceptionOps;
 
     baseStore.close();

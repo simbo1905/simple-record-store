@@ -86,6 +86,7 @@ These parameters replace the previous default-based approach with explicit sizin
 ```shell
 mvn test-compile > /tmp/compile.log 2>&1; tail -50 /tmp/compile.log; echo "=== FULL ERRORS ==="; rg "ERROR|error:|cannot find symbol" /tmp/compile.log
 ```
+- **CRITICAL**: Use `2>&1` NOT `2>>1` - the latter is junk syntax that won't capture stderr properly
 - Overwrite a single temp file (`/tmp/compile.log`) rather than creating multiple log files in PWD
 
 ## Code Formatting Requirements (Spotless)
@@ -138,8 +139,12 @@ perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var
 | 4 | 2 | Key Length | Maximum key length (1-32763) | Range validated, must match constructor parameter |
 | 6 | 4 | Record Count | Number of records in store | Must be non-negative, validated against file size |
 | 10 | 8 | Data Start Ptr | File offset to start of data region | Must be ≥ header size, validated against file size |
-| 18 | - | Index Region | Record headers and keys | Size = `recordCount * (keyLength + 25)` |
+| 18 | - | Index Region | Record headers (key + envelope) | Size = `recordCount * (keyLength + ENVELOPE_SIZE + 5)` |
 | Data Start Ptr | - | Data Region | Record data with length prefixes | Each record: 4-byte length + data + optional CRC32 |
+
+**Terminology Clarification:**
+- **Record Header**: The complete on-disk structure containing both the key and its envelope (metadata)
+- **Envelope**: The fixed 20-byte metadata structure that follows each key in the index, containing data pointer, capacities, count, and CRC32
 
 **Note**: Upgraded from 1-byte to 2-byte key length field to support SHA256/SHA512 hashes (32-64 bytes) and larger keys up to 32KB.
 

@@ -178,7 +178,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
 
           // Try to reopen and check what data is recoverable
           try {
-            FileRecordStore reopenedStore = new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open();
+            FileRecordStore reopenedStore =
+                new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open();
 
             // Check if any data was written before the exception
             if (reopenedStore.recordExists(key)) {
@@ -210,7 +211,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
   private int discoverOperationCount() throws Exception {
     logger.log(Level.FINE, "=== Discovering operation count ===");
 
-    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("discovery-", ".db").maxKeyLength(64);
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("discovery-", ".db").maxKeyLength(64);
 
     // Create base store
     FileRecordStore baseStore = builder.open();

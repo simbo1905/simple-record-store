@@ -103,7 +103,8 @@ public class ExceptionHandlingDebugTest extends JulLoggingConfig {
         Level.FINE,
         () -> String.format("Creating store with exception at operation %d", throwAtOperation));
 
-    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("debug-test-", ".db").maxKeyLength(64);
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("debug-test-", ".db").maxKeyLength(64);
 
     FileRecordStore baseStore = builder.open();
 

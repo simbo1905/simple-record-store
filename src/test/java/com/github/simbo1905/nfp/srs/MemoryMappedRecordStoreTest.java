@@ -7,18 +7,14 @@ import java.util.Collections;
 import org.junit.Assert;
 import org.junit.Test;
 
-@SuppressWarnings("ResultOfMethodCallIgnored")
 public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
-
-  private static final String TEST_DIR = System.getProperty("java.io.tmpdir");
 
   @Test
   public void testBasicOperationsWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-basic-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-basic-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Create a new store with memory mapping enabled
-      Path path = tempPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path)
@@ -58,16 +54,15 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         Assert.assertEquals(0, store.getNumRecords());
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
   @Test
   public void testMultipleInsertsWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-multiple-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-multiple-", ".db");
+    path.toFile().deleteOnExit();
     try {
-      Path path = tempPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path)
@@ -108,7 +103,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         }
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -125,7 +120,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
               .maxKeyLength(64)
               .open()) {
         // Insert large records
-        final var key1 = ("largekey1".getBytes());
+        final var key1 = ("large-key1".getBytes());
         byte[] largeValue = new byte[10000];
         Arrays.fill(largeValue, (byte) 'A');
         store.insertRecord(key1, largeValue);
@@ -219,11 +214,10 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testMixedDirectAndMemoryMappedAccess() throws Exception {
-    Path tempPath = Files.createTempFile("test-mixed-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mixed-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Create with direct I/O
-      Path path = tempPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path)
@@ -265,7 +259,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         Assert.assertEquals(2, store.getNumRecords());
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -312,11 +306,10 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
   /// 4. File structure validation on reopen
   @Test
   public void testCrashRecoveryWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-crash-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-crash-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Write some data
-      Path path = tempPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path)
@@ -351,7 +344,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         }
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -359,13 +352,12 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
   /// The pattern writes: backup header -> data -> final header
   @Test
   public void testDualWritePatternWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-dual-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-dual-", ".db");
+    path.toFile().deleteOnExit();
     try {
       final var data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
       final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
 
-      Path path = tempPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
               .path(path)
@@ -399,7 +391,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         Assert.assertArrayEquals(data2, read);
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 }

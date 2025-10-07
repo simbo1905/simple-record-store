@@ -10,7 +10,7 @@ public interface WriteCallback {
    * Default implementation for onRead that does nothing.
    * Implementations can override this to handle read operations.
    */
-  default void onRead() throws IOException {
+  default void onRead() {
     // Default: do nothing
   }
 }

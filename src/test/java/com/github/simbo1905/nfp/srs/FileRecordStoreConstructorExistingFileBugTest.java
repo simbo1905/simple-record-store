@@ -58,7 +58,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open with different maxKeyLength - should fail but not leak resources
       logger.log(Level.FINE, "Attempting to open store with corrupted header...");
-      try (FileRecordStore store2 =
+      try (@SuppressWarnings("unused") FileRecordStore store2 =
           new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception due to corrupted header");
       } catch (IllegalArgumentException e) {
@@ -86,7 +86,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
   public void demonstrateMemIndexSizingWithUnvalidatedData() throws Exception {
     logger.log(Level.FINE, "=== Testing memIndex sizing with potentially unvalidated data ===");
 
-    Path tempFile = Files.createTempFile("memindex-sizing", ".dat");
+    Path tempFile = Files.createTempFile("mem-index-sizing", ".dat");
 
     try {
       // Create a minimal valid file
@@ -99,7 +99,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open - this could cause issues if numRecords isn't validated
       logger.log(Level.FINE, "Attempting to open store with huge numRecords value...");
-      try (FileRecordStore store =
+      try (@SuppressWarnings("unused") FileRecordStore store =
           new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         logger.log(Level.FINE, "Store opened successfully");
         // The issue would be if memIndex was sized with the huge numRecords value
@@ -118,7 +118,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
   public void demonstrateDataStartPtrInitializationBug() throws Exception {
     logger.log(Level.FINE, "=== Testing dataStartPtr initialization for existing files ===");
 
-    Path tempFile = Files.createTempFile("datastart-ptr", ".dat");
+    Path tempFile = Files.createTempFile("data-start-ptr", ".dat");
 
     try {
       // Create a store to establish proper dataStartPtr

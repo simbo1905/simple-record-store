@@ -127,7 +127,8 @@ public class BuilderTest extends JulLoggingConfig {
     Path dbPath = tempFolder.newFile("defaults.db").toPath();
 
     // Open with minimal configuration
-    try (FileRecordStore store = new FileRecordStoreBuilder().path(dbPath).maxKeyLength(64).open()) {
+    try (FileRecordStore store =
+        new FileRecordStoreBuilder().path(dbPath).maxKeyLength(64).open()) {
 
       // Should work with default values
       byte[] key = "default".getBytes();
@@ -144,7 +145,8 @@ public class BuilderTest extends JulLoggingConfig {
     Path relativePath = Files.createTempFile("test-relative-", ".db");
     relativePath.toFile().deleteOnExit();
     try {
-      FileRecordStore store = new FileRecordStoreBuilder().path(relativePath).maxKeyLength(64).open();
+      FileRecordStore store =
+          new FileRecordStoreBuilder().path(relativePath).maxKeyLength(64).open();
 
       // Should work (relative paths are allowed)
       store.close();
@@ -155,7 +157,8 @@ public class BuilderTest extends JulLoggingConfig {
 
     // Test with absolute path
     Path absolutePath = tempFolder.newFile("absolute.db").toPath();
-    try (FileRecordStore ignored = new FileRecordStoreBuilder().path(absolutePath).maxKeyLength(64).open()) {
+    try (FileRecordStore ignored =
+        new FileRecordStoreBuilder().path(absolutePath).maxKeyLength(64).open()) {
       // Should work
       assertTrue(Files.exists(absolutePath));
     }

@@ -98,7 +98,8 @@ public class SimpleDeleteDebugTest extends JulLoggingConfig {
   }
 
   private FileRecordStore createStoreWithData() throws IOException {
-    FileRecordStore store = new FileRecordStoreBuilder().tempFile("delete-test-", ".db").maxKeyLength(64).open();
+    FileRecordStore store =
+        new FileRecordStoreBuilder().tempFile("delete-test-", ".db").maxKeyLength(64).open();
 
     byte[] key = "testkey".getBytes();
     byte[] data = "testdata".getBytes();

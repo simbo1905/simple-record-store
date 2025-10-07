@@ -92,7 +92,7 @@ public class MemoryMappedBugsTest extends JulLoggingConfig {
       recoveryFile.seek(1500);
       byte[] readBuffer = new byte[extendedData.length()];
       int bytesRead = recoveryFile.read(readBuffer);
-      String recoveredData = new String(readBuffer, 0, bytesRead > 0 ? bytesRead : 0);
+      String recoveredData = new String(readBuffer, 0, Math.max(bytesRead, 0));
 
       logger.log(Level.FINE, "Original extended data: '" + extendedData + "'");
       logger.log(Level.FINE, "Recovered extended data: '" + recoveredData + "'");

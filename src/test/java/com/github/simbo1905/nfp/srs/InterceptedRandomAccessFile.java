@@ -3,6 +3,7 @@ package com.github.simbo1905.nfp.srs;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+@SuppressWarnings("ClassEscapesDefinedScope")
 public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback wc)
     implements FileOperations {
 

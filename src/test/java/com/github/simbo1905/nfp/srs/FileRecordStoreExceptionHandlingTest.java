@@ -14,7 +14,6 @@ import org.junit.Test;
 /// Comprehensive test for FileRecordStore closed state behavior after exceptions.
 /// This test uses proper resource management and controlled exception injection
 /// to verify that the store correctly handles exceptions and prevents reuse.
-@SuppressWarnings("ResultOfMethodCallIgnored")
 public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
 
   private static final Logger logger =
@@ -25,7 +24,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=== Discovering total operation count for simple insert ===");
 
     // Create store with counting wrapper that never throws (use Integer.MAX_VALUE)
-    FileRecordStoreBuilder builder = new FileRecordStoreBuilder().tempFile("discovery-", ".db").maxKeyLength(64);
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("discovery-", ".db").maxKeyLength(64);
 
     // Create the store normally first
     FileRecordStore baseStore = builder.open();
@@ -156,7 +156,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingOps.resetOperationCount();
 
     // Perform insert into free space
-    byte[] newKey = "newkey".getBytes();
+    byte[] newKey = "new-key".getBytes();
     countingStore.insertRecord(newKey, data);
 
     // Get the operation count from the delegating operations
@@ -194,9 +194,9 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: insert record, then update it (same size)
-    byte[] key = "updatekey".getBytes();
-    byte[] initialData = "initialdata".getBytes();
-    byte[] updatedData = "updateddata".getBytes(); // Same length
+    byte[] key = "update-key".getBytes();
+    byte[] initialData = "initial-data".getBytes();
+    byte[] updatedData = "updated-data".getBytes(); // Same length
 
     countingStore.insertRecord(key, initialData);
 
@@ -241,8 +241,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: insert record, then read it
-    byte[] key = "readkey".getBytes();
-    byte[] data = "readdata".getBytes();
+    byte[] key = "read-key".getBytes();
+    byte[] data = "read-data".getBytes();
 
     countingStore.insertRecord(key, data);
 
@@ -272,7 +272,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
 
     FileRecordStoreBuilder builder =
         new FileRecordStoreBuilder()
-            .tempFile("maxkey-scenario-discovery-", ".db")
+            .tempFile("max-key-scenario-discovery-", ".db")
             .maxKeyLength(248); // Max theoretical key length
 
     // Create base store
@@ -292,12 +292,11 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: create max length key
-    byte[] maxKeyBytes = new byte[248];
+    byte[] maxKey = new byte[248];
     for (int i = 0; i < 248; i++) {
-      maxKeyBytes[i] = (byte) (i % 256);
+      maxKey[i] = (byte) (i % 256);
     }
-    byte[] maxKey = maxKeyBytes;
-    byte[] data = "maxkeydata".getBytes();
+    byte[] data = "max-key-data".getBytes();
 
     // Reset counter before insert
     countingOps.resetOperationCount();
@@ -322,7 +321,9 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=== Discovering total operation count for empty data scenario ===");
 
     FileRecordStoreBuilder builder =
-        new FileRecordStoreBuilder().tempFile("emptydata-scenario-discovery-", ".db").maxKeyLength(64);
+        new FileRecordStoreBuilder()
+            .tempFile("empty-data-scenario-discovery-", ".db")
+            .maxKeyLength(64);
 
     // Create base store
     FileRecordStore baseStore = builder.open();
@@ -341,7 +342,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: insert record with empty data
-    byte[] key = "emptykey".getBytes();
+    byte[] key = "empty-key".getBytes();
     byte[] emptyData = new byte[0];
 
     // Reset counter before insert
@@ -386,8 +387,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: add some data to ensure there are file operations
-    byte[] key = "fsynckey".getBytes();
-    byte[] data = "fsyncdata".getBytes();
+    byte[] key = "fsync-key".getBytes();
+    byte[] data = "fsync-data".getBytes();
 
     countingStore.insertRecord(key, data);
 
@@ -415,7 +416,9 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=== Discovering total operation count for file growth scenario ===");
 
     FileRecordStoreBuilder builder =
-        new FileRecordStoreBuilder().tempFile("filegrowth-scenario-discovery-", ".db").maxKeyLength(64);
+        new FileRecordStoreBuilder()
+            .tempFile("file-growth-scenario-discovery-", ".db")
+            .maxKeyLength(64);
 
     // Create base store
     FileRecordStore baseStore = builder.open();
@@ -434,7 +437,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     baseStore.close();
 
     // Setup: insert large record to force file growth
-    byte[] key = "largekey".getBytes();
+    byte[] key = "large-key".getBytes();
     byte[] largeData = new byte[1024]; // 1KB should force growth
 
     countingStore.insertRecord(key, largeData);
@@ -443,7 +446,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingOps.resetOperationCount();
 
     // Perform another insert that should cause file growth
-    byte[] key2 = "anotherkey".getBytes();
+    byte[] key2 = "another-key".getBytes();
     byte[] moreLargeData = new byte[2048]; // 2KB
     countingStore.insertRecord(key2, moreLargeData);
 
@@ -465,7 +468,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         Level.FINE, "=== Discovering total operation count for index manipulation scenario ===");
 
     // Create store with the specified path (pre-populated)
-    FileRecordStore countingStore = new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open();
+    FileRecordStore countingStore =
+        new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open();
 
     // Replace with counting delegate that never throws
     java.io.RandomAccessFile raf =
@@ -481,8 +485,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     countingOps.resetOperationCount();
 
     // Perform insert into existing store (this will manipulate indexes)
-    byte[] newKey = "newkey".getBytes();
-    byte[] data = "newdata".getBytes();
+    byte[] newKey = "new-key".getBytes();
+    byte[] data = "new-data".getBytes();
     countingStore.insertRecord(newKey, data);
 
     // Get the operation count from the delegating operations
@@ -607,8 +611,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     // New store should work fine
     Assert.assertFalse("New store should not be closed", newStore.isClosed());
 
-    byte[] newKey = "newkey".getBytes();
-    byte[] newData = "newdata".getBytes();
+    byte[] newKey = "new-key".getBytes();
+    byte[] newData = "new-data".getBytes();
 
     newStore.insertRecord(newKey, newData);
     byte[] readData = newStore.readRecordData(newKey);
@@ -646,7 +650,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=== Testing successful operations do not close store ===");
 
     // Create normal store without exception injection
-    FileRecordStore store = new FileRecordStoreBuilder().tempFile("success-test-", ".db").maxKeyLength(64).open();
+    FileRecordStore store =
+        new FileRecordStoreBuilder().tempFile("success-test-", ".db").maxKeyLength(64).open();
 
     byte[] key = "testkey".getBytes();
     byte[] data = "testdata".getBytes();
@@ -711,7 +716,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         Level.FINE, "=== Testing index manipulation operations failure with dynamic discovery ===");
 
     // Pre-populate store to test index operations
-    FileRecordStore prepStore = new FileRecordStoreBuilder().tempFile("index-prep-", ".db").maxKeyLength(64).open();
+    FileRecordStore prepStore =
+        new FileRecordStoreBuilder().tempFile("index-prep-", ".db").maxKeyLength(64).open();
 
     byte[] key1 = "key1".getBytes();
     byte[] key2 = "key2".getBytes();
@@ -987,7 +993,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
 
     // Persistence verification: reopen store and verify data integrity
     if (filePath != null) {
-      try (FileRecordStore verificationStore = new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open()) {
+      try (FileRecordStore verificationStore =
+          new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open()) {
 
         // Count valid records in the reopened store
         int validRecords = 0;
@@ -1039,7 +1046,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     // Add some records to create free space and realistic conditions
     for (int i = 0; i < 5; i++) {
       byte[] key = ("existing" + i).getBytes();
-      prepStore.insertRecord(key, ("existingdata" + i).getBytes());
+      prepStore.insertRecord(key, ("existing-data" + i).getBytes());
     }
 
     // Delete some to create free space scenarios
@@ -1051,8 +1058,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
 
     // Test insert with exception injection
     FileRecordStore testStore = createStoreWithExceptionAtPath(filePath, throwAt);
-    byte[] newKey = "newkey".getBytes();
-    byte[] newData = "newdata".getBytes();
+    byte[] newKey = "new-key".getBytes();
+    byte[] newData = "new-data".getBytes();
 
     try {
       testStore.insertRecord(newKey, newData);
@@ -1068,7 +1075,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     Assert.assertTrue("Store should be closed after " + description, testStore.isClosed());
 
     // Persistence verification: verify original data is still intact after exception
-    try (FileRecordStore verificationStore = new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open()) {
+    try (FileRecordStore verificationStore =
+        new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open()) {
 
       // Verify original records are still present and valid
       int originalRecordsFound = 0;
@@ -1076,7 +1084,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         if (i == 1 || i == 3) continue; // These were deleted
 
         byte[] originalKey = ("existing" + i).getBytes();
-        String expectedData = "existingdata" + i;
+        String expectedData = "existing-data" + i;
 
         try {
           if (verificationStore.recordExists(originalKey)) {
@@ -1133,14 +1141,14 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     FileRecordStore prepStore =
         new FileRecordStoreBuilder().tempFile("update-scenario-", ".db").maxKeyLength(64).open();
 
-    byte[] key = "updatekey".getBytes();
-    prepStore.insertRecord(key, "originaldata".getBytes());
+    byte[] key = "update-key".getBytes();
+    prepStore.insertRecord(key, "original-data".getBytes());
     Path filePath = prepStore.getFilePath();
     prepStore.close();
 
     // Test update with exception
     FileRecordStore testStore = createStoreWithExceptionAtPath(filePath, throwAt);
-    byte[] newData = "updateddata".getBytes();
+    byte[] newData = "updated-data".getBytes();
 
     try {
       testStore.updateRecord(key, newData);
@@ -1170,8 +1178,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     FileRecordStore prepStore =
         new FileRecordStoreBuilder().tempFile("delete-scenario-", ".db").maxKeyLength(64).open();
 
-    byte[] key = "deletekey".getBytes();
-    prepStore.insertRecord(key, "deletedata".getBytes());
+    byte[] key = "delete-key".getBytes();
+    prepStore.insertRecord(key, "delete-data".getBytes());
     Path filePath = prepStore.getFilePath();
     prepStore.close();
 
@@ -1236,14 +1244,18 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
             .maxKeyLength(64)
             .open();
 
-    byte[] key = "readkey".getBytes();
-    prepStore.insertRecord(key, "readdata".getBytes());
+    byte[] key = "read-key".getBytes();
+    prepStore.insertRecord(key, "read-data".getBytes());
     Path filePath = prepStore.getFilePath();
     prepStore.close();
 
     // Test read with exception and same CRC setting
     FileRecordStore testStore =
-        new FileRecordStoreBuilder().path(filePath).disablePayloadCrc32(false).maxKeyLength(64).open();
+        new FileRecordStoreBuilder()
+            .path(filePath)
+            .disablePayloadCrc32(false)
+            .maxKeyLength(64)
+            .open();
 
     // Replace file operations with exception injection
     java.io.RandomAccessFile raf =
@@ -1273,7 +1285,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     // Create store with max key length
     FileRecordStore testStore =
         new FileRecordStoreBuilder()
-            .tempFile("maxkey-test-", ".db")
+            .tempFile("max-key-test-", ".db")
             .maxKeyLength(248) // Max theoretical key length
             .open();
 
@@ -1284,12 +1296,11 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     testStore.fileOperations = new DelegatingExceptionOperations(directOps, throwAt);
 
     // Create max length key
-    byte[] maxKeyBytes = new byte[248];
+    byte[] maxKey = new byte[248];
     for (int i = 0; i < 248; i++) {
-      maxKeyBytes[i] = (byte) (i % 256);
+      maxKey[i] = (byte) (i % 256);
     }
-    byte[] maxKey = maxKeyBytes;
-    byte[] data = "maxkeydata".getBytes();
+    byte[] data = "max-key-data".getBytes();
 
     try {
       testStore.insertRecord(maxKey, data);
@@ -1310,7 +1321,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     logger.log(Level.FINE, "Testing empty data scenario with exception at operation " + throwAt);
 
     FileRecordStore testStore = createStoreWithException(throwAt);
-    byte[] key = "emptykey".getBytes();
+    byte[] key = "empty-key".getBytes();
     byte[] emptyData = new byte[0];
 
     try {
@@ -1336,8 +1347,8 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
     FileRecordStore prepStore =
         new FileRecordStoreBuilder().tempFile("fsync-scenario-", ".db").maxKeyLength(64).open();
 
-    byte[] key = "fsynckey".getBytes();
-    prepStore.insertRecord(key, "fsyncdata".getBytes());
+    byte[] key = "fsync-key".getBytes();
+    prepStore.insertRecord(key, "fsync-data".getBytes());
     Path filePath = prepStore.getFilePath();
     prepStore.close();
 
@@ -1649,7 +1660,7 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
         },
         "deleteRecord");
 
-    assertOperationFails(() -> store.keysBytes(), "keys");
+    assertOperationFails(store::keysBytes, "keys");
     assertOperationFails(store::isEmpty, "isEmpty");
     assertOperationFails(() -> store.recordExists(key), "recordExists");
     assertOperationFails(
@@ -1801,7 +1812,10 @@ public class FileRecordStoreExceptionHandlingTest extends JulLoggingConfig {
       try {
         // Create base store first to get a path
         FileRecordStore baseStore =
-            new FileRecordStoreBuilder().tempFile("persistence-test-", ".db").maxKeyLength(64).open();
+            new FileRecordStoreBuilder()
+                .tempFile("persistence-test-", ".db")
+                .maxKeyLength(64)
+                .open();
         storePath = baseStore.getFilePath();
         baseStore.close();
 

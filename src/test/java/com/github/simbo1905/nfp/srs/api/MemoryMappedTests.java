@@ -24,13 +24,13 @@ public class MemoryMappedTests extends JulLoggingConfig {
             + MAX_KEY_LENGTH
             + ", disablePayloadCrc32=false, useMemoryMapping=true");
     try (FileRecordStore store =
-             new FileRecordStoreBuilder()
-                 .tempFile("mydb-", ".tmp")
-                 .preallocatedRecords(128)
-                 .maxKeyLength(MAX_KEY_LENGTH)
-                 .disablePayloadCrc32(false)
-                 .useMemoryMapping(true)
-                 .open()) {
+        new FileRecordStoreBuilder()
+            .tempFile("mydb-", ".tmp")
+            .preallocatedRecords(128)
+            .maxKeyLength(MAX_KEY_LENGTH)
+            .disablePayloadCrc32(false)
+            .useMemoryMapping(true)
+            .open()) {
       logger.fine("FileRecordStore created successfully");
       tempFilePath = store.getFilePath(); // Capture the path for reopening
 
@@ -78,12 +78,12 @@ public class MemoryMappedTests extends JulLoggingConfig {
             + MAX_KEY_LENGTH
             + ", disablePayloadCrc32=false, useMemoryMapping=true");
     try (FileRecordStore store =
-             new FileRecordStoreBuilder()
-                 .path(tempFilePath)
-                 .maxKeyLength(MAX_KEY_LENGTH)
-                 .disablePayloadCrc32(false)
-                 .useMemoryMapping(true)
-                 .open()) {
+        new FileRecordStoreBuilder()
+            .path(tempFilePath)
+            .maxKeyLength(MAX_KEY_LENGTH)
+            .disablePayloadCrc32(false)
+            .useMemoryMapping(true)
+            .open()) {
       logger.fine("FileRecordStore reopened successfully");
       byte[] key1 = "user:1".getBytes();
       logger.fine("Reading record with key: " + new String("user:1".getBytes()));
@@ -91,6 +91,7 @@ public class MemoryMappedTests extends JulLoggingConfig {
       logger.log(Level.FINE, "After reopen: " + new String(data));
     }
   }
+
   // Use a reasonable value that fits in the file format (max is 252)
 
   @Test

@@ -37,7 +37,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
       // This should fail with IllegalArgumentException during constructor
       // THE BUG: RandomAccessFile will be created but never closed!
       try {
-        try (FileRecordStore store =
+        try (@SuppressWarnings("unused") FileRecordStore store =
             new FileRecordStore(
                 tempFile.toFile(),
                 0, // preallocatedRecords
@@ -101,7 +101,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
       try {
         // Use the public constructor directly
-        try (FileRecordStore store =
+        try (@SuppressWarnings("unused") FileRecordStore store =
             new FileRecordStore(
                 tempFile.toFile(),
                 0, // preallocatedRecords
@@ -143,7 +143,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
             }
 
             try {
-              try (FileRecordStore store =
+              //noinspection EmptyTryBlock
+              try (@SuppressWarnings("unused") FileRecordStore store =
                   new FileRecordStore(
                       testFile.toFile(),
                       0,
@@ -186,7 +187,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
     try {
       // Create a valid store to understand constructor flow
-      try (FileRecordStore store =
+      //noinspection EmptyTryBlock
+      try (@SuppressWarnings("unused") FileRecordStore store =
           new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         // Store is empty but valid
       }

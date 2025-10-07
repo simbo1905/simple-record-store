@@ -12,7 +12,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
   @Test
   public void testInPlaceUpdateToggle() throws Exception {
     try (FileRecordStore store =
-        new FileRecordStoreBuilder().tempFile("test-inplace-toggle-", ".db").maxKeyLength(64).open()) {
+        new FileRecordStoreBuilder()
+            .tempFile("test-inplace-toggle-", ".db")
+            .maxKeyLength(64)
+            .open()) {
 
       // Verify default state
       Assert.assertTrue(
@@ -31,7 +34,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
   @Test
   public void testHeaderExpansionToggle() throws Exception {
     try (FileRecordStore store =
-        new FileRecordStoreBuilder().tempFile("test-header-toggle-", ".db").maxKeyLength(64).open()) {
+        new FileRecordStoreBuilder()
+            .tempFile("test-header-toggle-", ".db")
+            .maxKeyLength(64)
+            .open()) {
 
       // Verify default state
       Assert.assertTrue(
@@ -156,7 +162,8 @@ public class SnapshottingModeTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
 
     // Create and populate a store
-    try (FileRecordStore writeStore = new FileRecordStoreBuilder().path(tempPath).maxKeyLength(64).open()) {
+    try (FileRecordStore writeStore =
+        new FileRecordStoreBuilder().path(tempPath).maxKeyLength(64).open()) {
       writeStore.insertRecord("key".getBytes(), "value".getBytes());
     }
 

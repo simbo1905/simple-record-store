@@ -8,7 +8,6 @@ import org.junit.Test;
 
 public class PerformanceComparisonTest extends JulLoggingConfig {
 
-  private static final String TEST_DIR = System.getProperty("java.io.tmpdir");
   private static final int RECORD_COUNT = 1000;
   private static final int RECORD_SIZE = 256;
 
@@ -71,7 +70,6 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=====================================\n");
   }
 
-  @SuppressWarnings("ResultOfMethodCallIgnored")
   @Test
   public void compareUpdatePerformance() throws Exception {
     Path directPath = Files.createTempFile("perf-update-direct-", ".db");
@@ -116,10 +114,9 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long directTime = System.nanoTime() - directStart;
 
       // Test memory-mapped I/O updates
-      Path path1 = mmapPath;
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
-              .path(path1)
+              .path(mmapPath)
               .preallocatedRecords(10000)
               .maxKeyLength(64)
               .useMemoryMapping(true)
@@ -133,7 +130,7 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long mmapStart = System.nanoTime();
       try (FileRecordStore store =
           new FileRecordStoreBuilder()
-              .path(path1)
+              .path(mmapPath)
               .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)

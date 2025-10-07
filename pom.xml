@@ -1,10 +1,9 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>io.github.simbo1905.nfp</groupId>
     <artifactId>simple-record-store</artifactId>
-    <version>1.0.0-RC8-SNAPSHOT</version>
+    <version>1.0.0-RC8</version>
 
     <name>Simple Record Store</name>
     <description>simple single file key value storage</description>
@@ -30,7 +29,7 @@
         <connection>scm:git:git@github.com:simbo1905/simple-record-store.git</connection>
         <developerConnection>scm:git:git@github.com:simbo1905/simple-record-store.git</developerConnection>
         <url>https://github.com/simbo1905/simple-record-store.git</url>
-        <tag>v1.0.0-RC5</tag>
+        <tag>simple-record-store-1.0.0-RC8</tag>
     </scm>
 
     <properties>
@@ -166,9 +165,9 @@
                             <style>GOOGLE</style>
                             <formatJavadoc>false</formatJavadoc>
                         </googleJavaFormat>
-                        <importOrder/>
-                        <removeUnusedImports/>
-                        <formatAnnotations/>
+                        <importOrder />
+                        <removeUnusedImports />
+                        <formatAnnotations />
                     </java>
                 </configuration>
             </plugin>

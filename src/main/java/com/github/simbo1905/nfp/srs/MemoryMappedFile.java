@@ -24,7 +24,7 @@ class MemoryMappedFile implements FileOperations {
 
   final RandomAccessFile randomAccessFile;
   final FileChannel channel;
-  volatile Epoch currentEpoch; // Atomic reference to current mapping state
+  volatile Epoch currentEpoch; // current mapping state
   private long position = 0;
 
   /// Immutable holder for a complete memory mapping epoch.
@@ -360,6 +360,13 @@ class MemoryMappedFile implements FileOperations {
   }
 
   @Override
+  public short readShort() throws IOException {
+    byte[] bytes = new byte[2];
+    readFully(bytes);
+    return ByteBuffer.wrap(bytes).getShort();
+  }
+
+  @Override
   public int readInt() throws IOException {
     byte[] bytes = new byte[4];
     readFully(bytes);
@@ -371,6 +378,13 @@ class MemoryMappedFile implements FileOperations {
     byte[] bytes = new byte[8];
     readFully(bytes);
     return ByteBuffer.wrap(bytes).getLong();
+  }
+
+  @Override
+  public void writeShort(short v) throws IOException {
+    byte[] bytes = new byte[2];
+    ByteBuffer.wrap(bytes).putShort(v);
+    write(bytes);
   }
 
   @Override
@@ -394,5 +408,15 @@ class MemoryMappedFile implements FileOperations {
     if (requiredSize > epoch.mappedSize) {
       setLength(requiredSize);
     }
+  }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    return RecordHeader.readFrom(this, indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    RecordHeader.writeTo(this, header);
   }
 }

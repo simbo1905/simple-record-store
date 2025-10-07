@@ -102,7 +102,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     // Create normal store without exception injection
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("success-test-", ".db").open()) {
+        new FileRecordStoreBuilder().tempFile("success-test-", ".db").maxKeyLength(64).open()) {
       byte[] key = "testkey".getBytes();
       byte[] data = "testdata".getBytes();
 
@@ -114,7 +114,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
       Assert.assertArrayEquals("Data should match after insert", data, readData);
 
       // Update record
-      byte[] updatedData = "updateddata".getBytes();
+      byte[] updatedData = "updated-data".getBytes();
       store.updateRecord(key, updatedData);
 
       // Verify updated data
@@ -178,7 +178,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
 
           // Try to reopen and check what data is recoverable
           try {
-            FileRecordStore reopenedStore = new FileRecordStore.Builder().path(tempFile).open();
+            FileRecordStore reopenedStore =
+                new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open();
 
             // Check if any data was written before the exception
             if (reopenedStore.recordExists(key)) {
@@ -210,7 +211,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
   private int discoverOperationCount() throws Exception {
     logger.log(Level.FINE, "=== Discovering operation count ===");
 
-    FileRecordStore.Builder builder = new FileRecordStore.Builder().tempFile("discovery-", ".db");
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("discovery-", ".db").maxKeyLength(64);
 
     // Create base store
     FileRecordStore baseStore = builder.open();
@@ -250,8 +252,8 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
         Level.FINE,
         () -> String.format("Creating store with exception at operation %d", throwAtOperation));
 
-    FileRecordStore.Builder builder =
-        new FileRecordStore.Builder().tempFile("exception-test-", ".db");
+    FileRecordStoreBuilder builder =
+        new FileRecordStoreBuilder().tempFile("exception-test-", ".db").maxKeyLength(64);
 
     FileRecordStore baseStore = builder.open();
 
@@ -280,7 +282,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
                 "Creating store with exception at operation %d for path %s",
                 throwAtOperation, filePath));
 
-    FileRecordStore store = new FileRecordStore.Builder().path(filePath).open();
+    FileRecordStore store = new FileRecordStoreBuilder().path(filePath).maxKeyLength(64).open();
 
     java.io.RandomAccessFile raf = new java.io.RandomAccessFile(store.getFilePath().toFile(), "rw");
     RandomAccessFile directOps = new RandomAccessFile(raf);
@@ -317,7 +319,7 @@ public class FileRecordStoreBehaviorTest extends JulLoggingConfig {
     assertOperationFails(() -> store.readRecordData(key), "readRecordData");
     assertOperationFails(() -> store.updateRecord(key, data), "updateRecord");
     assertOperationFails(() -> store.deleteRecord(key), "deleteRecord");
-    assertOperationFails(() -> store.keysBytes(), "keys");
+    assertOperationFails(store::keysBytes, "keys");
     assertOperationFails(store::isEmpty, "isEmpty");
     assertOperationFails(() -> store.recordExists(key), "recordExists");
     assertOperationFails(store::fsync, "fsync");

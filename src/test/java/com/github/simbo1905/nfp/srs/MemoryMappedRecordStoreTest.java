@@ -7,23 +7,20 @@ import java.util.Collections;
 import org.junit.Assert;
 import org.junit.Test;
 
-@SuppressWarnings("ResultOfMethodCallIgnored")
 public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
-
-  private static final String TEST_DIR = System.getProperty("java.io.tmpdir");
 
   @Test
   public void testBasicOperationsWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-basic-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-basic-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Create a new store with memory mapping enabled
-      Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert
         final var key1 = ("key1".getBytes());
@@ -47,30 +44,31 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen without memory mapping to verify data persisted
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(0, store.getNumRecords());
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
   @Test
   public void testMultipleInsertsWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-multiple-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-multiple-", ".db");
+    path.toFile().deleteOnExit();
     try {
-      Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert multiple records
         for (int i = 0; i < 100; i++) {
@@ -91,11 +89,12 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen and verify persistence
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(100, store.getNumRecords());
         for (int i = 0; i < 100; i++) {
@@ -104,7 +103,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         }
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -114,13 +113,14 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
     try {
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(10000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert large records
-        final var key1 = ("largekey1".getBytes());
+        final var key1 = ("large-key1".getBytes());
         byte[] largeValue = new byte[10000];
         Arrays.fill(largeValue, (byte) 'A');
         store.insertRecord(key1, largeValue);
@@ -151,10 +151,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
       final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
 
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         store.insertRecord(key, data1);
@@ -176,10 +177,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
     try {
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("key1".getBytes());
         final var value = "value1".getBytes();
@@ -195,11 +197,12 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Verify persistence after close
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("key1".getBytes());
         Assert.assertTrue(store.recordExists(key));
@@ -211,16 +214,16 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
   @Test
   public void testMixedDirectAndMemoryMappedAccess() throws Exception {
-    Path tempPath = Files.createTempFile("test-mixed-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mixed-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Create with direct I/O
-      Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .disablePayloadCrc32(false)
+              .maxKeyLength(64)
               .open()) {
         final var key1 = ("key1".getBytes());
         final var value1 = "value1".getBytes();
@@ -229,10 +232,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Open with memory-mapped I/O and add more data
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key2 = ("key2".getBytes());
         final var value2 = "value2".getBytes();
@@ -245,16 +249,17 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Open with direct I/O again and verify
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         Assert.assertEquals(2, store.getNumRecords());
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -265,10 +270,11 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
     try {
       // Start with small initial size
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempPath)
               .preallocatedRecords(100)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         // Insert records that will require file growth
         for (int i = 0; i < 50; i++) {
@@ -300,16 +306,16 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
   /// 4. File structure validation on reopen
   @Test
   public void testCrashRecoveryWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-crash-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-crash-", ".db");
+    path.toFile().deleteOnExit();
     try {
       // Write some data
-      Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(1000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         for (int i = 0; i < 10; i++) {
           final byte[] key = ("key" + i).getBytes();
@@ -321,11 +327,12 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Reopen and verify - OS should have persisted the data
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         // Due to close() calling fsync(), all data should be present
         Assert.assertEquals(10, store.getNumRecords());
@@ -337,7 +344,7 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
         }
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 
@@ -345,18 +352,18 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
   /// The pattern writes: backup header -> data -> final header
   @Test
   public void testDualWritePatternWithMemoryMapping() throws Exception {
-    Path tempPath = Files.createTempFile("test-mmap-dual-", ".db");
-    tempPath.toFile().deleteOnExit();
+    Path path = Files.createTempFile("test-mmap-dual-", ".db");
+    path.toFile().deleteOnExit();
     try {
       final var data1 = String.join("", Collections.nCopies(256, "1")).getBytes();
       final var data2 = String.join("", Collections.nCopies(256, "2")).getBytes();
 
-      Path path = tempPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
               .preallocatedRecords(2000)
               .useMemoryMapping(true)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         store.insertRecord(key, data1);
@@ -372,18 +379,19 @@ public class MemoryMappedRecordStoreTest extends JulLoggingConfig {
 
       // Verify persistence
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(path)
-              .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+              .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
+              .maxKeyLength(64)
               .open()) {
         final var key = ("testkey".getBytes());
         byte[] read = store.readRecordData(key);
         Assert.assertArrayEquals(data2, read);
       }
     } finally {
-      Files.deleteIfExists(tempPath);
+      Files.deleteIfExists(path);
     }
   }
 }

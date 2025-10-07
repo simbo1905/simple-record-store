@@ -12,7 +12,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
   @Test
   public void testInPlaceUpdateToggle() throws Exception {
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-inplace-toggle-", ".db").open()) {
+        new FileRecordStoreBuilder()
+            .tempFile("test-inplace-toggle-", ".db")
+            .maxKeyLength(64)
+            .open()) {
 
       // Verify default state
       Assert.assertTrue(
@@ -31,7 +34,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
   @Test
   public void testHeaderExpansionToggle() throws Exception {
     try (FileRecordStore store =
-        new FileRecordStore.Builder().tempFile("test-header-toggle-", ".db").open()) {
+        new FileRecordStoreBuilder()
+            .tempFile("test-header-toggle-", ".db")
+            .maxKeyLength(64)
+            .open()) {
 
       // Verify default state
       Assert.assertTrue(
@@ -53,9 +59,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempPath)
             .preallocatedRecords(10) // Limited pre-allocation
+            .maxKeyLength(64)
             .open()) {
 
       // Enter snapshotting mode
@@ -93,9 +100,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
   @Test
   public void testSnapshottingModeWithUUIDKeys() throws Exception {
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .tempFile("test-snapshotting-uuid-", ".db")
             .uuidKeys()
+            .maxKeyLength(16)
             .preallocatedRecords(10)
             .open()) {
 
@@ -125,9 +133,10 @@ public class SnapshottingModeTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
 
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempPath)
             .preallocatedRecords(2) // Very limited pre-allocation
+            .maxKeyLength(64)
             .open()) {
 
       // Disable header expansion
@@ -153,15 +162,17 @@ public class SnapshottingModeTest extends JulLoggingConfig {
     tempPath.toFile().deleteOnExit();
 
     // Create and populate a store
-    try (FileRecordStore writeStore = new FileRecordStore.Builder().path(tempPath).open()) {
+    try (FileRecordStore writeStore =
+        new FileRecordStoreBuilder().path(tempPath).maxKeyLength(64).open()) {
       writeStore.insertRecord("key".getBytes(), "value".getBytes());
     }
 
     // Open in read-only mode
     try (FileRecordStore readStore =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(tempPath)
-            .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
+            .maxKeyLength(64)
             .open()) {
 
       // This should throw UnsupportedOperationException

@@ -59,6 +59,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     // Create store with counting wrapper (halt at a very high number to count all operations)
     int veryHighHaltPoint = 1000;
     store = createStoreWithHalt(veryHighHaltPoint);
+    logStoreState("discover.initStore", store);
 
     // Perform simple insert
     byte[] key = "testkey".getBytes();
@@ -69,6 +70,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
         () -> String.format("Inserting key=%s, data=%s", new String(key), new String(data)));
 
     store.insertRecord(key, data);
+    logStoreState("discover.afterInsert", store);
 
     // Get the operation count
     int totalOps = ((DelegatingHaltOperations) store.fileOperations).getOperationCount();
@@ -98,6 +100,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     java.util.stream.IntStream.rangeClosed(1, maxOperations)
         .forEach(
             haltAt -> {
+              FileRecordStore testStore = null;
               try {
                 logger.log(
                     Level.FINE,
@@ -109,26 +112,31 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                 tempFile.toFile().deleteOnExit();
 
                 // Create store with halt wrapper
-                FileRecordStore testStore = createStoreWithHalt(haltAt);
+                testStore = createStoreWithHalt(haltAt);
+                logStoreState(String.format("systematic.init[%d]", haltAt), testStore);
 
                 // Perform simple insert
                 byte[] key = "testkey".getBytes();
                 byte[] data = "testdata".getBytes();
 
                 testStore.insertRecord(key, data);
+                logStoreState(String.format("systematic.afterInsert[%d]", haltAt), testStore);
 
                 // Flush and close
                 testStore.fsync();
+                logStoreState(String.format("systematic.afterFsync[%d]", haltAt), testStore);
                 testStore.close();
 
                 // Try to reopen and verify
                 try {
                   FileRecordStore reopenedStore =
-                      new FileRecordStore.Builder()
+                      new FileRecordStoreBuilder()
                           .path(tempFile)
-                          .accessMode(FileRecordStore.Builder.AccessMode.READ_ONLY)
+                          .maxKeyLength(64) // Must match the key length used to create the file
+                          .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
                           .disablePayloadCrc32(false)
                           .open();
+                  logStoreState(String.format("systematic.reopen[%d]", haltAt), reopenedStore);
 
                   // Verify data integrity
                   if (reopenedStore.recordExists(key)) {
@@ -149,6 +157,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                   reopenedStore.close();
 
                 } catch (Exception e) {
+                  logStoreState(String.format("systematic.reopenFailure[%d]", haltAt), testStore);
                   logger.log(
                       Level.SEVERE,
                       String.format("Failed to reopen store after halt at operation %d", haltAt),
@@ -161,6 +170,7 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
                 }
 
               } catch (Exception e) {
+                logStoreState(String.format("systematic.exception[%d]", haltAt), testStore);
                 logger.log(Level.SEVERE, "Error during systematic halting test", e);
                 throw new RuntimeException(
                     "Systematic halting test failed at operation " + haltAt, e);
@@ -168,6 +178,43 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
             });
 
     logger.log(Level.FINE, "=== Systematic halting test completed successfully ===");
+  }
+
+  private void logStoreState(String phase, FileRecordStore currentStore) {
+    if (!logger.isLoggable(Level.FINER) || currentStore == null) {
+      return;
+    }
+
+    try {
+      long fileLength = currentStore.fileOperations.length();
+      int numRecords = currentStore.getNumRecords();
+      boolean allowHeaderExpansion = currentStore.isAllowHeaderExpansion();
+      boolean allowInPlaceUpdates = currentStore.isAllowInPlaceUpdates();
+      int preferredExpansion = currentStore.preferredExpansionSize;
+
+      final String operationSummary =
+          (currentStore.fileOperations instanceof DelegatingHaltOperations haltOps)
+              ? String.format(
+                  "haltOps{operationCount=%d,targetOperation=%d,halted=%s}",
+                  haltOps.getOperationCount(), haltOps.getTargetOperation(), haltOps.isHalted())
+              : "directOps";
+
+      logger.log(
+          Level.FINER,
+          () ->
+              String.format(
+                  "%s: fileLength=%d, numRecords=%d, preferredExpansionSize=%d, allowHeaderExpansion=%s, allowInPlaceUpdates=%s, operations=%s",
+                  phase,
+                  fileLength,
+                  numRecords,
+                  preferredExpansion,
+                  allowHeaderExpansion,
+                  allowInPlaceUpdates,
+                  operationSummary));
+
+    } catch (IOException e) {
+      logger.log(Level.FINER, phase + ": unable to compute store state", e);
+    }
   }
 
   /// Create a FileRecordStore with halt wrapper at specified operation count
@@ -185,8 +232,16 @@ public class CrashBugInvestigationTest extends JulLoggingConfig {
     // Wrap with halt operations
     DelegatingHaltOperations haltOps = new DelegatingHaltOperations(directOps, haltAtOperation);
 
-    // Create FileRecordStore with custom operations
-    FileRecordStore store = new FileRecordStore(tempFile.toFile(), 10, 64, false, false, "rw");
+    // Create FileRecordStore with custom operations using Builder for proper validation
+    FileRecordStore store =
+        new FileRecordStoreBuilder()
+            .path(tempFile)
+            .preallocatedRecords(10)
+            .maxKeyLength(64)
+            .disablePayloadCrc32(false)
+            .useMemoryMapping(false)
+            .accessMode(FileRecordStoreBuilder.AccessMode.READ_WRITE)
+            .open();
 
     // Replace the file operations with our halt wrapper
     store.fileOperations = haltOps;

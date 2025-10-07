@@ -14,12 +14,12 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
   public void demonstrateResourceLeakOnKeyLengthValidationFailure() throws Exception {
     logger.log(Level.FINE, "=== Testing resource leak on key length validation failure ===");
 
-    Path tempFile = Files.createTempFile("resource-leak-keylen", ".dat");
+    Path tempFile = Files.createTempFile("resource-leak-key-len", ".dat");
 
     try {
       // Create a valid store first
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
       }
 
@@ -32,8 +32,8 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
       logger.log(Level.FINE, "Attempting to open store with mismatched key length...");
 
       // This should fail with IllegalArgumentException
-      try (FileRecordStore store2 =
-          new FileRecordStore.Builder()
+      try (@SuppressWarnings("unused") FileRecordStore store2 =
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64) // Expect 64, but file has 32
               .open()) {
@@ -69,21 +69,21 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     try {
       // Create a valid store first, then corrupt it to have invalid record count
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
-      // Corrupt the record count to be much higher than actual
+      // Truncate the file to make it too small for the claimed records
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(5); // numRecords position in new format
-        raf.writeInt(100); // Claim 100 records when we only have 1
+        // Truncate to just the header size + minimal data, not enough for actual records
+        raf.setLength(50); // Much smaller than needed for even 1 record
       }
 
-      logger.log(Level.FINE, "Attempting to open store with file too small for claimed records...");
+      logger.log(Level.FINE, "Attempting to open store with truncated file...");
 
       // This should fail with IOException due to file size validation
-      try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused") FileRecordStore store =
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown IOException");
       } catch (IOException e) {
         logger.log(Level.FINE, "✓ Got expected file size exception: " + e.getMessage());
@@ -113,22 +113,25 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
     try {
       // Create a valid store first, then corrupt the record data
       try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store.insertRecord("testkey".getBytes(), "testdata".getBytes());
       }
 
       // Corrupt the record data to cause CRC validation failure during index loading
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        // Navigate to the key CRC position in the first record
-        raf.seek(17 + 64 + 10); // Skip header (17) + key (64) + record header (10) to key CRC
+        long crcOffset =
+            FileRecordStoreBuilder.FILE_HEADERS_REGION_LENGTH
+                + Short.BYTES
+                + 64; // maxKeyLength used above
+        raf.seek(crcOffset);
         raf.writeInt(999999); // Invalid CRC32 for key
       }
 
       logger.log(Level.FINE, "Attempting to open store that will fail during index loading...");
 
       // This should fail during loadExistingIndex due to invalid CRC
-      try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused") FileRecordStore store =
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception during index loading");
       } catch (Exception e) {
         logger.log(

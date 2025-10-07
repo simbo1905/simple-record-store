@@ -8,7 +8,6 @@ import org.junit.Test;
 
 public class PerformanceComparisonTest extends JulLoggingConfig {
 
-  private static final String TEST_DIR = System.getProperty("java.io.tmpdir");
   private static final int RECORD_COUNT = 1000;
   private static final int RECORD_SIZE = 256;
 
@@ -22,9 +21,10 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     // Test direct I/O
     long directStart = System.nanoTime();
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(directFile)
             .preallocatedRecords(10000)
+            .maxKeyLength(64)
             .disablePayloadCrc32(false)
             .open()) {
       for (int i = 0; i < RECORD_COUNT; i++) {
@@ -39,9 +39,10 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     // Test memory-mapped I/O
     long mmapStart = System.nanoTime();
     try (FileRecordStore store =
-        new FileRecordStore.Builder()
+        new FileRecordStoreBuilder()
             .path(mmapFile)
             .preallocatedRecords(10000)
+            .maxKeyLength(64)
             .useMemoryMapping(true)
             .open()) {
       for (int i = 0; i < RECORD_COUNT; i++) {
@@ -69,7 +70,6 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
     logger.log(Level.FINE, "=====================================\n");
   }
 
-  @SuppressWarnings("ResultOfMethodCallIgnored")
   @Test
   public void compareUpdatePerformance() throws Exception {
     Path directPath = Files.createTempFile("perf-update-direct-", ".db");
@@ -85,11 +85,11 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       Arrays.fill(value2, (byte) 'B');
 
       // Test direct I/O updates
-      Path path = directPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
-              .path(path)
+          new FileRecordStoreBuilder()
+              .path(directPath)
               .preallocatedRecords(10000)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .open()) {
         for (int i = 0; i < RECORD_COUNT / 2; i++) {
@@ -100,8 +100,9 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
 
       long directStart = System.nanoTime();
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
-              .path(path)
+          new FileRecordStoreBuilder()
+              .path(directPath)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .useMemoryMapping(false)
               .open()) {
@@ -113,11 +114,11 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
       long directTime = System.nanoTime() - directStart;
 
       // Test memory-mapped I/O updates
-      Path path1 = mmapPath;
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
-              .path(path1)
+          new FileRecordStoreBuilder()
+              .path(mmapPath)
               .preallocatedRecords(10000)
+              .maxKeyLength(64)
               .useMemoryMapping(true)
               .open()) {
         for (int i = 0; i < RECORD_COUNT / 2; i++) {
@@ -128,8 +129,9 @@ public class PerformanceComparisonTest extends JulLoggingConfig {
 
       long mmapStart = System.nanoTime();
       try (FileRecordStore store =
-          new FileRecordStore.Builder()
-              .path(path1)
+          new FileRecordStoreBuilder()
+              .path(mmapPath)
+              .maxKeyLength(64)
               .disablePayloadCrc32(false)
               .useMemoryMapping(true)
               .open()) {

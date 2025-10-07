@@ -36,11 +36,23 @@ interface FileOperations {
 
   byte readByte() throws IOException;
 
+  short readShort() throws IOException;
+
   int readInt() throws IOException;
 
   long readLong() throws IOException;
 
+  void writeShort(short v) throws IOException;
+
   void writeInt(int v) throws IOException;
 
   void writeLong(long v) throws IOException;
+
+  /// Reads a RecordHeader from the current position with CRC validation.
+  /// Convenience method that delegates to RecordHeader.readFrom().
+  RecordHeader readRecordHeader(int indexPosition) throws IOException;
+
+  /// Writes a RecordHeader to the current position.
+  /// Convenience method that delegates to RecordHeader.writeTo().
+  void writeRecordHeader(RecordHeader header) throws IOException;
 }

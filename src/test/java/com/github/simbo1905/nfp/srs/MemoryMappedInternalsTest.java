@@ -380,7 +380,7 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
     long initialSize = mmFile.length();
     logger.log(Level.FINE, "Initial file size: " + initialSize);
 
-    // Perform a grow/shrink cycle
+    // Perform grow/shrink cycle
     long largerSize = initialSize * 2;
     mmFile.setLength(largerSize);
     Assert.assertEquals("File should grow", largerSize, mmFile.length());

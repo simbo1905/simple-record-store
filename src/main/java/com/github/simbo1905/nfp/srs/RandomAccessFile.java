@@ -54,6 +54,10 @@ record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements Fi
     return randomAccessFile.readByte();
   }
 
+  public short readShort() throws IOException {
+    return randomAccessFile.readShort();
+  }
+
   public int readInt() throws IOException {
     return randomAccessFile.readInt();
   }
@@ -62,11 +66,25 @@ record RandomAccessFile(java.io.RandomAccessFile randomAccessFile) implements Fi
     return randomAccessFile.readLong();
   }
 
+  public void writeShort(short v) throws IOException {
+    randomAccessFile.writeShort(v);
+  }
+
   public void writeInt(int v) throws IOException {
     randomAccessFile.writeInt(v);
   }
 
   public void writeLong(long v) throws IOException {
     randomAccessFile.writeLong(v);
+  }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    return RecordHeader.readFrom(this, indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    RecordHeader.writeTo(this, header);
   }
 }

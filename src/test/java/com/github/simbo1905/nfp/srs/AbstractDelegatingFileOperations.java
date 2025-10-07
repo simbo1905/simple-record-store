@@ -80,6 +80,12 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
   }
 
   @Override
+  public void writeShort(short v) throws IOException {
+    checkOperation();
+    delegate.writeShort(v);
+  }
+
+  @Override
   public void writeInt(int v) throws IOException {
     checkOperation();
     delegate.writeInt(v);
@@ -145,9 +151,27 @@ abstract class AbstractDelegatingFileOperations implements FileOperations {
     return delegate.readByte();
   }
 
+  @Override
+  public short readShort() throws IOException {
+    checkOperation();
+    return delegate.readShort();
+  }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    checkOperation();
+    return delegate.readRecordHeader(indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    checkOperation();
+    delegate.writeRecordHeader(header);
+  }
+
   /// Reset the operation count to zero
   public void resetOperationCount() {
     this.operationCount = 0;
-    logger.log(Level.FINE, () -> String.format("Reset operation count to 0"));
+    logger.log(Level.FINE, () -> "Reset operation count to 0");
   }
 }

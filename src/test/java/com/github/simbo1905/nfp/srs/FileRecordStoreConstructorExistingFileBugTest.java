@@ -18,7 +18,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
     try {
       // Create a store with maxKeyLength = 64
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
         logger.log(Level.FINE, "Created store with maxKeyLength=64, inserted test record");
       }
@@ -26,7 +26,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
       // Try to reopen with same parameters - should work
       logger.log(Level.FINE, "Attempting to reopen existing store...");
       try (FileRecordStore store2 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         logger.log(Level.FINE, "✓ Successfully reopened existing store");
         byte[] data = store2.readRecordData(("testkey".getBytes()));
         Assert.assertArrayEquals("Data should be preserved", "testdata".getBytes(), data);
@@ -46,7 +46,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
     try {
       // Create a valid store
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         store1.insertRecord(("testkey".getBytes()), "testdata".getBytes());
       }
 
@@ -58,8 +58,8 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open with different maxKeyLength - should fail but not leak resources
       logger.log(Level.FINE, "Attempting to open store with corrupted header...");
-      try (FileRecordStore store2 =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused") FileRecordStore store2 =
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception due to corrupted header");
       } catch (IllegalArgumentException e) {
         logger.log(Level.FINE, "✓ Got expected validation exception: " + e.getMessage());
@@ -86,7 +86,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
   public void demonstrateMemIndexSizingWithUnvalidatedData() throws Exception {
     logger.log(Level.FINE, "=== Testing memIndex sizing with potentially unvalidated data ===");
 
-    Path tempFile = Files.createTempFile("memindex-sizing", ".dat");
+    Path tempFile = Files.createTempFile("mem-index-sizing", ".dat");
 
     try {
       // Create a minimal valid file
@@ -99,8 +99,8 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open - this could cause issues if numRecords isn't validated
       logger.log(Level.FINE, "Attempting to open store with huge numRecords value...");
-      try (FileRecordStore store =
-          new FileRecordStore.Builder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused") FileRecordStore store =
+          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         logger.log(Level.FINE, "Store opened successfully");
         // The issue would be if memIndex was sized with the huge numRecords value
         // causing memory issues
@@ -118,12 +118,12 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
   public void demonstrateDataStartPtrInitializationBug() throws Exception {
     logger.log(Level.FINE, "=== Testing dataStartPtr initialization for existing files ===");
 
-    Path tempFile = Files.createTempFile("datastart-ptr", ".dat");
+    Path tempFile = Files.createTempFile("data-start-ptr", ".dat");
 
     try {
       // Create a store to establish proper dataStartPtr
       try (FileRecordStore store1 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64)
               .preallocatedRecords(10)
@@ -136,7 +136,7 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
       // preallocated value
       logger.log(Level.FINE, "Reopening store with different preallocatedRecords...");
       try (FileRecordStore store2 =
-          new FileRecordStore.Builder()
+          new FileRecordStoreBuilder()
               .path(tempFile)
               .maxKeyLength(64)
               .preallocatedRecords(5) // Different value

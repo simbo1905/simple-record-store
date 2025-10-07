@@ -16,10 +16,10 @@ import java.util.concurrent.atomic.AtomicLong;
 /// The ordering across servers will naturally be subject to clock drift between hosts.
 /// For the last significant bits we use a pure random long to makes the UUIDs globally unique.
 /// The RFC for time based UUIDs suggest that 10M UUIDs per second can be generated. On an M1 Mac
-// the Java core Type 4
+/// the Java core Type 4
 /// pure random UUID generation gives me about 0.6M per second. This class gets about 0.5M per
-// second.
-@SuppressWarnings("unused")
+/// second.
+/// High-performance UUID generator that creates time-ordered UUIDs suitable for database keys.
 public class UUIDGenerator {
   /// A trick from the core UUID class is to use holder class to defer initialization until needed.
   private static class LazyRandom {
@@ -48,7 +48,6 @@ public class UUIDGenerator {
   /// Within a given JVM we will have good time based ordering.
   ///
   /// @return A new UUID with time-based ordering and global uniqueness.
-  @SuppressWarnings("unused")
   public static UUID generateUUID() {
     // As the most significant bits use ms time then counter for sub-millisecond ordering.
     long msb = epochTimeThenCounterMsb();

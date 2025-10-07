@@ -3,6 +3,7 @@ package com.github.simbo1905.nfp.srs;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 
+@SuppressWarnings("ClassEscapesDefinedScope")
 public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback wc)
     implements FileOperations {
 
@@ -105,6 +106,15 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
   }
 
   /* (non-Javadoc)
+   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#readShort()
+   */
+  @Override
+  public short readShort() throws IOException {
+    wc.onRead();
+    return file.readShort();
+  }
+
+  /* (non-Javadoc)
    * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#readInt()
    */
   @Override
@@ -123,6 +133,15 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
   }
 
   /* (non-Javadoc)
+   * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#writeShort(short)
+   */
+  @Override
+  public void writeShort(short v) throws IOException {
+    wc.onWrite();
+    file.writeShort(v);
+  }
+
+  /* (non-Javadoc)
    * @see com.github.simbo1905.chronicle.db.IRandomAccessFile#writeInt(int)
    */
   @Override
@@ -138,5 +157,15 @@ public record InterceptedRandomAccessFile(RandomAccessFile file, WriteCallback w
   public void writeLong(long v) throws IOException {
     wc.onWrite();
     file.writeLong(v);
+  }
+
+  @Override
+  public RecordHeader readRecordHeader(int indexPosition) throws IOException {
+    return RecordHeader.readFrom(this, indexPosition);
+  }
+
+  @Override
+  public void writeRecordHeader(RecordHeader header) throws IOException {
+    RecordHeader.writeTo(this, header);
   }
 }

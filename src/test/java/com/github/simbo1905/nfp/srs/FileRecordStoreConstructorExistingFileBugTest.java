@@ -58,8 +58,9 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open with different maxKeyLength - should fail but not leak resources
       logger.log(Level.FINE, "Attempting to open store with corrupted header...");
-      try (@SuppressWarnings("unused") FileRecordStore store2 =
-          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store2 =
+              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception due to corrupted header");
       } catch (IllegalArgumentException e) {
         logger.log(Level.FINE, "✓ Got expected validation exception: " + e.getMessage());
@@ -99,8 +100,9 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Try to open - this could cause issues if numRecords isn't validated
       logger.log(Level.FINE, "Attempting to open store with huge numRecords value...");
-      try (@SuppressWarnings("unused") FileRecordStore store =
-          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store =
+              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         logger.log(Level.FINE, "Store opened successfully");
         // The issue would be if memIndex was sized with the huge numRecords value
         // causing memory issues

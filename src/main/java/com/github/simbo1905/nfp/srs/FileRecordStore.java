@@ -478,13 +478,18 @@ public class FileRecordStore implements AutoCloseable {
   /// Comprehensive debug string for RecordHeader with optional data preview
   static String toDebugString(RecordHeader header) {
     if (header == null) return "RecordHeader[null]";
-    return "RecordHeader[" +
-        "dp=" + header.dataPointer() +
-        ",dl=" + header.dataLength() +
-        ",dc=" + header.dataCapacity() +
-        ",ip=" + header.indexPosition() +
-        ",crc=" + String.format("%08x", header.crc32()) +
-        "]";
+    return "RecordHeader["
+        + "dp="
+        + header.dataPointer()
+        + ",dl="
+        + header.dataLength()
+        + ",dc="
+        + header.dataCapacity()
+        + ",ip="
+        + header.indexPosition()
+        + ",crc="
+        + String.format("%08x", header.crc32())
+        + "]";
   }
 
   /// Debug logging helper with consistent format - handles log level checking internally
@@ -628,8 +633,7 @@ public class FileRecordStore implements AutoCloseable {
 
     final DumpCommand dumpCommand = command;
     logger.log(
-        Level.INFO,
-        () -> String.format("Dumping %s using command %s", filename, dumpCommand));
+        Level.INFO, () -> String.format("Dumping %s using command %s", filename, dumpCommand));
     dumpFile(filename, dumpCommand, level, disableCrc32, validateStructure, validatePayloads);
   }
 
@@ -1104,17 +1108,13 @@ public class FileRecordStore implements AutoCloseable {
     // for smaller records, allow in-place updates based on the allowInPlaceUpdates setting
     if (recordIsSameSize || (recordIsSmaller && allowInPlaceUpdates)) {
       logger.log(Level.FINER, () -> "updateRecordInternal: taking INPLACE path");
-      logDebug(
-          "updateRecordInternal",
-          "INPLACE: current=%s",
-          toDebugString(updateMeHeader));
+      logDebug("updateRecordInternal", "INPLACE: current=%s", toDebugString(updateMeHeader));
 
       // write with the backup crc so one of the two CRCs will be valid after a crash
       writeRecordHeaderToIndex(updateMeHeader);
 
       final var updatedHeader = RecordHeader.withDataCount(updateMeHeader, value.length);
-      logDebug(
-          "updateRecordInternal", "INPLACE: updated=%s", toDebugString(updatedHeader));
+      logDebug("updateRecordInternal", "INPLACE: updated=%s", toDebugString(updatedHeader));
       updateFreeSpaceIndex(updatedHeader);
 
       // write the main data
@@ -1174,10 +1174,7 @@ public class FileRecordStore implements AutoCloseable {
             "ALLOCATE: calling allocateRecord with dataLength=%d",
             dataLength);
         RecordHeader newRecord = allocateRecord(dataLength);
-        logDebug(
-            "updateRecordInternal",
-            "ALLOCATE: allocated=%s",
-            toDebugString(newRecord));
+        logDebug("updateRecordInternal", "ALLOCATE: allocated=%s", toDebugString(newRecord));
 
         // new record is expanded old record - use it directly as allocateRecord already set correct
         // capacity
@@ -1219,15 +1216,11 @@ public class FileRecordStore implements AutoCloseable {
         // Not last record - need to move to new location
         // This handles both larger records and smaller records when in-place updates are disabled
         RecordHeader newRecord = allocateRecord(value.length);
-        logDebug(
-            "updateRecordInternal", "MOVE: allocated=%s", toDebugString(newRecord));
+        logDebug("updateRecordInternal", "MOVE: allocated=%s", toDebugString(newRecord));
 
         // new record is expanded/moved old record
         final var updatedNewRecord = RecordHeader.withDataCount(newRecord, value.length);
-        logDebug(
-            "updateRecordInternal",
-            "MOVE: updated=%s",
-            toDebugString(updatedNewRecord));
+        logDebug("updateRecordInternal", "MOVE: updated=%s", toDebugString(updatedNewRecord));
 
         writeRecordData(updatedNewRecord, value);
         writeRecordHeaderToIndex(updatedNewRecord);

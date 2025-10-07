@@ -37,19 +37,20 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
       // This should fail with IllegalArgumentException during constructor
       // THE BUG: RandomAccessFile will be created but never closed!
       try {
-        try (@SuppressWarnings("unused") FileRecordStore store =
-            new FileRecordStore(
-                tempFile.toFile(),
-                0, // preallocatedRecords
-                64, // maxKeyLength (expects 64, file has 32)
-                false, // disablePayloadCrc32
-                false, // useMemoryMapping
-                "rw", // accessMode
-                KeyType.BYTE_ARRAY, // keyType
-                true, // defensiveCopy
-                1024 * 1024, // preferredExpansionSize
-                4 * 1024, // preferredBlockSize
-                64 * 1024)) { // initialHeaderRegionSize
+        try (@SuppressWarnings("unused")
+            FileRecordStore store =
+                new FileRecordStore(
+                    tempFile.toFile(),
+                    0, // preallocatedRecords
+                    64, // maxKeyLength (expects 64, file has 32)
+                    false, // disablePayloadCrc32
+                    false, // useMemoryMapping
+                    "rw", // accessMode
+                    KeyType.BYTE_ARRAY, // keyType
+                    true, // defensiveCopy
+                    1024 * 1024, // preferredExpansionSize
+                    4 * 1024, // preferredBlockSize
+                    64 * 1024)) { // initialHeaderRegionSize
 
           Assert.fail("Should have thrown IllegalArgumentException");
         }
@@ -101,19 +102,20 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
       try {
         // Use the public constructor directly
-        try (@SuppressWarnings("unused") FileRecordStore store =
-            new FileRecordStore(
-                tempFile.toFile(),
-                0, // preallocatedRecords
-                64, // maxKeyLength
-                false, // disablePayloadCrc32
-                false, // useMemoryMapping
-                "rw", // accessMode
-                KeyType.BYTE_ARRAY, // keyType
-                true, // defensiveCopy
-                1024 * 1024, // preferredExpansionSize
-                4 * 1024, // preferredBlockSize
-                64 * 1024)) { // initialHeaderRegionSize
+        try (@SuppressWarnings("unused")
+            FileRecordStore store =
+                new FileRecordStore(
+                    tempFile.toFile(),
+                    0, // preallocatedRecords
+                    64, // maxKeyLength
+                    false, // disablePayloadCrc32
+                    false, // useMemoryMapping
+                    "rw", // accessMode
+                    KeyType.BYTE_ARRAY, // keyType
+                    true, // defensiveCopy
+                    1024 * 1024, // preferredExpansionSize
+                    4 * 1024, // preferredBlockSize
+                    64 * 1024)) { // initialHeaderRegionSize
 
           Assert.fail("Should have thrown IOException for file size validation");
         }
@@ -144,19 +146,20 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
             try {
               //noinspection EmptyTryBlock
-              try (@SuppressWarnings("unused") FileRecordStore store =
-                  new FileRecordStore(
-                      testFile.toFile(),
-                      0,
-                      64,
-                      false,
-                      false,
-                      "rw",
-                      KeyType.BYTE_ARRAY,
-                      true,
-                      1024 * 1024,
-                      4 * 1024,
-                      64 * 1024)) {
+              try (@SuppressWarnings("unused")
+                  FileRecordStore store =
+                      new FileRecordStore(
+                          testFile.toFile(),
+                          0,
+                          64,
+                          false,
+                          false,
+                          "rw",
+                          KeyType.BYTE_ARRAY,
+                          true,
+                          1024 * 1024,
+                          4 * 1024,
+                          64 * 1024)) {
                 // Constructor should fail
               }
             } catch (IOException expected) {
@@ -188,8 +191,9 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
     try {
       // Create a valid store to understand constructor flow
       //noinspection EmptyTryBlock
-      try (@SuppressWarnings("unused") FileRecordStore store =
-          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store =
+              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         // Store is empty but valid
       }
 

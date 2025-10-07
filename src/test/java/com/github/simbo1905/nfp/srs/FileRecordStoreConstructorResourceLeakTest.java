@@ -32,11 +32,12 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
       logger.log(Level.FINE, "Attempting to open store with mismatched key length...");
 
       // This should fail with IllegalArgumentException
-      try (@SuppressWarnings("unused") FileRecordStore store2 =
-          new FileRecordStoreBuilder()
-              .path(tempFile)
-              .maxKeyLength(64) // Expect 64, but file has 32
-              .open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store2 =
+              new FileRecordStoreBuilder()
+                  .path(tempFile)
+                  .maxKeyLength(64) // Expect 64, but file has 32
+                  .open()) {
         Assert.fail("Should have thrown IllegalArgumentException");
       } catch (IllegalArgumentException e) {
         logger.log(Level.FINE, "✓ Got expected validation exception: " + e.getMessage());
@@ -82,8 +83,9 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
       logger.log(Level.FINE, "Attempting to open store with truncated file...");
 
       // This should fail with IOException due to file size validation
-      try (@SuppressWarnings("unused") FileRecordStore store =
-          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store =
+              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown IOException");
       } catch (IOException e) {
         logger.log(Level.FINE, "✓ Got expected file size exception: " + e.getMessage());
@@ -130,8 +132,9 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
       logger.log(Level.FINE, "Attempting to open store that will fail during index loading...");
 
       // This should fail during loadExistingIndex due to invalid CRC
-      try (@SuppressWarnings("unused") FileRecordStore store =
-          new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+      try (@SuppressWarnings("unused")
+          FileRecordStore store =
+              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
         Assert.fail("Should have thrown exception during index loading");
       } catch (Exception e) {
         logger.log(

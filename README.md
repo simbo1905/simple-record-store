@@ -534,7 +534,7 @@ mvn release:clean
 # make the actual tag 
 mvn release:prepare 
 
-# checkout and deply the tag
+# checkout and deploy the tag
 mvn release:perform
 ```
 

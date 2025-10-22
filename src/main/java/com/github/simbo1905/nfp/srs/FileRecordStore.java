@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import lombok.Getter;
 import lombok.SneakyThrows;
 import lombok.Synchronized;
+import org.jetbrains.annotations.TestOnly;
 
 /// A persistent record store that maps keys to values with crash-safe guarantees.
 /// Provides ACID properties with durable writes and supports both direct I/O and memory-mapped
@@ -1654,6 +1655,44 @@ public class FileRecordStore implements AutoCloseable {
       // This ensures consistent state even if exception occurred during close
       this.state = StoreState.CLOSED;
     }
+  }
+
+  /// TEST-ONLY: Simulates JVM vanishing without any further disk activity.
+  ///
+  /// **This method must remain package-private** as it violates the invariants of the class.
+  /// **Usage in crash tests**:
+  ///
+  /// ```java
+  /// FileRecordStore zombie = createStoreWithHalt(haltPoint);
+  /// try {
+  ///   zombie.insertRecord(key, data); // May halt mid-operation
+  /// } catch (Exception e) {
+  ///   // Expected: halt may leave zombie in UNKNOWN state
+  /// }
+  /// zombie.terminate(); // Model JVM termination it is now in state UNKNOWN so unsable
+  /// zombie = null; /// you should free it for GC.
+  ///
+  /// // Fresh instance models crash recovery
+  /// FileRecordStore fresh = new Builder().path(file).open();
+  /// ```
+  ///
+  /// **Exception handling**: Swallows sync/close exceptions because zombie instances
+  /// in UNKNOWN state may fail these operations. Real JVM termination would not throw.
+  @TestOnly
+  void terminate() {
+    // Transition to UNKNOWN (zombie instance no longer usable)
+    this.state = StoreState.UNKNOWN;
+    // Clear and null in-memory state (models JVM termination)
+    if (headerState != null) {
+      headerState.clear();
+    }
+    if (freeMap != null) {
+      freeMap.clear();
+      freeMap = null;
+    }
+    logger.log(
+        Level.FINE,
+        () -> String.format("terminate() succeeded on %s (simulating JVM termination)", this));
   }
 
   /// Adds the new record to the in-memory index and calls the super class add

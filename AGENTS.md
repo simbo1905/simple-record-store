@@ -110,4 +110,270 @@ perl -pi -e 's/^import lombok\.final var;\n//' $(rg -l 'import lombok\.final var
 
 ## Documentation Is Critical And Is A Stop The World Requirement
 
-If I want a GitHub issue, or an update to docs, or anything else of a "write that down" then you MUST do that IMMEDIATELY. You MUST NOT say "let me finish x" as I may be telling you as the laptop we are on is about to shutdown or that you are about to enter compaction and forget. We do Spec Driven Development and Readme Driven Development and we document first and code second. 
+If I want a GitHub issue, or an update to docs, or anything else of a "write that down" then you MUST do that IMMEDIATELY. You MUST NOT say "let me finish x" as I may be telling you as the laptop we are on is about to shutdown or that you are about to enter compaction and forget. We do Spec Driven Development and Readme Driven Development and we document first and code second.
+
+## Crash-Halt Model & State Corruption Handling
+
+### Design Philosophy: Fail-Fast on Corruption Detection
+
+The FileRecordStore uses a **crash-halt model** for handling detected corruption. This is a critical safety mechanism that prevents corrupted in-memory state from propagating to disk.
+
+### State Lifecycle & Panic Behavior
+
+**Store States**:
+- `NEW`: Instance created but not yet opened
+- `OPEN`: Operational, all operations allowed
+- `CLOSED`: Cleanly shut down via `close()`
+- `UNKNOWN`: **PANIC STATE** - corruption detected, instance permanently poisoned
+
+**When corruption is detected** (e.g., State consistency check fails):
+1. Store immediately transitions to `UNKNOWN` state
+2. `IllegalStateException` thrown with diagnostic message
+3. **All subsequent operations fail immediately** - instance is unusable
+4. Client MUST close and discard this instance
+5. Client MUST create fresh instance by reopening file
+
+**Critical Rule**: Once `state = UNKNOWN`, the instance is **permanently dead**. There is no recovery, no retry, no "maybe it's fine" - the instance MUST be discarded.
+
+### Real Crash vs In-Process Corruption
+
+**Real Crash (Power Loss, JVM Kill)**:
+```
+┌─────────────────────┐
+│ JVM Running         │
+│ - In-memory state   │ ← Complex, may be mid-update
+│ - Disk state        │ ← Consistent (atomic writes)
+└─────────────────────┘
+         ↓ CRASH (JVM terminates)
+┌─────────────────────┐
+│ Disk state only     │ ← All in-memory state LOST
+│ - Committed data OK │
+│ - Uncommitted gone  │
+└─────────────────────┘
+         ↓ Recovery
+┌─────────────────────┐
+│ New JVM opens file  │
+│ - Reads disk only   │ ← Fresh, consistent state
+│ - No stale memory   │
+└─────────────────────┘
+```
+
+**In-Process Corruption Detection**:
+```
+┌─────────────────────┐
+│ JVM Running         │
+│ - State check fails │ ← memIndex.size != positionIndex.size
+│ - Corruption in RAM │
+└─────────────────────┘
+         ↓ PANIC (state = UNKNOWN)
+┌─────────────────────┐
+│ Instance poisoned   │
+│ - All ops fail      │ ← Prevent propagation to disk
+│ - Must close        │
+└─────────────────────┘
+         ↓ Recovery
+┌─────────────────────┐
+│ Reopen file         │
+│ - Fresh instance    │ ← Reads from disk (may be fine)
+│ - Clean state       │
+└─────────────────────┘
+```
+
+### Key Distinction for Testing
+
+**❌ INCORRECT Test Design**:
+```java
+// BAD: Expects zombie instance to be operational
+store.insertRecord(key1, data);
+haltOperations(); // Partial state update
+// BUG: Inspecting zombie instance
+assertEquals(OPEN, store.getState()); // WRONG - may be UNKNOWN
+assertArrayEquals(data, store.readRecordData(key1)); // WRONG - may throw
+```
+
+**✅ CORRECT Test Design**:
+```java
+// GOOD: Models JVM termination
+store.insertRecord(key1, data);
+haltOperations(); // Partial state update → zombie instance
+store.close(); // May fail, ignored (JVM would terminate)
+
+// CRASH RECOVERY: Fresh instance
+FileRecordStore fresh = new Builder().path(file).open();
+// Validate disk consistency only
+if (fresh.recordExists(key1)) {
+    assertArrayEquals(data, fresh.readRecordData(key1));
+}
+fresh.close();
+```
+
+### State Consistency Checks
+
+**What they protect against**:
+1. Programming bugs in state update logic
+2. Memory corruption (hardware failures, bit flips)
+3. Race conditions (though store uses locks)
+4. Exception-induced partial updates
+
+**What they DO NOT validate**:
+- ❌ NOT crash recovery (disk is always consistent due to write ordering)
+- ❌ NOT power-loss scenarios (JVM terminates, no in-memory state survives)
+- ❌ NOT disk corruption (CRC checks handle that separately)
+
+**State checks verify**: `memIndex.size() == positionIndex.size()`
+
+These two maps MUST be synchronized:
+- `memIndex`: KeyWrapper → RecordHeader (lookup by key)
+- `positionIndex`: dataPointer → RecordHeader (lookup by position)
+
+**If mismatch detected**:
+```java
+if (memIndex.size() != positionIndex.size()) {
+    parentStore.state = StoreState.UNKNOWN;
+    throw new IllegalStateException(
+        "State consistency error: memIndex.size=X != positionIndex.size=Y"
+    );
+}
+```
+
+### Testing Crash Safety: Required Patterns
+
+**Rule 1**: Crash tests MUST model JVM termination, not gradual shutdown
+
+**Rule 2**: NEVER inspect zombie instances - they may be in UNKNOWN state (expected)
+
+**Rule 3**: Validate ONLY:
+- Fresh instance can open successfully
+- Committed data is intact
+- Uncommitted data is absent
+
+**Rule 4**: Expected SEVERE logs during crash tests:
+- "State consistency error" logs are **EXPECTED** in zombie instances
+- They prove the fail-fast mechanism works correctly
+- Test passes if fresh reopen succeeds
+
+**Example Pattern**:
+```java
+// Systematic crash simulation
+// Create file once at test start
+Files.deleteIfExists(file);
+Files.createFile(file);
+
+for (int haltPoint = 1; haltPoint <= maxOps; haltPoint++) {
+    // File persists across iterations - tests recovery from partial writes
+    
+    FileRecordStore zombie = createWithHalt(haltPoint);
+    try {
+        zombie.insertRecord(key, data); // May halt mid-op
+    } catch (Exception e) {
+        // Expected: halt or state corruption detected
+    }
+    
+    // Wipe zombie to model JVM termination (DO NOT use close())
+    try { zombie.wipe(); } catch (Exception ignored) {}
+    
+    // CRASH RECOVERY: Fresh instance
+    FileRecordStore fresh = new Builder().path(file).open();
+    
+    // Validate disk consistency
+    if (fresh.recordExists(key)) {
+        assertArrayEquals(data, fresh.readRecordData(key));
+    }
+    
+    fresh.close();
+}
+```
+
+### Write Ordering Guarantees Crash Safety
+
+Crash safety relies on **write ordering + CRC validation + idempotent recovery**.
+
+This library depends on the JVM and OS to maintain write ordering as directed by the code.
+If the JVM or OS reorders writes without the library knowing, crash safety cannot be guaranteed.
+Historically, some filesystems had bugs with write reordering that caused corruption under power loss.
+Such issues affect all software on those systems and must be fixed at the OS/filesystem level.
+
+We cannot predict or work around OS-level bugs - we can only eliminate logical bugs in our code.
+The implementation assumes writes reach disk in the order requested and that failures are reported correctly.
+
+**Insert/Update commit points**:
+1. Data written to new location (uncommitted)
+2. Record header written to index (uncommitted - may be torn on crash)
+3. `numRecords` incremented (COMMIT POINT - makes record visible)
+
+**Update in-place semantics**:
+1. New data written over old data (may be torn on crash)
+2. Record header CRC recomputed (idempotent - can repeat safely)
+3. Recovery validates CRC on every read - torn writes rejected
+
+**Expansion commit points**:
+1. File extended via `setLength()` (filesystem operation)
+2. Record data copied to new location (uncommitted)
+3. Record header updated in index (uncommitted - may be torn)
+4. `dataStartPtr` updated (COMMIT POINT - makes new layout visible)
+
+**Crash safety guarantees**:
+- **Torn writes are safe**: Uncommitted headers have invalid CRC → ignored on recovery
+- **Partial data is safe**: Data without valid header in `numRecords` → invisible on recovery
+- **CRC validation**: Catches torn writes and corruption on every read
+- **Idempotent recovery**: Multiple crashes during same operation → same final state
+
+**Write ordering requirements**:
+- We rely on JVM file I/O APIs maintaining write order
+- `sync()` flushes buffered writes to OS (durability, not atomicity)
+- `setLength()` updates file metadata (filesystem operation)
+- Sector writes (512B/4KB) may be atomic, but not guaranteed beyond sector boundaries
+- Write reordering without notification would break crash safety assumptions
+
+### Source Code References
+
+**State transition to UNKNOWN** (fail-fast on corruption):
+- `FileRecordStore.State` inner class methods
+- Pattern: detect mismatch → `parentStore.state = UNKNOWN` → throw exception
+
+**Commit point operations**:
+- `FileRecordStore.writeNumRecordsHeader()` - Insert/delete commit
+- `FileRecordStore.writeDataStartPtrHeader()` - Expansion commit
+
+**Write ordering enforcement**:
+- `FileRecordStore.addEntryToIndex()` - Insert: data → header → numRecords increment
+- `FileRecordStore.allocateRecordAfterCompaction()` - Expansion: extend file → copy data → update dataStartPtr
+
+**CRC validation**:
+- `RecordHeader.computeCrc32()` - Header CRC computation
+- `RecordHeader.readFrom()` - Header CRC validation on read
+- `FileRecordStore.readRecordData()` - Payload CRC validation
+
+**Test-only crash simulation**:
+- `FileRecordStore.wipe()` - Package-private method with `@TestOnly` annotation
+- Models JVM termination: sync → close → clear/null state → CLOSED
+- `HeaderExpansionCrashTest` - Uses `wipe()` not `close()` for crash testing
+
+**Payload CRC configuration**:
+- `FileRecordStoreBuilder.disablePayloadCrc32()` - Disable for performance (NOT recommended for production)
+- Default: CRC enabled for all record payloads
+- Header CRC: ALWAYS enabled (cannot be disabled)
+
+### Fail-Fast Prevents Corruption Propagation
+
+**Without fail-fast**:
+```
+Corruption detected → Continue operation → Write to disk → DISK CORRUPTED
+```
+
+**With fail-fast**:
+```
+Corruption detected → state = UNKNOWN → All ops fail → Disk protected
+```
+
+**Recovery path**:
+```
+Reopen file → Fresh read from disk → Disk was fine → Success
+          OR → Disk actually corrupt → CRC failures → Report true error
+```
+
+This design ensures:
+- In-memory corruption NEVER reaches disk
+- Disk corruption detected via CRC, not state checks
+- Client forced to get fresh state from authoritative source (disk)
+ 

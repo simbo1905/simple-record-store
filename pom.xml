@@ -47,6 +47,15 @@
             <scope>provided</scope>
         </dependency>
 
+        <!-- JetBrains annotations for @TestOnly and other compile-time checks -->
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>26.0.2</version>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>

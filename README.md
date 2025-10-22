@@ -69,9 +69,85 @@ There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the
 updated, or deleted. If you find a bug, please try to create a repeatable test with fine logging enabled and post the
 logging. There is additional logging at `Level.FINEST` that shows every byte written to or read from the file. 
 
+## Design Philosophy: Let It Crash
+
+### Crash-Halt Model & State Corruption Handling
+
+The FileRecordStore uses a **crash-halt model** for handling any IOExceptions, JVM Errors, or any detected corruption. This is a critical safety mechanism that prevents corrupted in-memory state from propagating to disk. Bad error handling is worse than no error handling. In theory, checked exceptions are there to help you recover from these scenarios. In practice, the only place I've been reliably told that they have been known to work is in the space systems that the inventor of Java quotes as proof of the utility of checked exceptions. Which, if you think about it, means they are known to have worked less often than we might expect them to have been running reliably if they were used only in Santa's Sleigh on Christmas Eve. 
+
+### State Lifecycle & Panic Behavior
+
+We use the Let It Crash Philosophy. At any point, if anything is thrown or the state of the object violates the invariants of the class, we move it into the UNKNOWN state. We then refuse to attempt to write the unknown state to disk. This avoids us throwing an exception that may get swallowed unless the application development team is based at the North Pole. 
+
+**Store States**:
+- `NEW`: Instance created but not yet opened
+- `OPEN`: Operational, all operations allowed
+- `CLOSED`: Cleanly shut down via `close()`
+- `UNKNOWN`: **PANIC STATE** - corruption detected, instance permanently poisoned
+
+**When corruption is detected** (e.g., State consistency check fails):
+1. Store immediately transitions to `UNKNOWN` state
+2. `IllegalStateException` thrown with diagnostic message
+3. **All subsequent operations fail immediately** - instance is unusable
+4. Client MUST not make any more invocations on the object; it will throw Exceptions to say it is unusable. 
+5. Client SHOULD set to `null` any references to the file store. 
+6. Client SHOULD NOT attempt to use the underlying files. 
+7. Client SHOULD mark the current process as down and perform an automated restart. 
+
+**Critical Rule**: Once `state = UNKNOWN`, the instance is **permanently dead**. There is no recovery, no retry, no "maybe it's fine" - the instance MUST be discarded.
+
+### Store State Management
+
+The `FileRecordStore` uses an internal state machine to track its lifecycle and handle error conditions:
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW: Store created
+    NEW --> OPEN: Successfully validated and opened
+    NEW --> UNKNOWN: Exception during construction
+    OPEN --> CLOSED: Clean close via close()
+    OPEN --> UNKNOWN: Exception during operation
+    CLOSED --> [*]: Finalized
+    UNKNOWN --> [*]: Finalized
+    
+    state OPEN {
+        [*] --> insertRecord
+        [*] --> readRecordData
+        [*] --> updateRecord
+        [*] --> deleteRecord
+        [*] --> keys
+        [*] --> isEmpty
+        [*] --> recordExists
+        [*] --> fsync
+    }
+    
+    note right of UNKNOWN
+        All operations throw IllegalStateException
+        with a descriptive message including the current state
+    end note
+```
+
+#### Store States:
+- **NEW**: Initial state - store created but not yet validated/opened
+- **OPEN**: Store successfully opened and operational - all methods available
+- **CLOSED**: Store cleanly closed via `close()` method - no further operations allowed
+- **UNKNOWN**: Store encountered an exception - all operations throw `IllegalStateException`
+
+#### State Transitions:
+- **Construction**: NEW → OPEN (success) or NEW → UNKNOWN (failure)
+- **Operations**: OPEN → UNKNOWN (on any exception)
+- **Cleanup**: Any state → CLOSED (via `close()`) or finalization
+
+This state management ensures:
+- Construction failures don't incorrectly mark stores as "closed"
+- Operational exceptions properly prevent further operations
+- Clear error messages indicate the actual state when operations are rejected
+- Proper resource cleanup regardless of failure mode
+
+
 ## Simplified Key Handling
 
-The library now provides a simplified API that eliminates the `ByteSequence` abstraction and offers optimized UUID key support:
+The library now provides a simplified API that eliminates the `ByteSequence` abstraction and offers optimised UUID key support:
 
 ### Direct byte[] Key Support
 
@@ -87,12 +163,12 @@ byte[] key = "mykey".getBytes();
 store.insertRecord(key, data);
 ```
 
-### UUID Key Optimization
+### UUID Key Optimisation
 
-For applications using UUID keys, the library provides specialized support with significant performance benefits:
+For applications using UUID keys, the library provides specialised support with significant performance benefits:
 
 ```java
-// Create a store optimized for UUID keys
+// Create a store optimised for UUID keys
 FileRecordStore store = new FileRecordStore.Builder()
     .path(Paths.get("data.db"))
     .uuidKeys()  // Enables UUID optimization
@@ -105,9 +181,9 @@ byte[] data = store.readRecordData(userId);
 store.updateRecord(userId, updatedData);
 ```
 
-**UUID Optimization Benefits:**
+**UUID Optimisation Benefits:**
 - **Zero allocations**: UUIDs are stored directly as 16-byte arrays
-- **JIT optimization**: Branch elimination for constant key type after construction
+- **JIT optimisation**: Branch elimination for constant key type after construction
 - **Direct storage**: No wrapper objects or conversion overhead
 - **Memory efficiency**: Pre-computed hash codes for HashMap storage
 
@@ -116,7 +192,7 @@ store.updateRecord(userId, updatedData);
 By default, the library creates defensive copies of byte array keys to prevent corruption from external mutation:
 
 ```java
-// Default behavior - safe defensive copying
+// Default behaviour - safe defensive copying
 FileRecordStore store = new FileRecordStore.Builder()
     .path(Paths.get("data.db"))
     .defensiveCopy(true)  // Default: true
@@ -150,7 +226,7 @@ FileRecordStore store = new FileRecordStore.Builder()
     .byteArrayKeys(128)  // Max key length: 128 bytes
     .open();
 
-// Default behavior (backward compatible)
+// Default behaviour (backwards compatible)
 FileRecordStore store = new FileRecordStore.Builder()
     .maxKeyLength(64)  // Implies byte array keys
     .open();
@@ -174,7 +250,7 @@ store.setAllowInPlaceUpdates(true);
 store.setAllowHeaderExpansion(true);
 ```
 
-These toggles enable temporary operational modes for specialized use cases but are not generally needed for typical usage.
+These toggles enable temporary operational modes for specialised use cases but are not generally needed for typical usage.
 
 ## Memory-Mapped File Optimisation
 
@@ -182,8 +258,7 @@ Simple Record Store supports an optional **memory-mapped file** mode that reduce
 
 ### Benefits
 
-- **Reduced Write Amplification**: Multiple writes are batched in memory instead of individual disk operations
-- **Eliminated Seek Overhead**: All writes are memory accesses instead of disk seeks
+- **Implicit Rather Than Explicit**: Multiple logical disk updates are buffered in-memory and flushed by the OS
 - **Same Crash Safety**: Preserves dual-write patterns, CRC32 validation, and structural invariants
 - **Drop-in Replacement**: No API changes, controlled via constructor parameter
 
@@ -215,54 +290,6 @@ FileRecordStore store = new FileRecordStore.Builder()
     .open();
 ```
 
-### Store State Management
-
-The `FileRecordStore` uses an internal state machine to track its lifecycle and handle error conditions:
-
-```mermaid
-stateDiagram-v2
-    [*] --> NEW: Store created
-    NEW --> OPEN: Successfully validated and opened
-    NEW --> UNKNOWN: Exception during construction
-    OPEN --> CLOSED: Clean close via close()
-    OPEN --> UNKNOWN: Exception during operation
-    CLOSED --> [*]: Finalized
-    UNKNOWN --> [*]: Finalized
-    
-    state OPEN {
-        [*] --> insertRecord
-        [*] --> readRecordData
-        [*] --> updateRecord
-        [*] --> deleteRecord
-        [*] --> keys
-        [*] --> isEmpty
-        [*] --> recordExists
-        [*] --> fsync
-    }
-    
-    note right of UNKNOWN
-        All operations throw IllegalStateException
-        with descriptive message including current state
-    end note
-```
-
-#### Store States:
-- **NEW**: Initial state - store created but not yet validated/opened
-- **OPEN**: Store successfully opened and operational - all methods available
-- **CLOSED**: Store cleanly closed via `close()` method - no further operations allowed
-- **UNKNOWN**: Store encountered an exception - all operations throw `IllegalStateException`
-
-#### State Transitions:
-- **Construction**: NEW → OPEN (success) or NEW → UNKNOWN (failure)
-- **Operations**: OPEN → UNKNOWN (on any exception)
-- **Cleanup**: Any state → CLOSED (via `close()`) or finalization
-
-This state management ensures:
-- Construction failures don't incorrectly mark stores as "closed"
-- Operational exceptions properly prevent further operations
-- Clear error messages indicate the actual state when operations are rejected
-- Proper resource cleanup regardless of failure mode
-
 Legacy constructor-based API (deprecated):
 ```java
 // Create new store with memory-mapping
@@ -281,7 +308,7 @@ FileRecordStore store = new FileRecordStore(
 );
 ```
 
-### How It Works
+### How `useMemoryMapping` Works
 
 Memory-mapped mode uses Java's `MappedByteBuffer` to map the file into memory:
 
@@ -311,17 +338,12 @@ Memory-mapped mode uses Java's `MappedByteBuffer` to map the file into memory:
 
 ### Crash Safety
 
-Memory-mapped mode maintains the same crash safety guarantees as direct I/O:
+Memory-mapped mode maintains the same crash safety guarantees as direct I/O as long as the OS does not reorder writes:
 
 - **Dual-Write Pattern**: Critical updates still write backup → data → final header
 - **Header CRC32 Validation**: All headers includes CRC32 checksums validated on read
-- **Structural Invariants**: File structure remains consistent after crashes
-- **OS Guarantees**: The operating system ensures memory-mapped file consistency
-
-The difference is in *when* writes reach disk:
-- **Direct I/O**: Each write operation goes to disk when the OS chooses
-- **Memory-Mapped**: Writes accumulate in memory; you can flush by calling `close()` or `sync()`
-
+- **Structural Invariants**: File structure remains consistent after crashes as long as writes were not reordered.
+  
 ### When to Use Memory-Mapping
 
 **Use memory-mapped mode when:**
@@ -331,6 +353,9 @@ The difference is in *when* writes reach disk:
 **Use direct I/O mode when:**
 - You prefer simple traditional Java IO
 - File size exceeds available RAM
+- You have no choice due to device constraints
+
+Mobile phones do not support the feature, yet those are personal devices where blocking IO can be handled in a manner that does not harm the user experience. 
 
 ### Performance Considerations
 
@@ -351,7 +376,7 @@ Memory-mapping reduces write cost. The actual performance gain depends on:
 The implementation uses an **atomic epoch-swap protocol** to prevent native memory leaks:
 
 1. **Epoch Structure**: Immutable containers holding mapped buffers and region boundaries
-2. **Atomic Publishing**: New epochs are built off-side then atomically published
+2. **Atomic Publishing**: New epochs are built off-side and then atomically published
 3. **Explicit Cleanup**: Old epoch buffers are explicitly unmapped after transition
 4. **Fail-Closed Design**: Failed remaps leave current epoch unchanged
 
@@ -412,7 +437,7 @@ com.github.simbo1905.nfp.srs.MemoryMappedFile.level = FINEST
 
 `FileRecordStore` is **thread-safe** for single-process access:
 
-- All public methods are synchronised using Lombok's `@Synchronized` annotation
+- All public methods are synchronised
 - Multiple threads can safely share one `FileRecordStore` instance
 - Callers require no additional locking
 - Defensive copies are returned by methods like `keys()` to ensure thread safety
@@ -426,23 +451,22 @@ com.github.simbo1905.nfp.srs.MemoryMappedFile.level = FINEST
 **Safe Backup Approaches**:
 
 - For backups within the same process, use the `keys()` method to enumerate records and `readRecordData()` to read values
-- Beware this can be slow as it will lock - we need a feature to move to a read-write lock to avoid this. 
 - For external backups, ensure the store is closed or that no writes are occurring, then use standard file copying tools
 - Consider using explicit `fsync()` before copying to ensure all data is flushed to disk
 
 ## Details
 
 The original code was based on Derek Hamner's 1999 article [Use a RandomAccessFile to build a low-level database](http://www.javaworld.com/jw-01-1999/jw-01-step.html)
-which shows how to create a simple key-value storage file. That code isn't safe under crashes due to the ordering 
+which shows how to create a simple key-value storage file. That code isn't safe against crashes due to the ordering 
 of writes. This code base has tests that use a brute force search to throw exceptions on every file operation, then 
 validate that the data on disk is always left in a consistent state. **Note** If an IOException is thrown, it does _not_ 
-mean that the write is known to have 
+means that the write is known to have 
 failed. It means that the write _may_ have failed and that the in-memory state *might* be inconsistent with what is on 
 disk. The way to fix this is to close the store and open a fresh one to reload all the headers from disk. 
 
 This implementation: 
 
-1. It is simple. It doesn't use or create background threads. It doesn't use multiple files. As a result, it is ten times less Java bytecode when comparing total Jar sizes with true embedded database libraries. That means it is also ten times slower, as it does not batch writes to disk, unlike append-only writes. Instead, it does multiple writes to disk per operation. (Update: now we have memory-mapped files; this cost is somewhat mitigated.)
+1. It is relatively simple as it only relies on moving data in a pattern of file writes, where the state on disk at any point is readable. It doesn't use or create background threads. It doesn't use multiple files. As a result, it is ten times less Java bytecode when comparing total JAR sizes with true embedded database libraries. That means it is also ten times slower, as it does not batch writes to disk, unlike append-only writes. Instead, it does multiple writes to disk per operation. (Update: now we have memory-mapped files; this cost is somewhat mitigated.)
 1. Defaults to prioritising safety over space, over speed. You can override some defaults if you are sure that your 
  read and write patterns allow you to. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
@@ -452,7 +476,7 @@ This implementation:
 1. The maximum size of keys is fixed for the life of the store and is written to the file upon creation. 
 1. Uses a `HashMap` to index record headers by key. 
 1. Uses a `TreeMap` to index record headers by the offset of the record data within the file. 
-1. Uses a `ConcurrentSkipList` to record which records have free space sorted by the size of the free space.  
+1. Uses a `ConcurrentSkipList` to record which records have free space, sorted by the size of the free space.  
 1. Has no dependencies outside the JDK and uses `java.logging` aka JUL for logging.  
 1. Is thread-safe. It uses an internal lock to protect all public methods. 
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the complete on-disk structure containing both the key and its envelope (20-byte metadata). This makes locating a record by key an `O(1)` lookup.
@@ -481,7 +505,7 @@ This implementation:
    1. Will overwrite the deleted header by moving the last header over it, then decrementing the headers count, creating 
    free space at the end of the index space.    
 1. Record headers contain a CRC32 checksum, which is checked when the data is loaded. There is an option to enable CRC32 
-on the data. Yet many messages formats such ZIP have integrity built in. Most applications can probably skip this extra integrity check.
+on the data. Yet many message formats, such as ZIP, have integrity built in. Most applications can probably skip this extra integrity check.
 1. The order of writes to the records is designed so that if there is a crash, there isn't any corruption. This is confirmed 
 by the unit tests, which for every functional test record every file operation. The test then performs a brute force 
 replay, crashing at every file operation and verifying the integrity of the data on disk after each crash. 
@@ -540,16 +564,16 @@ mvn release:perform
 
 ## Alternatives
 
-Some notable pure Java alternatives that don't compromise on crash saftey are:
+Some notable pure Java alternatives that don't compromise on crash safety are:
 
 * [MapDB](http://www.mapdb.org) "provides Java Maps, Sets, Lists, Queues and other collections backed by off-heap 
-or on-disk storage. It is a hybrid between java collection framework and embedded database engine." 
+or on-disk storage. It is a hybrid between Java Collection Framework and an embedded database engine." 
 * [Xodus](https://github.com/JetBrains/xodus) "JetBrains Xodus is a transactional schema-less embedded database used by JetBrains YouTrack and JetBrains Hub."
-* [MVStore](https://www.h2database.com/html/mvstore.html) "The MVStore is a persistent, log structured key-value store. It is used as default storage subsystem of H2, but it can also be used directly within an application, without using JDBC or SQL." 
+* [MVStore](https://www.h2database.com/html/mvstore.html) "The MVStore is a persistent, log-structured key-value store. It is used as the default storage subsystem of H2, but it can also be used directly within an application, without using JDBC or SQL." 
 
-As at Dec 2019 there are comments in the code of one of those projects that they need to add automated crash tests. This project has such tests. 
+As of December 2019, there are comments in the code of one of those projects that they need to add automated crash tests. This project has such tests. 
 
-Their jar files are an order of magnitude bigger:
+Their jar files are an order of magnitude bigger in December 2029 (before we added opt-in Memory Mapped Files):
 
 | Alternative  | Jar Size | Transient Deps |
 | ------------- | ------------- | ------------- |
@@ -558,8 +582,8 @@ Their jar files are an order of magnitude bigger:
 | xodus-environment 1.3.124  | 502 kB | 3 jars  |
 | h2-mvstore 1.4.200 | 301 kB | -  |
 
- They likely have a lot more than an order of magnitude more development effort put into them. As a result they are embedded database engines that work with variable length keys that don't fit in memory and that optimise the write path. That makes them very fast. 
+ They likely have a lot more than an order of magnitude more development effort put into them. As a result, they are embedded database engines that work with variable-length keys that don't fit in memory and that optimise the write path. That makes them very fast. 
 
 ## Performance
 
-This [video](https://youtu.be/e1wbQPbFZdk) has a section that explains that you have to compromise between read speed, update speed, and memory. This implementation uses a standard `java.util.HashMap` for all reads. That means that keys must fit in memory but that reads are at the standard in-memory cost. In terms of memory other than the `HashMap` there is a `TreeMap` recording where records are in the file. The key to the `TreeMap` is a long and values are the keys to the `HashMap`. This means that memory usage should be low compared to the techniques in the video. Where this implementation takes a hit is in write performance. It does update in place with additional writes to ensure consistency during crashes. Running [simple-record-store-benchmarks](https://github.com/simbo1905/simple-record-store-benchmarks) shows that the alternatives named above are about 10x faster at writes. This implimentation is also trying to be simple which means a small jar but none of the sophistication needed to optimise the read path. 
+This [video](https://youtu.be/e1wbQPbFZdk) has a section that explains that you have to compromise between read speed, update speed, and memory. This implementation uses a standard `java.util.HashMap` for all reads. That means that keys must fit in memory, but that reads are at the standard in-memory cost. In terms of memory, other than the `HashMap`, there is a `TreeMap` recording where records are in the file. The key to the `TreeMap` is a long, and values are the keys to the `HashMap`. This means that memory usage should be low compared to the techniques in the video. Where this implementation takes a hit is in write performance. It does update in place with additional writes to ensure consistency during crashes. Running [simple-record-store-benchmarks](https://github.com/simbo1905/simple-record-store-benchmarks) shows that the alternatives named above are about 10x faster at writes. This implementation is also trying to be simple, which means a small ja,r but none of the sophistication needed to optimise the read path. 

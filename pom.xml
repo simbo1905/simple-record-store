@@ -142,4 +142,38 @@
 
 		</plugins>
 	</build>
+
+	<profiles>
+		<!-- Profile to build a standalone utility JAR -->
+		<profile>
+			<id>utility-jar</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-jar-plugin</artifactId>
+						<version>3.2.0</version>
+						<executions>
+							<execution>
+								<id>utility-jar</id>
+								<phase>package</phase>
+								<goals>
+									<goal>jar</goal>
+								</goals>
+								<configuration>
+									<classifier>utility</classifier>
+									<archive>
+										<manifest>
+											<mainClass>com.github.trex_paxos.srs.util.ExpandKeySize</mainClass>
+											<addClasspath>true</addClasspath>
+										</manifest>
+									</archive>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 </project>

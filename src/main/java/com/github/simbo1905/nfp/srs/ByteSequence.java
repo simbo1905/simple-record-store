@@ -5,7 +5,7 @@ import java.util.Arrays;
 
 /// Immutable wrapper for byte sequences used as keys in the record store.
 /// Provides efficient hash code caching and defensive copying options.
-/// BUGGY VERSION: Contains unsafe UTF-8 string conversions that corrupt non-textual data.
+/// Supports safe string representation for arbitrary binary data using hex encoding.
 public record ByteSequence(byte[] bytes, int cachedHashCode) {
 
   @Override
@@ -50,9 +50,10 @@ public record ByteSequence(byte[] bytes, int cachedHashCode) {
     return new ByteSequence(bytes, cachedHashCode);
   }
 
-  /// BUGGY: Encodes a string into UTF8 byte array wrapped as a ByteSequence.
-  /// This encodes a string into a fresh UTF8 byte array wrapped as a ByteString.
+  /// Encodes a string into UTF8 byte array wrapped as a ByteSequence.
+  /// This encodes a string into a fresh UTF8 byte array wrapped as a ByteSequence.
   /// Note that this copies data.
+  /// Use this only when you have a valid UTF-8 string, not arbitrary binary data.
   ///
   /// @param string the string to encode
   /// @return a new ByteSequence with UTF-8 encoded bytes
@@ -65,10 +66,11 @@ public record ByteSequence(byte[] bytes, int cachedHashCode) {
     return of(bytes);
   }
 
-  /// BUGGY: Decodes UTF8 byte array wrapped in a ByteSequence into a string.
-  /// This decodes a UTF8 byte array wrapped in a ByteString into a string.
+  /// Decodes UTF8 byte array wrapped in a ByteSequence into a string.
+  /// This decodes a UTF8 byte array wrapped in a ByteSequence into a string.
   /// Note that this copies data.
-  /// WARNING: This method silently corrupts invalid UTF-8 sequences!
+  /// Use this only when the ByteSequence contains valid UTF-8 encoded text data.
+  /// For arbitrary binary data, use toString() which provides hex representation.
   ///
   /// @param utf8 the ByteSequence containing UTF-8 bytes
   /// @return the decoded string
@@ -77,18 +79,36 @@ public record ByteSequence(byte[] bytes, int cachedHashCode) {
     if (utf8 == null) {
       throw new IllegalArgumentException("ByteSequence cannot be null");
     }
-    // BUG: new String(bytes) silently replaces invalid UTF-8 with U+FFFD
     return new String(utf8.bytes, StandardCharsets.UTF_8);
   }
 
-  /// BUGGY: Returns a string representation of this ByteSequence.
-  /// WARNING: This corrupts non-UTF-8 data!
+  /// Returns a hex string representation of this ByteSequence.
+  /// Safe for arbitrary binary data - preserves all byte values without corruption.
+  /// Format: "[ 0xAB 0xCD 0xEF ... ]" for debugging and logging.
   ///
-  /// @return string representation (CORRUPTED for binary data)
+  /// @return hex string representation preserving all byte information
   @Override
   public String toString() {
-    // BUG: new String(bytes) corrupts arbitrary byte data
-    return new String(bytes, StandardCharsets.UTF_8);
+    return toHexString(bytes);
+  }
+
+  /// Converts byte array to hex string format for safe display of arbitrary binary data.
+  /// Uses format "[ 0xAB 0xCD ... ]" consistent with FileRecordStore.print().
+  ///
+  /// @param bytes the byte array to format
+  /// @return hex string representation
+  private static String toHexString(byte[] bytes) {
+    if (bytes.length == 0) {
+      return "[ ]";
+    }
+
+    StringBuilder sb = new StringBuilder();
+    sb.append("[ ");
+    for (byte b : bytes) {
+      sb.append(String.format("0x%02X ", b));
+    }
+    sb.append("]");
+    return sb.toString();
   }
 
   /// Returns the length of the byte sequence.

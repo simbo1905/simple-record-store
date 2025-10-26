@@ -1184,6 +1184,7 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordHeaderToIndex(newRecord);
         headerState.update(keyWrapper, updateMeHeader, newRecord);
         logStateChange("updateRecordInternal", keyWrapper, updateMeHeader, newRecord);
+        updateFreeSpaceIndex(newRecord);
 
         // if there is a previous record add space to it
         final var previousIndex = updateMeHeader.dataPointer() - 1;
@@ -1227,6 +1228,7 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordHeaderToIndex(updatedNewRecord);
         headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
         logStateChange("updateRecordInternal", keyWrapper, updateMeHeader, updatedNewRecord);
+        updateFreeSpaceIndex(updatedNewRecord);
 
         // if there is a previous record add space to it
         final var previousIndex = updateMeHeader.dataPointer() - 1;
@@ -1311,6 +1313,7 @@ public class FileRecordStore implements AutoCloseable {
           writeRecordData(updatedNewRecord, value);
           writeRecordHeaderToIndex(updatedNewRecord);
           headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
+          updateFreeSpaceIndex(updatedNewRecord);
 
           // if there is a previous record add space to it
           final var previousIndex = updateMeHeader.dataPointer() - 1;
@@ -1335,6 +1338,7 @@ public class FileRecordStore implements AutoCloseable {
           writeRecordData(updatedNewRecord, value);
           writeRecordHeaderToIndex(updatedNewRecord);
           headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
+          updateFreeSpaceIndex(updatedNewRecord);
 
           // if there is a previous record add space to it
           final var previousIndex = updateMeHeader.dataPointer() - 1;
@@ -1543,8 +1547,20 @@ public class FileRecordStore implements AutoCloseable {
         logger.log(
             Level.FINEST,
             () -> String.format("DEBUG findFreeRecord: created newRecord=%s", finalNewRecord2));
-        updateFreeSpaceIndex(next);
-        writeRecordHeaderToIndex(next);
+        
+        // Reduce original record's capacity to complete the split
+        KeyWrapper key = readKeyFromIndex(next.indexPosition());
+        RecordHeader updatedNext = RecordHeader.withDataCapacity(next, next.dataLength());
+        logger.log(
+            Level.FINEST,
+            () ->
+                String.format(
+                    "DEBUG findFreeRecord: reduced capacity, updatedNext=%s", updatedNext));
+        
+        freeMap.remove(next);
+        headerState.update(key, next, updatedNext);
+        updateFreeSpaceIndex(updatedNext);
+        writeRecordHeaderToIndex(updatedNext);
         return newRecord;
       }
     }
@@ -1730,6 +1746,8 @@ public class FileRecordStore implements AutoCloseable {
         writtenHeader.dataLength(),
         writtenHeader.dataCapacity(),
         writtenHeader.indexPosition());
+
+    updateFreeSpaceIndex(writtenHeader);
 
     // Finally update the record count - this is the atomic commit point
     writeNumRecordsHeader(currentNumRecords + 1);

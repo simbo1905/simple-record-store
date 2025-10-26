@@ -1184,8 +1184,6 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordHeaderToIndex(newRecord);
         headerState.update(keyWrapper, updateMeHeader, newRecord);
         logStateChange("updateRecordInternal", keyWrapper, updateMeHeader, newRecord);
-
-        // Track free space in the newly allocated record
         updateFreeSpaceIndex(newRecord);
 
         // if there is a previous record add space to it
@@ -1230,8 +1228,6 @@ public class FileRecordStore implements AutoCloseable {
         writeRecordHeaderToIndex(updatedNewRecord);
         headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
         logStateChange("updateRecordInternal", keyWrapper, updateMeHeader, updatedNewRecord);
-
-        // Track free space in the newly allocated record
         updateFreeSpaceIndex(updatedNewRecord);
 
         // if there is a previous record add space to it
@@ -1317,8 +1313,6 @@ public class FileRecordStore implements AutoCloseable {
           writeRecordData(updatedNewRecord, value);
           writeRecordHeaderToIndex(updatedNewRecord);
           headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
-
-          // Track free space in the newly allocated record
           updateFreeSpaceIndex(updatedNewRecord);
 
           // if there is a previous record add space to it
@@ -1344,8 +1338,6 @@ public class FileRecordStore implements AutoCloseable {
           writeRecordData(updatedNewRecord, value);
           writeRecordHeaderToIndex(updatedNewRecord);
           headerState.update(keyWrapper, updateMeHeader, updatedNewRecord);
-
-          // Track free space in the newly allocated record
           updateFreeSpaceIndex(updatedNewRecord);
 
           // if there is a previous record add space to it
@@ -1556,11 +1548,8 @@ public class FileRecordStore implements AutoCloseable {
             Level.FINEST,
             () -> String.format("DEBUG findFreeRecord: created newRecord=%s", finalNewRecord2));
         
-        // Fix: Reduce the capacity of the original record to complete the split
-        // Read the key for this record from the index
+        // Reduce original record's capacity to complete the split
         KeyWrapper key = readKeyFromIndex(next.indexPosition());
-        
-        // Create updated header with reduced capacity (matching dataLength)
         RecordHeader updatedNext = RecordHeader.withDataCapacity(next, next.dataLength());
         logger.log(
             Level.FINEST,
@@ -1568,16 +1557,9 @@ public class FileRecordStore implements AutoCloseable {
                 String.format(
                     "DEBUG findFreeRecord: reduced capacity, updatedNext=%s", updatedNext));
         
-        // Remove old header from freeMap
         freeMap.remove(next);
-        
-        // Update headerState with the reduced-capacity header
         headerState.update(key, next, updatedNext);
-        
-        // Update freeMap with the new header (will be removed if no free space left)
         updateFreeSpaceIndex(updatedNext);
-        
-        // Write the updated header to disk
         writeRecordHeaderToIndex(updatedNext);
         return newRecord;
       }
@@ -1765,7 +1747,6 @@ public class FileRecordStore implements AutoCloseable {
         writtenHeader.dataCapacity(),
         writtenHeader.indexPosition());
 
-    // Track free space in the newly added record
     updateFreeSpaceIndex(writtenHeader);
 
     // Finally update the record count - this is the atomic commit point

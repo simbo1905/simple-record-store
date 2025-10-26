@@ -52,15 +52,19 @@ public class FileRecordStoreConstructorExistingFileBugTest extends JulLoggingCon
 
       // Corrupt the key length header to trigger validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(4); // Key length position in new format (after magic number)
-        raf.writeByte(128); // Write invalid key length (larger than theoretical max)
+        raf.seek(8); // Key length location = Long.BYTES (after 8-byte magic number)
+        raf.writeLong(128); // Write invalid key length (larger than max)
       }
 
       // Try to open with different maxKeyLength - should fail but not leak resources
       logger.log(Level.FINE, "Attempting to open store with corrupted header...");
       try (@SuppressWarnings("unused")
           FileRecordStore store2 =
-              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+              new FileRecordStoreBuilder()
+                  .path(tempFile)
+                  .maxKeyLength(64)
+                  .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
+                  .open()) {
         Assert.fail("Should have thrown exception due to corrupted header");
       } catch (IllegalArgumentException e) {
         logger.log(Level.FINE, "✓ Got expected validation exception: " + e.getMessage());

@@ -10,7 +10,6 @@ import java.util.*;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -94,6 +93,10 @@ public class FileRecordStore implements AutoCloseable {
   // header region.
   final int initialHeaderRegionSize;
 
+  /// Expansion multiplier for header region growth (1.0 + expansionExtraPercent).
+  /// Default is 1.2 for 20% compounding growth.
+  final double expansionMultiplier;
+
   /// Store state tracking for proper lifecycle management
   /// <ul>
   ///   <li><b>NEW</b> - Initial state - store created but not yet validated/opened</li>
@@ -113,14 +116,16 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Reference to parent FileRecordStore for state management during errors
   private final FileRecordStore parentStore = this;
-  /// TreeMap of headers by file index - now managed by State class
+  
+  // TreeMap of headers by file index - now managed by State class
   // private TreeMap<Long, RecordHeader> positionIndex; // Replaced by State class
-  /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free
-  /// space first
+  
+  /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
   private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
       new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
   // Current file pointer to the start of the record data.
-  private long dataStartPtr;
+  // Package-private for testing
+  /*default*/ long dataStartPtr;
   // only change this when debugging in unit tests
   private boolean disableCrc32;
 
@@ -134,6 +139,7 @@ public class FileRecordStore implements AutoCloseable {
   /// @param preferredExpansionSize expansion size in bytes for header region growth
   /// @param preferredBlockSize  block size in bytes for data alignment (must be power of 2)
   /// @param initialHeaderRegionSize initial header region size in bytes
+  /// @param expansionExtraPercent extra capacity percent for expansion (0.0 to 1.0)
   public FileRecordStore(
       File file,
       int preallocatedRecords,
@@ -145,7 +151,8 @@ public class FileRecordStore implements AutoCloseable {
       boolean defensiveCopy,
       int preferredExpansionSize,
       int preferredBlockSize,
-      int initialHeaderRegionSize)
+      int initialHeaderRegionSize,
+      double expansionExtraPercent)
       throws IOException {
     try {
       // Validate and store sizing parameters
@@ -160,6 +167,11 @@ public class FileRecordStore implements AutoCloseable {
       if (initialHeaderRegionSize <= 0) {
         throw new IllegalArgumentException(
             "initialHeaderRegionSize must be positive, got " + initialHeaderRegionSize);
+      }
+      if (expansionExtraPercent <= 0.0 || expansionExtraPercent >= 1.0) {
+        throw new IllegalArgumentException(
+            "expansionExtraPercent must be between 0.0 and 1.0 (exclusive), got "
+                + expansionExtraPercent);
       }
       // Validate maxKeyLength early - must be greater than zero
       if (maxKeyLength < 1 || maxKeyLength > FileRecordStoreBuilder.MAX_KEY_LENGTH) {
@@ -185,14 +197,20 @@ public class FileRecordStore implements AutoCloseable {
 
         this.disableCrc32 = disablePayloadCrc32;
         this.maxKeyLength = maxKeyLength;
-        this.indexEntryLength =
+        // Calculate index entry length with 8-byte alignment and 64-byte minimum
+        // Entry = keyLength (short, 2 bytes) + key (maxKeyLength) + keyCrc32 (int, 4 bytes) +
+        // envelope (20 bytes)
+        int baseEntryLength =
             Short.BYTES + maxKeyLength + CRC32_LENGTH + (RecordHeader.ENVELOPE_SIZE - Short.BYTES);
+        // Apply 8-byte alignment with 64-byte minimum
+        this.indexEntryLength = Math.max(64, roundUpTo8Bytes(baseEntryLength));
         this.readOnly = !"rw".equals(accessMode);
         this.keyType = keyType;
         this.defensiveCopy = defensiveCopy;
         this.preferredExpansionSize = preferredExpansionSize;
         this.preferredBlockSize = preferredBlockSize;
         this.initialHeaderRegionSize = initialHeaderRegionSize;
+        this.expansionMultiplier = 1.0 + expansionExtraPercent;
 
         // Validate UUID mode constraints
         if (keyType == KeyType.UUID && maxKeyLength != 16) {
@@ -227,23 +245,25 @@ public class FileRecordStore implements AutoCloseable {
           writeDataStartPtrHeader(dataStartPtr);
         } else {
           // Existing file - validate headers before loading data
-          // First check if this is an old format file (without magic number)
+          // Read magic number (long, 8 bytes)
           fileOperations.seek(0);
-          int firstFourBytes = fileOperations.readInt();
+          long magicNumber = fileOperations.readLong();
 
           int existingKeyLength;
           int existingRecords;
 
-          if (firstFourBytes == MAGIC_NUMBER) {
-            // New format with magic number
+          if (magicNumber == MAGIC_NUMBER) {
+            // Valid format with magic number
             existingKeyLength = readKeyLengthHeader();
             existingRecords = readNumRecordsHeader();
           } else {
-            // Old format - reject with exception instead of warning
+            // Invalid magic number - reject
             throw new IllegalStateException(
-                "Invalid file format: File does not contain required magic number 0xBEEBBEEB. "
-                    + "This appears to be an old format file or corrupted data. "
-                    + "Only files created with FileRecordStore.Builder are supported.");
+                String.format(
+                    "Invalid file format: File does not contain required magic number 0xBEEBBEEBBEEBBEEB. "
+                        + "Found: 0x%016X. This appears to be an old format file or corrupted data. "
+                        + "Only files created with FileRecordStore.Builder are supported.",
+                    magicNumber));
           }
 
           // Validate key length matches before proceeding
@@ -297,39 +317,45 @@ public class FileRecordStore implements AutoCloseable {
   /// Writes the magic number header to the beginning of the fileOperations.
   private void writeMagicNumberHeader() throws IOException {
     fileOperations.seek(FileRecordStoreBuilder.MAGIC_NUMBER_HEADER_LOCATION);
-    fileOperations.writeInt(MAGIC_NUMBER);
+    fileOperations.writeLong(MAGIC_NUMBER);
     logger.log(
-        Level.FINEST, () -> String.format("Writing magic number header: 0x%08X", MAGIC_NUMBER));
+        Level.FINEST, () -> String.format("Writing magic number header: 0x%016X", MAGIC_NUMBER));
   }
 
   /// Writes the max key length to the fileOperations (after magic number).
+  /// Key length is written as long for 64-byte file header alignment, but read back as short.
   private void writeKeyLengthHeader() throws IOException {
     fileOperations.seek(FileRecordStoreBuilder.KEY_LENGTH_HEADER_LOCATION);
-    final var keyLength = (short) maxKeyLength;
+    fileOperations.writeLong(maxKeyLength);
     logger.log(
-        Level.FINEST,
-        "Writing key length header: " + keyLength + " (from maxKeyLength=" + maxKeyLength + ")");
-    fileOperations.writeShort(keyLength);
+        Level.FINEST, "Writing key length header: " + maxKeyLength + " (as long for alignment)");
   }
 
   /// Reads the max key length from the fileOperations (after magic number).
+  /// Key length is stored as long but returned as short (cast down).
   private int readKeyLengthHeader() throws IOException {
     fileOperations.seek(FileRecordStoreBuilder.KEY_LENGTH_HEADER_LOCATION);
-    int keyLength = fileOperations.readShort() & 0xFFFF;
-    logger.log(Level.FINEST, "Reading key length header: " + keyLength);
+    long keyLengthLong = fileOperations.readLong();
+    int keyLength = (int) keyLengthLong;
+    logger.log(
+        Level.FINEST,
+        "Reading key length header: " + keyLength + " (from long: " + keyLengthLong + ")");
     return keyLength;
   }
 
   /// Writes the number of records header to the fileOperations.
+  /// Record count is written as long for 64-byte file header alignment, but read back as int.
   private void writeNumRecordsHeader(int numRecords) throws IOException {
     fileOperations.seek(FileRecordStoreBuilder.NUM_RECORDS_HEADER_LOCATION);
-    fileOperations.writeInt(numRecords);
+    fileOperations.writeLong(numRecords);
   }
 
   /// Reads the number of records header from the fileOperations.
+  /// Record count is stored as long but returned as int (cast down).
   private int readNumRecordsHeader() throws IOException {
     fileOperations.seek(FileRecordStoreBuilder.NUM_RECORDS_HEADER_LOCATION);
-    return fileOperations.readInt();
+    long numRecordsLong = fileOperations.readLong();
+    return (int) numRecordsLong;
   }
 
   /// Writes the data start pointer header to the fileOperations.
@@ -1549,6 +1575,7 @@ public class FileRecordStore implements AutoCloseable {
       }
     }
 
+
     return null; // No free space found
   }
 
@@ -1591,6 +1618,25 @@ public class FileRecordStore implements AutoCloseable {
       expandFile(payloadLength);
       // Retry allocation after expansion
       newRecord = findFreeRecord(payloadLength);
+
+      if (newRecord == null) {
+        // If findFreeRecord still can't find space, allocate at end of file
+        // This handles the case where expandFile() grew the file but no free records exist
+        long fileLength = getFileLength();
+        long availableSpace = fileLength - dataStartPtr;
+        if (payloadLength <= availableSpace) {
+          long alignedPosition = alignToBlockSize(dataStartPtr);
+          if (alignedPosition + payloadLength <= fileLength) {
+            RecordHeader allocatedRecord = new RecordHeader(alignedPosition, payloadLength, payloadLength);
+            logger.log(
+                Level.FINEST,
+                () ->
+                    String.format(
+                        "allocateRecord: allocated at end-of-file after expansion, newRecord=%s", allocatedRecord));
+            newRecord = allocatedRecord;
+          }
+        }
+      }
 
       if (newRecord == null) {
         try {
@@ -2114,25 +2160,25 @@ public class FileRecordStore implements AutoCloseable {
     ensureIndexSpace(requiredNumRecords);
   }
 
-  /// Expands the file by the preferred expansion size to make room for new records.
+  /// Expands the file by rounding up to the nearest preferredBlockSize boundary.
   /// This is called when allocateRecord cannot find space in existing regions.
-  /// Always expands by preferredExpansionSize (2 MiB default) for SSD optimization.
+  /// Aligns file size to SSD erasure block boundaries (default 4 MB) for optimal performance.
   private void expandFile(int requiredPayloadLength) throws IOException {
     long currentSize = fileOperations.length();
-    long newSize = currentSize + preferredExpansionSize;
+    long requiredSize = currentSize + requiredPayloadLength;
+    long newSize = roundUpToBlockSize(requiredSize, preferredBlockSize);
 
     logger.log(
         Level.FINE,
         () ->
             String.format(
-                "expandFile: Expanding file from %d to %d bytes (expansion=%d, required=%d)",
-                currentSize, newSize, preferredExpansionSize, requiredPayloadLength));
+                "expandFile: Expanding file from %d to %d bytes (required=%d, blockSize=%d)",
+                currentSize, newSize, requiredPayloadLength, preferredBlockSize));
 
     fileOperations.setLength(newSize);
-
-    // 🔧 Push the data-region boundary forward so the new tail area becomes usable
-    dataStartPtr = newSize;
-    writeDataStartPtrHeader(dataStartPtr);
+    // Note: dataStartPtr is NOT modified here - it's only modified by ensureIndexSpace()
+    // when the index region needs to expand. This method only extends the file size
+    // to make room for more data records beyond the current dataStartPtr boundary.
   }
 
   /// Aligns a position to the nearest block boundary for SSD optimization.
@@ -2148,8 +2194,31 @@ public class FileRecordStore implements AutoCloseable {
     return position + (preferredBlockSize - remainder);
   }
 
+  /// Rounds a value up to the nearest 8-byte boundary.
+  /// Used for index entry alignment to 64-bit word boundaries.
+  private static int roundUpTo8Bytes(int value) {
+    return ((value + 7) / 8) * 8;
+  }
+
+  /// Rounds a value up to the nearest 4 KiB boundary.
+  /// Used for header region expansion alignment to SSD write blocks.
+  private static long roundUpTo4KiB(long value) {
+    final long FOUR_KIB = 4096;
+    return ((value + FOUR_KIB - 1) / FOUR_KIB) * FOUR_KIB;
+  }
+
+  /// Rounds a value up to the nearest block size boundary.
+  /// Used for file expansion alignment to SSD erasure blocks.
+  private long roundUpToBlockSize(long value, long blockSize) {
+    if (blockSize <= 0) {
+      return value;
+    }
+    return ((value + blockSize - 1) / blockSize) * blockSize;
+  }
+
   /// Checks to see if there is space for and additional index entry. If
   /// not, space is created by moving records to the end of the fileOperations.
+  /// Uses batch-move strategy with exponential growth and 4 KiB alignment.
   private void ensureIndexSpace(int requiredNumRecords) throws IOException {
     long endIndexPtr = indexPositionToKeyFp(requiredNumRecords);
 
@@ -2170,58 +2239,143 @@ public class FileRecordStore implements AutoCloseable {
     }
 
     if (isEmpty() && endIndexPtr > getFileLength()) {
-      setFileLength(endIndexPtr);
-      dataStartPtr = endIndexPtr;
+      // Empty file needs space for BOTH index AND data regions
+      // Allocate index space (endIndexPtr) plus initial data region space
+      long initialDataRegionSize = Math.max(preferredBlockSize, 4096L);
+      long newFileSize = roundUpTo4KiB(endIndexPtr) + initialDataRegionSize;
+      setFileLength(newFileSize);
+      dataStartPtr = roundUpTo4KiB(endIndexPtr);
       writeDataStartPtrHeader(dataStartPtr);
       return;
     }
-    // move records to the back. if PAD_DATA_TO_KEY_LENGTH=true this should only move one record
+
+    // Batch-move records to free up header space
+    // Loop until we have sufficient space: endIndexPtr <= dataStartPtr
     while (endIndexPtr > dataStartPtr) {
-      // Find the first record whose dataPointer is >= dataStartPtr (boundary search)
-      final var firstEntry = headerState.getCeilingEntry(dataStartPtr);
-      final var firstOptional =
-          (firstEntry != null) ? Optional.of(firstEntry.getValue()) : Optional.empty();
-      // TODO figure out if there is some case where someone could trigger the following
-      // IllegalStateException
-      final var first =
-          (RecordHeader)
-              firstOptional.orElseThrow(
-                  () ->
-                      new IllegalStateException(
-                          "no record at or after dataStartPtr " + dataStartPtr));
-      // Need to find the key for this header to update properly
-      KeyWrapper firstKey = null;
+      long oldDataStartPtr = dataStartPtr;
+      
+      // Calculate new header boundary with exponential growth and 4 KiB alignment
+      // Guard against invalid expansion multiplier
+      if (expansionMultiplier <= 0) {
+        throw new IllegalStateException(
+            "expansionMultiplier must be > 0, got: " + expansionMultiplier);
+      }
+      
+      // Start with exponential growth using integer math to avoid precision loss
+      long newDataStartPtr = (long) (dataStartPtr * expansionMultiplier);
+      
+      // Ensure strict growth: newDataStartPtr > endIndexPtr
+      // If exponential isn't enough, directly satisfy the requirement with safety margin
+      if (newDataStartPtr <= endIndexPtr) {
+        // Avoid overflow: check if endIndexPtr is too large for safety margin
+        long safetyMargin = Math.max(4096L, 2L * indexEntryLength);
+        if (endIndexPtr > Long.MAX_VALUE - safetyMargin) {
+          throw new IllegalStateException(
+              "endIndexPtr too large for safe expansion: " + endIndexPtr);
+        }
+        // Allocate exactly what's needed plus safety margin (already calculated above)
+        newDataStartPtr = endIndexPtr + safetyMargin;
+      }
+      
+      // Align to 4 KiB boundary
+      newDataStartPtr = roundUpTo4KiB(newDataStartPtr);
+      
+      // Postcondition: ensure we actually made progress
+      if (newDataStartPtr <= dataStartPtr) {
+        throw new IllegalStateException(
+            String.format(
+                "Expansion failed to increase dataStartPtr: old=%d, new=%d, endIndexPtr=%d",
+                dataStartPtr, newDataStartPtr, endIndexPtr));
+      }
+
+      // Collect all records that need to be moved (dataPointer < newDataStartPtr)
+      // Sort by dataPointer ascending to maintain deterministic order
+      java.util.List<java.util.Map.Entry<KeyWrapper, RecordHeader>> recordsToMove =
+          new java.util.ArrayList<>();
       for (var entry : headerState.keySet()) {
-        if (headerState.getByKey(entry).equals(first)) {
-          firstKey = entry;
-          break;
+        RecordHeader header = headerState.getByKey(entry);
+        if (header.dataPointer() < newDataStartPtr) {
+          recordsToMove.add(new java.util.AbstractMap.SimpleEntry<>(entry, header));
         }
       }
+      
+      // Sort by dataPointer ascending for deterministic processing
+      recordsToMove.sort(
+          java.util.Comparator.comparingLong(e -> e.getValue().dataPointer()));
 
-      if (firstKey == null) {
-        throw new IllegalStateException("Could not find key for header during index expansion");
+      if (recordsToMove.isEmpty()) {
+        // No records to move, just update dataStartPtr and verify postcondition
+        dataStartPtr = newDataStartPtr;
+        writeDataStartPtrHeader(dataStartPtr);
+        
+        // Verify the postcondition is satisfied
+        if (endIndexPtr > dataStartPtr) {
+          throw new IllegalStateException(
+              String.format(
+                  "Failed to satisfy postcondition after no-op expansion: "
+                      + "endIndexPtr=%d > dataStartPtr=%d",
+                  endIndexPtr, dataStartPtr));
+        }
+        
+        // Success - postcondition satisfied
+        return;
       }
 
-      freeMap.remove(first);
-      byte[] data = readRecordData(first);
-      long fileLen = getFileLength();
+      // Log batch move operation
+      final long finalOldDataStartPtr = oldDataStartPtr;
+      final long finalNewDataStartPtr = newDataStartPtr;
+      logger.log(
+          Level.FINER,
+          () ->
+              String.format(
+                  "ensureIndexSpace: Batch-moving %d records, oldDataStartPtr=%d, newDataStartPtr=%d",
+                  recordsToMove.size(), finalOldDataStartPtr, finalNewDataStartPtr));
 
-      // Use atomic update pattern with computeIfPresent and move
-      // Ensure new position is aligned to preferredBlockSize for SSD optimization
-      long alignedFileLen = alignToBlockSize(fileLen);
-      final var updatedFirst = RecordHeader.move(first, alignedFileLen, payloadLength(data.length));
+      // Move all records to the end of the file
+      long currentFileEnd = getFileLength();
+      for (var entry : recordsToMove) {
+        KeyWrapper key = entry.getKey();
+        RecordHeader oldHeader = entry.getValue();
 
-      setFileLength(alignedFileLen + payloadLength(data.length));
-      writeRecordData(updatedFirst, data);
-      writeRecordHeaderToIndex(updatedFirst);
-      headerState.update(firstKey, first, updatedFirst);
-      dataStartPtr = headerState.getCeilingEntry(dataStartPtr).getValue().dataPointer();
+        freeMap.remove(oldHeader);
+        byte[] data = readRecordData(oldHeader);
+
+        // Align new position to block size
+        long alignedPosition = alignToBlockSize(currentFileEnd);
+        int payloadLen = payloadLength(data.length);
+        RecordHeader newHeader = RecordHeader.move(oldHeader, alignedPosition, payloadLen);
+
+        setFileLength(alignedPosition + payloadLen);
+        writeRecordData(newHeader, data);
+        writeRecordHeaderToIndex(newHeader);
+        headerState.update(key, oldHeader, newHeader);
+
+        currentFileEnd = alignedPosition + payloadLen;
+
+        logger.log(
+            Level.FINEST,
+            () ->
+                String.format(
+                    "ensureIndexSpace: Moved record key=%s, oldDataPtr=%d, newDataPtr=%d",
+                    java.util.Base64.getEncoder().encodeToString(key.bytes()),
+                    oldHeader.dataPointer(),
+                    newHeader.dataPointer()));
+      }
+
+      // Update dataStartPtr to new boundary
+      dataStartPtr = newDataStartPtr;
       writeDataStartPtrHeader(dataStartPtr);
-    }
 
-    // Keep dataStartPtr in sync after header expansion
-    dataStartPtr = endIndexPtr;
-    writeDataStartPtrHeader(dataStartPtr);
+      long finalFileLength = getFileLength();
+      logger.log(
+          Level.FINER,
+          () ->
+              String.format(
+                  "ensureIndexSpace: Batch move complete, moved=%d records, newDataStartPtr=%d, fileLength=%d",
+                  recordsToMove.size(), dataStartPtr, finalFileLength));
+      
+      // Loop continues until endIndexPtr <= dataStartPtr
+    }
   }
 
   /// Logs detailed information about all records in the store.
@@ -2320,50 +2474,38 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Thread-safe state management for record headers.
-  /// Encapsulates both memIndex and positionIndex maps with a single ReentrantReadWriteLock
+  /// Encapsulates both memIndex and positionIndex maps with a single GuardedReentrantReadWriteLock
   /// to ensure atomic updates and prevent inconsistent map states.
   final class State {
     private final Map<KeyWrapper, RecordHeader> memIndex = new HashMap<>();
     private final NavigableMap<Long, RecordHeader> positionIndex = new TreeMap<>();
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final GuardedReentrantReadWriteLock lock = new GuardedReentrantReadWriteLock();
 
     /// Returns the record header for the given key.
     RecordHeader getByKey(KeyWrapper key) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.get(key);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the record header for the given data pointer.
     RecordHeader getByPointer(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.get(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the floor entry for the given data pointer.
     Map.Entry<Long, RecordHeader> getFloorEntry(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.floorEntry(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the ceiling entry for the given data pointer.
     Map.Entry<Long, RecordHeader> getCeilingEntry(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.ceilingEntry(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
@@ -2378,8 +2520,7 @@ public class FileRecordStore implements AutoCloseable {
         int newDataCapacity,
         int newIndexPosition) {
       Objects.requireNonNull(key, "key cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         RecordHeader updated;
         if (oldHeader == null) {
           // For new records, create a RecordHeader from scratch
@@ -2418,8 +2559,6 @@ public class FileRecordStore implements AutoCloseable {
             "State update failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
@@ -2427,8 +2566,7 @@ public class FileRecordStore implements AutoCloseable {
     void update(KeyWrapper key, RecordHeader oldHeader, RecordHeader newHeader) {
       Objects.requireNonNull(key, "key cannot be null");
       Objects.requireNonNull(newHeader, "newHeader cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         if (oldHeader != null) {
           positionIndex.remove(oldHeader.dataPointer());
         }
@@ -2451,8 +2589,6 @@ public class FileRecordStore implements AutoCloseable {
             "State update failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
@@ -2460,8 +2596,7 @@ public class FileRecordStore implements AutoCloseable {
     void remove(KeyWrapper key, RecordHeader header) {
       Objects.requireNonNull(key, "key cannot be null");
       Objects.requireNonNull(header, "header cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         memIndex.remove(key);
         positionIndex.remove(header.dataPointer());
 
@@ -2481,70 +2616,50 @@ public class FileRecordStore implements AutoCloseable {
             "State remove failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
     /// Returns the number of records in the state.
     int size() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.size();
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns whether the state is empty.
     boolean isEmpty() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.isEmpty();
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns whether the state contains the given key.
     boolean containsKey(KeyWrapper key) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.containsKey(key);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns a defensive copy of all keys in the state.
     Set<KeyWrapper> keySet() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return new HashSet<>(memIndex.keySet());
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Clears both maps.
     void clear() {
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         memIndex.clear();
         positionIndex.clear();
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
     /// Returns a string representation of both maps for debugging.
     @Override
     public String toString() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex + " | " + positionIndex;
-      } finally {
-        lock.readLock().unlock();
       }
     }
   }

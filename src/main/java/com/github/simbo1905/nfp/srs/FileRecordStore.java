@@ -1627,7 +1627,8 @@ public class FileRecordStore implements AutoCloseable {
         if (payloadLength <= availableSpace) {
           long alignedPosition = alignToBlockSize(dataStartPtr);
           if (alignedPosition + payloadLength <= fileLength) {
-            RecordHeader allocatedRecord = new RecordHeader(alignedPosition, payloadLength, payloadLength);
+            // Provide default values for indexPosition and crc32
+            RecordHeader allocatedRecord = new RecordHeader(alignedPosition, payloadLength, payloadLength, -1, 0);
             logger.log(
                 Level.FINEST,
                 () ->

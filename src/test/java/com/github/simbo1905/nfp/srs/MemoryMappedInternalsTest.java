@@ -1,5 +1,7 @@
 package com.github.simbo1905.nfp.srs;
 
+import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.BLOCK_SIZE_4_KIB;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.lang.reflect.Method;
@@ -65,11 +67,11 @@ public class MemoryMappedInternalsTest extends JulLoggingConfig {
 
     // Create a small mapped buffer
     MappedByteBuffer buffer =
-        raf.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_WRITE, 0, 4096);
+        raf.getChannel().map(java.nio.channels.FileChannel.MapMode.READ_WRITE, 0, BLOCK_SIZE_4_KIB);
 
     // Verify buffer is valid
     Assert.assertNotNull("Buffer should not be null", buffer);
-    Assert.assertEquals("Buffer capacity should be 4096", 4096, buffer.capacity());
+    Assert.assertEquals("Buffer capacity should be 4096", BLOCK_SIZE_4_KIB, buffer.capacity());
 
     // Unmap the buffer
     MemoryMappedFile.unmapBuffer(buffer);

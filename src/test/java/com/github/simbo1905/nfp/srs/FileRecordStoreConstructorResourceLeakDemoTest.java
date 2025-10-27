@@ -1,5 +1,7 @@
 package com.github.simbo1905.nfp.srs;
 
+import static com.github.simbo1905.nfp.srs.FileRecordStoreBuilder.BLOCK_SIZE_4_KIB;
+
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
@@ -49,7 +51,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                     KeyType.BYTE_ARRAY, // keyType
                     true, // defensiveCopy
                     1024 * 1024, // preferredExpansionSize
-                    4 * 1024, // preferredBlockSize
+                    BLOCK_SIZE_4_KIB, // preferredBlockSize
                     64 * 1024)) { // initialHeaderRegionSize
 
           Assert.fail("Should have thrown IllegalArgumentException");
@@ -114,7 +116,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                     KeyType.BYTE_ARRAY, // keyType
                     true, // defensiveCopy
                     1024 * 1024, // preferredExpansionSize
-                    4 * 1024, // preferredBlockSize
+                    BLOCK_SIZE_4_KIB, // preferredBlockSize
                     64 * 1024)) { // initialHeaderRegionSize
 
           Assert.fail("Should have thrown IOException for file size validation");
@@ -158,7 +160,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                           KeyType.BYTE_ARRAY,
                           true,
                           1024 * 1024,
-                          4 * 1024,
+                          BLOCK_SIZE_4_KIB,
                           64 * 1024)) {
                 // Constructor should fail
               }
@@ -211,7 +213,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
               KeyType.BYTE_ARRAY, // keyType
               true, // defensiveCopy
               1024 * 1024, // preferredExpansionSize
-              4 * 1024, // preferredBlockSize
+              BLOCK_SIZE_4_KIB, // preferredBlockSize
               64 * 1024)) { // initialHeaderRegionSize
 
         logger.log(Level.FINE, "✓ Store opened successfully - constructor flow completed");

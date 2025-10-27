@@ -171,27 +171,24 @@ public class FifoRecordStore implements AutoCloseable {
   public void putBatch(List<byte[]> items) throws IOException {
     if (items.isEmpty()) return;
 
+    // Step 1: Pre-generate all keys with sequential counters
     List<byte[]> keys = new ArrayList<>();
-
-    // Step 1: Write all items first
-    for (byte[] item : items) {
-      byte[] key = generateKey();
-      keys.add(key);
-      store.insertRecord(key, item);
-      // Increment counter for next key
-      this.stats =
-          new FifoStats(
-              stats.getHighWaterMark(),
-              stats.getLowWaterMark(),
-              stats.getLastPutTime(),
-              stats.getLastTakeTime(),
-              stats.getTotalPutCount(),
-              stats.getTotalTakeCount(),
-              stats.getCurrentSize(),
-              stats.getNextCounter() + 1);
+    long startCounter = stats.getNextCounter();
+    for (int i = 0; i < items.size(); i++) {
+      long counter = startCounter + i;
+      long timestamp = System.currentTimeMillis();
+      ByteBuffer buffer = ByteBuffer.allocate(KEY_SIZE);
+      buffer.putLong(counter);
+      buffer.putLong(timestamp);
+      keys.add(buffer.array());
     }
 
-    // Step 2: Update genesis record AFTER all items are written (commit point)
+    // Step 2: Write all items to store
+    for (int i = 0; i < items.size(); i++) {
+      store.insertRecord(keys.get(i), items.get(i));
+    }
+
+    // Step 3: Update genesis record AFTER all items are written (commit point)
     long newSize = stats.getCurrentSize() + items.size();
     long newHighWaterMark = Math.max(stats.getHighWaterMark(), newSize);
     long newLowWaterMark =
@@ -206,7 +203,7 @@ public class FifoRecordStore implements AutoCloseable {
             stats.getTotalPutCount() + items.size(),
             stats.getTotalTakeCount(),
             newSize,
-            stats.getNextCounter());
+            startCounter + items.size()); // Next counter after all batch items
 
     persistGenesisRecord();
   }

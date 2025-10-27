@@ -40,7 +40,7 @@ public class UUIDGenerator {
   /// Generates a time-based UUID with sub-millisecond ordering within a single JVM.
   ///
   /// There is no guarantee that the time+counter of the most significant long will be unique across JVMs.
-  /// In the lower 64 bits we use a random long. This makes it improbably to get any collisions across JVMs.
+  /// In the lower 64 bits we use a random long. This makes it highly improbable to get any collisions across JVMs.
   /// Within a given JVM we will have good time based ordering.
   ///
   /// @return A new UUID with time-based ordering and global uniqueness.

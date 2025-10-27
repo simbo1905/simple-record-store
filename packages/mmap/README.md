@@ -573,7 +573,7 @@ or on-disk storage. It is a hybrid between Java Collection Framework and an embe
 
 As of December 2019, there are comments in the code of one of those projects that they need to add automated crash tests. This project has such tests. 
 
-Their jar files are an order of magnitude bigger in December 2029 (before we added opt-in Memory Mapped Files):
+Their jar files are an order of magnitude bigger in December 2019 (before we added opt-in Memory Mapped Files):
 
 | Alternative  | Jar Size | Transient Deps |
 | ------------- | ------------- | ------------- |

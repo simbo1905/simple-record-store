@@ -500,7 +500,7 @@ This implementation:
    1. Any free space created by a move follows the same rules as for deletion below. 
 1. A delete:
    1. May shrink the file if it is the last record. 
-   1. Else move the second record backwards if it is the first record (issue.
+   1. Else move the second record backwards if it is the first record; this may cause an issue with record ordering.
    1. Else will create some free space in the middle of the file, which is updated to the header of the previous record. 
    1. Will overwrite the deleted header by moving the last header over it, then decrementing the headers count, creating 
    free space at the end of the index space.    

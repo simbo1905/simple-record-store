@@ -14,56 +14,11 @@ The latest release on Maven Central is:
 <dependency>
 	<groupId>com.github.trex-paxos</groupId>
 	<artifactId>simple-record-store</artifactId>
-	<version>1.0.0-RC7</version>
+	<version>1.0.0-RC8</version>
 </dependency>
 ```
 
-See `SimpleRecordStoreApiTest.java` for examples of the minimal public API. 
-
-The public API uses a `ByteSequence` as the key. This is a lightweight wrapper to a byte array that implements `equals` 
-and `hashCode`. This means that we know exactly how the store the keys on disk and can use it as the key of a Map: 
-
-```java
-    @Synchronized
-    public boolean recordExists(ByteSequence key){}
-```
-
-This is discussed [here](https://stackoverflow.com/a/58923559/329496). You can either wrap a byte array or copy it: 
-
-```java
-    /*
-     * This takes a defensive copy of the passed bytes. This should be used if the caller can recycle the array.
-     */
-    public static ByteSequence copyOf(byte[] bytes){}
-
-    /*
-     * This does not take a defensive copy of the passed bytes. This should be used only if you know that the array cannot be recycled.
-     */
-    public static ByteSequence of(byte[] bytes){}
-```
-
-An example of where you need to use `copyOf` would be where you are taking the bytes from a "direct" ByteBuffer where the 
-array will be recycled. Examples of where you can safely use `of` to wrap the array would be where you asked a 
-String to encode itself as a byte array using `getBytes`, which is always a fresh copy. Another example is where you serialise to 
-generate a byte array, where you don't leak a reference to the array so that it won't be mutated. 
-
-A problem with using `getBytes` on a string as a key is that the platform string encoding might change if you move the 
-file around. To avoid that, there are a pair of methods that turn a string into a UTF8 encoded ByteSequence, which is a 
-compact representation suitable for long-term disk storage:
-
-```java
-    /*
-     * This encodes a string into a fresh UTF8 byte array wrapped as a ByteString. Note that this copies data.
-     */
-    public static ByteSequence stringToUtf8(String string){}
-
-    /*
-     * This decodes a UTF8 byte array wrapped in a ByteString into a string. Note that this copies data.
-     */
-    public static String utf8ToString(ByteSequence utf8){}
-```
-
-Note that the comments state that the `byte[]` is a copy, which is because `String` always copies data to be immutable.
+See `SimpleRecordStoreApiTest.java` for examples of the minimal public API.
 
 There is `java.util.Logging` at `Level.FINE` that shows the keys and size of the data that is being inserted, 
 updated, or deleted. If you find a bug, please try to create a repeatable test with fine logging enabled and post the
@@ -107,6 +62,7 @@ stateDiagram-v2
     NEW --> UNKNOWN: Exception during construction
     OPEN --> CLOSED: Clean close via close()
     OPEN --> UNKNOWN: Exception during operation
+    OPEN --> UNKNOWN: terminate() called (@TestOnly - simulates JVM crash)
     CLOSED --> [*]: Finalized
     UNKNOWN --> [*]: Finalized
     
@@ -123,7 +79,10 @@ stateDiagram-v2
     
     note right of UNKNOWN
         All operations throw IllegalStateException
-        with a descriptive message including the current state
+        with a descriptive message including the current state.
+        
+        terminate() is @TestOnly - simulates JVM termination
+        for crash testing; NOT for production use.
     end note
 ```
 
@@ -145,23 +104,9 @@ This state management ensures:
 - Proper resource cleanup regardless of failure mode
 
 
-## Simplified Key Handling
+## Key Optimisations
 
-The library now provides a simplified API that eliminates the `ByteSequence` abstraction and offers optimised UUID key support:
-
-### Direct byte[] Key Support
-
-Instead of wrapping keys in `ByteSequence`, you can now use `byte[]` directly:
-
-```java
-// Old API (still supported for backward compatibility)
-ByteSequence key = ByteSequence.of("mykey".getBytes());
-store.insertRecord(key, data);
-
-// New simplified API
-byte[] key = "mykey".getBytes();
-store.insertRecord(key, data);
-```
+The library provides a direct `byte[]` API with optional optimisations for performance-critical scenarios:
 
 ### UUID Key Optimisation
 
@@ -187,9 +132,9 @@ store.updateRecord(userId, updatedData);
 - **Direct storage**: No wrapper objects or conversion overhead
 - **Memory efficiency**: Pre-computed hash codes for HashMap storage
 
-### Defensive Copy Configuration
+### Immutable Key Optimisation
 
-By default, the library creates defensive copies of byte array keys to prevent corruption from external mutation:
+By default, the library creates defensive copies of byte array keys to prevent corruption from external mutation. For performance-critical code where you control access to the key `byte[]` and can guarantee they won't be mutated, you can opt into zero-copy mode:
 
 ```java
 // Default behaviour - safe defensive copying
@@ -205,11 +150,123 @@ FileRecordStore store = new FileRecordStore.Builder()
     .open();
 ```
 
-**Zero-Copy Safety Considerations:**
-- **Use only when**: You control the key arrays and guarantee they won't be mutated
-- **Performance benefit**: Eliminates array cloning overhead
-- **Risk**: External mutation of keys will corrupt the internal index
-- **Safe patterns**: Keys from immutable sources (String.getBytes(), serialization output)
+**When to use zero-copy mode:**
+- You control access to the key `byte[]` and can guarantee they won't be mutated
+- Keys come from immutable sources like `String.getBytes()` or serialization output that doesn't leak the array reference
+- You need to eliminate array cloning overhead in performance-critical paths
+
+**When NOT to use zero-copy mode:**
+- Keys are backed by reusable `ByteBuffer` instances where the backing array may be recycled
+- Key arrays are sourced from untrusted or shared mutable sources
+- The key `byte[]` reference is passed to other code that might mutate it
+
+**Counter-example (unsafe for zero-copy):**
+```java
+// UNSAFE with defensiveCopy(false): ByteBuffer backing arrays are often recycled
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .defensiveCopy(false)  // Zero-copy mode ENABLED
+    .open();
+
+ByteBuffer buffer = networkChannel.read();
+byte[] keyBytes = buffer.array();  // Backing array may be reused by the pool
+store.insertRecord(keyBytes, data);  // WILL CORRUPT - key array mutated when buffer recycled
+```
+
+### Byte Alignment Optimisation
+
+Modern hardware often performs better when data structures align to cache line boundaries. Understanding the file format overhead helps you choose optimal key sizes.
+
+**Quick Reference:** Index entry size = `maxKeyLength + 26 bytes`
+
+#### File Format Structure
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ File Header (18 bytes)                                          │
+│  - Magic Number:    4 bytes (0xBEEBBEEB)                       │
+│  - Key Length:      2 bytes (short, max key size)              │
+│  - Record Count:    4 bytes (int, number of records)           │
+│  - Data Start Ptr:  8 bytes (long, start of data region)       │
+├─────────────────────────────────────────────────────────────────┤
+│ Index Region (grows dynamically)                                │
+│  Each entry = maxKeyLength + 26 bytes                          │
+│   - Key Length:     2 bytes                                    │
+│   - Key Data:       maxKeyLength bytes (zero-padded)           │
+│   - Key CRC32:      4 bytes                                    │
+│   - Record Header Envelope: 20 bytes                           │
+│     * Data Pointer:  8 bytes (file offset to data)             │
+│     * Data Capacity: 4 bytes (allocated space)                 │
+│     * Data Length:   4 bytes (actual data size)                │
+│     * Header CRC32:  4 bytes (checksum)                        │
+├─────────────────────────────────────────────────────────────────┤
+│ Data Region (records stored sequentially)                       │
+│  Each record:                                                   │
+│   - Length Prefix:  4 bytes (data length)                      │
+│   - Data:           variable bytes                             │
+│   - CRC32:          4 bytes (optional, if enabled)             │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Index entry overhead**: Each key has a **fixed 26-byte overhead** (2 + 4 + 20) for metadata and checksums.
+
+#### Practical Example: UUID + Timestamp Keys
+
+Consider a common use case where your key is a UUID (16 bytes) plus a Unix timestamp (8 bytes) representing the last update time:
+
+```java
+// Your actual key data: UUID (16) + timestamp (8) = 24 bytes
+byte[] key = new byte[24];
+System.arraycopy(uuidBytes, 0, key, 0, 16);
+// Use big-endian (Java default) for deterministic cross-platform key generation
+ByteBuffer.wrap(key, 16, 8).putLong(timestamp);
+
+// Index entry calculation:
+// - Key data: 24 bytes
+// - Overhead: 26 bytes (key length + CRC + envelope)
+// - Total if maxKeyLength=24: 24 + 26 = 50 bytes
+
+// Align to 64-byte cache line (typical L1 data cache size):
+// - Set maxKeyLength to 38 (24 + 14 padding)
+// - Total: 38 + 26 = 64 bytes
+// - Wasted space: 14/64 = 22% overhead
+// - Benefit: Each index entry aligns to cache line boundary
+
+FileRecordStore store = new FileRecordStore.Builder()
+    .byteArrayKeys(38)  // 24 bytes key + 14 padding = 64-byte entries
+    .open();
+```
+
+**Cache line sizes:**
+- Typical L1 data cache: 64-byte lines (common across Intel/AMD and ARM architectures)
+- SSD write blocks: 4K (4096 bytes); with 64-byte entries, ~64 entries may align per block (workload-dependent)
+
+**CRC32 Configuration:**
+```java
+// Default: Payload CRC32 enabled (recommended for data integrity)
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .open();
+
+// Disable payload CRC32 for performance (NOT recommended for production)
+// Note: Key CRC32 and header CRC32 are ALWAYS enabled and cannot be disabled
+FileRecordStore store = new FileRecordStore.Builder()
+    .path(Paths.get("data.db"))
+    .disablePayloadCrc32(true)  // Removes 4 bytes per data record
+    .open();
+```
+
+**Understanding the three CRCs:**
+1. **Key CRC32** (4 bytes, always enabled): Validates key integrity in the index region
+2. **Header CRC32** (4 bytes, always enabled): Validates envelope metadata (data pointer, capacity, length)
+3. **Payload CRC32** (4 bytes, optional): Validates actual record data; disable only if data has built-in integrity (e.g., ZIP, Protobuf with checksums)
+
+**Trade-offs:**
+- Extra padding trades storage space for potential CPU cache alignment benefits
+- Performance gains are workload and hardware dependent
+- **Your mileage may vary** - profile and benchmark your specific use case to confirm benefits
+- Common alignment targets: 64 bytes (cache line), 128 bytes, 256 bytes, 4096 bytes (SSD block)
+- Only beneficial if the padding overhead is acceptable for your storage budget
 
 ### Key Type Configuration
 
@@ -217,40 +274,58 @@ The builder provides explicit key type configuration:
 
 ```java
 // UUID keys (16-byte, optimized)
+// Enforces exactly 16-byte keys, enables zero-allocation UUID operations
 FileRecordStore store = new FileRecordStore.Builder()
     .uuidKeys()
     .open();
 
 // Byte array keys with custom max length
 FileRecordStore store = new FileRecordStore.Builder()
-    .byteArrayKeys(128)  // Max key length: 128 bytes
+    .byteArrayKeys(128)  // Max key length: 128 bytes (default)
     .open();
 
-// Default behaviour (backwards compatible)
+// Legacy configuration (pre-RC8 default was 64 bytes)
 FileRecordStore store = new FileRecordStore.Builder()
     .maxKeyLength(64)  // Implies byte array keys
     .open();
 ```
 
-### Runtime Operational Mode Toggles (Little-Known Features)
+## Snapshotting Mode
 
-FileRecordStore provides two runtime toggles primarily intended for snapshotting scenarios:
+FileRecordStore provides runtime toggles to control operational behavior during snapshotting or other specialized scenarios. These toggles freeze certain dynamic behaviors to maintain stable memory and disk layout, preventing index expansion and in-place data mutations that could invalidate snapshot consistency.
 
 ```java
-// Disable in-place updates for smaller records (forces dual-write pattern)
-store.setAllowInPlaceUpdates(false);
+// Enter snapshotting mode
+store.setAllowInPlaceUpdates(false);     // Forces data relocation instead of in-place rewrites
+store.setAllowHeaderExpansion(false);    // Prevents index region growth
 
-// Disable header region expansion (prevents index growth during operations)
-store.setAllowHeaderExpansion(false);
+// Perform snapshotting operations
+// ... record data is stable, index won't expand ...
 
-// ... perform snapshotting operations ...
-
-// Return to normal operation
+// Exit snapshotting mode - return to normal operation
 store.setAllowInPlaceUpdates(true);
 store.setAllowHeaderExpansion(true);
 ```
 
-These toggles enable temporary operational modes for specialised use cases but are not generally needed for typical usage.
+### What the toggles control:
+
+**`setAllowInPlaceUpdates(boolean)`**
+- When `false`: Updates that would normally overwrite existing data instead allocate new space and relocate the record
+- When `true` (default): Smaller or same-sized updates reuse existing record capacity when possible
+- Use case: Prevent in-place mutations during consistent snapshot reads
+
+**`setAllowHeaderExpansion(boolean)`**
+- When `false`: Prevents the index region from expanding, which would trigger bulk data movement
+- When `true` (default): Index grows automatically when record count exceeds pre-allocated space
+- Use case: Maintain stable file layout during snapshot to avoid invalidating file positions
+
+### When to use snapshotting mode:
+
+- Creating point-in-time backups without blocking writes
+- External file copying while the store remains operational
+- Maintaining stable file offsets for external indexing
+
+**Note**: These toggles are not required for typical usage. The store handles all operations correctly regardless of toggle state - these are performance and layout control mechanisms for advanced use cases. See `SnapshottingModeTest.java` for examples and the byte alignment optimisation section above for how stable index entry sizes benefit cache alignment.
 
 ## Memory-Mapped File Optimisation
 
@@ -470,7 +545,7 @@ This implementation:
 1. Defaults to prioritising safety over space, over speed. You can override some defaults if you are sure that your 
  read and write patterns allow you to. It is wise to use the defaults and only change them if you have tests that prove 
  safety and performance are not compromised. 
-1. Supports a maximum key length of 247 bytes. The default is 64 bytes. 
+1. Supports a maximum key length up to 32760 bytes (8-byte aligned). The default is 128 bytes. 
 1. Supports a maximum file of byte length Long.MAX_VALUE.
 1. Supports a maximum of Integer.MAX_VALUE entries.
 1. The maximum size of keys is fixed for the life of the store and is written to the file upon creation. 
@@ -480,7 +555,7 @@ This implementation:
 1. Has no dependencies outside the JDK and uses `java.logging` aka JUL for logging.  
 1. Is thread-safe. It uses an internal lock to protect all public methods. 
 1. Uses an in-memory HashMap to cache record headers by key. A record header is the complete on-disk structure containing both the key and its envelope (20-byte metadata). This makes locating a record by key an `O(1)` lookup.
-1. Stores the key with a single byte length and CRC footer
+1. Stores the key with a 2-byte length (short), padded key bytes up to maxKeyLength, and a 4-byte CRC32 footer computed over the length and key bytes
 1. The records are held in a single `RandomAccessFile` comprising: 
    1. A four-byte header, which is the number of records. 
    2. An index region, which contains all record headers (key + envelope) with possibly some free space at the end. The index region can be 
@@ -524,16 +599,33 @@ Crash resilience is enforced by a replay harness that wraps every functional sce
 
 ## Configuration
 
-The file byte position is 64 bits, so thousands of petabytes. The maximum number of record values is 32 bits, so a maximum of 2.14 GB. 
+The file uses 64-bit positions (supporting file sizes up to Long.MAX_VALUE bytes, thousands of petabytes). The maximum number of records is 32 bits (Integer.MAX_VALUE, approximately 2.1 billion records). Each individual record value can be up to approximately 2 GB (maximum capacity/length as 32-bit signed integers). 
 
 You can set the following properties with either an environment variable or a `-D` flag. The `-D` flag takes precedence:
 
 | Property                                                | Default | Comment                 |
 |---------------------------------------------------------|---------|-------------------------|
-| com.github.simbo1905.srs.BaseRecordStore.MAX_KEY_LENGTH | 64      | Max size of key string. |
-| com.github.simbo1905.srs.BaseRecordStore.PAD_DATA_TO_KEY_LENGTH | true      | Pad data records to a minimum of ENVELOPE_SIZE bytes. |
+| com.github.simbo1905.nfp.srs.FileRecordStore.MAX_KEY_LENGTH | 128      | Max size of key in bytes. |
 
-Note that the actual record header length is MAX_KEY_LENGTH + ENVELOPE_SIZE (20 bytes). If you have UUID string keys and set the max key size to 36, then each record header will be 56 bytes. The PAD_DATA_TO_KEY_LENGTH option is to avoid a write amplification effect when growing the index region. If your values are 8-byte longs keyed by UUID string keys, growing the index region to hold one more header would mean moving 9 values to the back of the file. The current logic doesn't batch that it would do x9 writes. If you preallocate the file, the index space shrinks rather than grows, so there is write amplification, and you can disable padding to save space. 
+Note that each index entry has a **fixed 26-byte overhead** plus the maxKeyLength. The formula is:
+
+```
+Index Entry Size = maxKeyLength + 26 bytes
+
+Where the 26 bytes break down as:
+  - Key Length field:  2 bytes
+  - Key CRC32:         4 bytes
+  - Envelope:         20 bytes
+    * Data Pointer:    8 bytes
+    * Data Capacity:   4 bytes
+    * Data Length:     4 bytes
+    * Header CRC32:    4 bytes
+```
+
+**Examples:**
+- UUID keys (16 bytes): `16 + 26 = 42 bytes` per index entry
+- Default (128 bytes): `128 + 26 = 154 bytes` per index entry
+- Aligned UUID+timestamp (38 bytes): `38 + 26 = 64 bytes` per index entry (cache-line aligned) 
 
 ## Build
 

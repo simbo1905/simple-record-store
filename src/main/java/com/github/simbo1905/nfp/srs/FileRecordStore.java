@@ -10,7 +10,6 @@ import java.util.*;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -2338,50 +2337,38 @@ public class FileRecordStore implements AutoCloseable {
   }
 
   /// Thread-safe state management for record headers.
-  /// Encapsulates both memIndex and positionIndex maps with a single ReentrantReadWriteLock
+  /// Encapsulates both memIndex and positionIndex maps with a single GuardedReentrantReadWriteLock
   /// to ensure atomic updates and prevent inconsistent map states.
   final class State {
     private final Map<KeyWrapper, RecordHeader> memIndex = new HashMap<>();
     private final NavigableMap<Long, RecordHeader> positionIndex = new TreeMap<>();
-    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    private final GuardedReentrantReadWriteLock lock = new GuardedReentrantReadWriteLock();
 
     /// Returns the record header for the given key.
     RecordHeader getByKey(KeyWrapper key) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.get(key);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the record header for the given data pointer.
     RecordHeader getByPointer(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.get(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the floor entry for the given data pointer.
     Map.Entry<Long, RecordHeader> getFloorEntry(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.floorEntry(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns the ceiling entry for the given data pointer.
     Map.Entry<Long, RecordHeader> getCeilingEntry(long ptr) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return positionIndex.ceilingEntry(ptr);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
@@ -2396,8 +2383,7 @@ public class FileRecordStore implements AutoCloseable {
         int newDataCapacity,
         int newIndexPosition) {
       Objects.requireNonNull(key, "key cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         RecordHeader updated;
         if (oldHeader == null) {
           // For new records, create a RecordHeader from scratch
@@ -2436,8 +2422,6 @@ public class FileRecordStore implements AutoCloseable {
             "State update failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
@@ -2445,8 +2429,7 @@ public class FileRecordStore implements AutoCloseable {
     void update(KeyWrapper key, RecordHeader oldHeader, RecordHeader newHeader) {
       Objects.requireNonNull(key, "key cannot be null");
       Objects.requireNonNull(newHeader, "newHeader cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         if (oldHeader != null) {
           positionIndex.remove(oldHeader.dataPointer());
         }
@@ -2469,8 +2452,6 @@ public class FileRecordStore implements AutoCloseable {
             "State update failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
@@ -2478,8 +2459,7 @@ public class FileRecordStore implements AutoCloseable {
     void remove(KeyWrapper key, RecordHeader header) {
       Objects.requireNonNull(key, "key cannot be null");
       Objects.requireNonNull(header, "header cannot be null");
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         memIndex.remove(key);
         positionIndex.remove(header.dataPointer());
 
@@ -2499,70 +2479,50 @@ public class FileRecordStore implements AutoCloseable {
             "State remove failed, transitioning store to UNKNOWN state: " + e.getMessage());
         parentStore.state = StoreState.UNKNOWN;
         throw e;
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
     /// Returns the number of records in the state.
     int size() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.size();
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns whether the state is empty.
     boolean isEmpty() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.isEmpty();
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns whether the state contains the given key.
     boolean containsKey(KeyWrapper key) {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex.containsKey(key);
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Returns a defensive copy of all keys in the state.
     Set<KeyWrapper> keySet() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return new HashSet<>(memIndex.keySet());
-      } finally {
-        lock.readLock().unlock();
       }
     }
 
     /// Clears both maps.
     void clear() {
-      lock.writeLock().lock();
-      try {
+      try (var ignored = lock.writeLock()) {
         memIndex.clear();
         positionIndex.clear();
-      } finally {
-        lock.writeLock().unlock();
       }
     }
 
     /// Returns a string representation of both maps for debugging.
     @Override
     public String toString() {
-      lock.readLock().lock();
-      try {
+      try (var ignored = lock.readLock()) {
         return memIndex + " | " + positionIndex;
-      } finally {
-        lock.readLock().unlock();
       }
     }
   }

@@ -105,7 +105,7 @@
                 <configuration>
                     <encoding>UTF-8</encoding>
                     <release>21</release>
-                    <failOnWarning>false</failOnWarning>
+                    <failOnWarning>true</failOnWarning>
                     <compilerArgs>
                         <arg>-Xlint:all</arg>
                         <arg>-Xlint:-serial</arg>

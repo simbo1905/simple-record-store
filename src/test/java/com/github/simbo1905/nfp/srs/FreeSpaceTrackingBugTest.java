@@ -1,6 +1,5 @@
 package com.github.simbo1905.nfp.srs;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,7 +37,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
       for (int i = 0; i < smallData.length; i++) {
         smallData[i] = (byte) ((i + 50) % 256);
       }
-      
+
       logger.log(Level.FINE, "Updating key1 with smaller data to create free space");
       store.updateRecord(key1, smallData);
 
@@ -50,9 +49,8 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
           (ConcurrentNavigableMap<RecordHeader, Integer>) freeMapField.get(store);
 
       logger.log(
-          Level.FINE,
-          () -> String.format("Free map entries after update: %d", freeMap.size()));
-      
+          Level.FINE, () -> String.format("Free map entries after update: %d", freeMap.size()));
+
       int totalFreeSpace = 0;
       for (RecordHeader header : freeMap.keySet()) {
         int freeSpace = freeMap.get(header);
@@ -93,7 +91,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
       // Check the freeMap state after split
       logger.log(
           Level.FINE, () -> String.format("Free map entries after split: %d", freeMap.size()));
-      
+
       int totalFreeSpaceAfterSplit = 0;
       for (RecordHeader header : freeMap.keySet()) {
         int freeSpace = freeMap.get(header);
@@ -116,7 +114,8 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
                     "  Calculated free space from header: %d (should match freeMap value: %d)",
                     calculatedFreeSpace, freeSpace));
 
-        // This is where the bug manifests: freeSpace in map doesn't match what the header calculates
+        // This is where the bug manifests: freeSpace in map doesn't match what the header
+        // calculates
         // because the header's capacity wasn't reduced after split
         Assert.assertEquals(
             "Free space in map should match calculated free space from header after split",
@@ -128,8 +127,10 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
       final int finalTotalFreeSpaceAfterSplit = totalFreeSpaceAfterSplit;
       logger.log(
           Level.FINE,
-          () -> String.format("Total free space before split: %d, after split: %d", 
-              finalTotalFreeSpace, finalTotalFreeSpaceAfterSplit));
+          () ->
+              String.format(
+                  "Total free space before split: %d, after split: %d",
+                  finalTotalFreeSpace, finalTotalFreeSpaceAfterSplit));
 
       // Verify that key2 was actually inserted
       Assert.assertTrue("key2 should exist", store.recordExists(key2));
@@ -157,7 +158,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
       byte[] key1 = "key1".getBytes();
       byte[] largeData = new byte[2000];
       store.insertRecord(key1, largeData);
-      
+
       byte[] mediumData = new byte[500];
       store.updateRecord(key1, mediumData);
 
@@ -174,7 +175,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
         store.close();
         return;
       }
-      
+
       Assert.assertTrue("Should have at least one free entry", freeMap.size() > 0);
       RecordHeader originalFreeHeader = freeMap.keySet().iterator().next();
       int originalCapacity = originalFreeHeader.dataCapacity();
@@ -193,9 +194,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
       store.insertRecord(key2, smallData);
 
       // After split, check if the remaining free space is correct
-      logger.log(
-          Level.FINE,
-          () -> String.format("Free map size after split: %d", freeMap.size()));
+      logger.log(Level.FINE, () -> String.format("Free map size after split: %d", freeMap.size()));
 
       // Calculate expected remaining space
       // payloadLength for 200 bytes = 200 + 4 (length prefix) = 204
@@ -220,7 +219,7 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
                 String.format(
                     "Free entry after split: dataPointer=%d, dataLength=%d, dataCapacity=%d, freeSpace=%d",
                     header.dataPointer(), header.dataLength(), header.dataCapacity(), freeSpace));
-        
+
         // Check if the capacity was properly reduced
         int calculatedFree = header.getFreeSpace(true);
         logger.log(
@@ -229,18 +228,15 @@ public class FreeSpaceTrackingBugTest extends JulLoggingConfig {
                 String.format(
                     "Calculated free from header: %d, freeMap value: %d",
                     calculatedFree, freeSpace));
-        
+
         // This will fail if the bug exists - capacity wasn't reduced
         Assert.assertEquals(
-            "Calculated free space should match freeMap value",
-            calculatedFree,
-            freeSpace);
+            "Calculated free space should match freeMap value", calculatedFree, freeSpace);
       }
 
       final int finalActualRemaining = actualRemaining;
       logger.log(
-          Level.FINE,
-          () -> String.format("Actual remaining free space: %d", finalActualRemaining));
+          Level.FINE, () -> String.format("Actual remaining free space: %d", finalActualRemaining));
 
       // After split, the newRecord gets the full free space capacity but only uses payloadLength
       // Free space = originalFreeSpace - payloadLength - overhead

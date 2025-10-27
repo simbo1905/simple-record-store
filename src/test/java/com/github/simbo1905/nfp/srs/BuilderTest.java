@@ -199,7 +199,7 @@ public class BuilderTest extends JulLoggingConfig {
     try (FileRecordStore store =
         new FileRecordStoreBuilder()
             .path(dbPath)
-            .hintPreferredBlockSize(4) // 4 KiB = 4096 bytes
+            .hintPreferredBlockSize(4) // 4 KiB = BLOCK_SIZE_4_KIB bytes
             .maxKeyLength(64)
             .open()) {
 

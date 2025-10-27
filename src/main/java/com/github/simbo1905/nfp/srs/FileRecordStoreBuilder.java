@@ -77,7 +77,8 @@ public class FileRecordStoreBuilder {
 
   // Default sizing constants
   // 1 MiB
-  // 4 KiB
+  /// Default block size in bytes (4 KiB). Typical SSD block size for optimal data alignment.
+  public static final int BLOCK_SIZE_4_KIB = 4096;
   private static final int DEFAULT_INITIAL_HEADER_SIZE = 64 * 1024; // 64 KiB
 
   private Path path;

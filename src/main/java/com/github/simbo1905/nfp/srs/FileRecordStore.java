@@ -1547,7 +1547,7 @@ public class FileRecordStore implements AutoCloseable {
         logger.log(
             Level.FINEST,
             () -> String.format("DEBUG findFreeRecord: created newRecord=%s", finalNewRecord2));
-        
+
         // Reduce original record's capacity to complete the split
         KeyWrapper key = readKeyFromIndex(next.indexPosition());
         RecordHeader updatedNext = RecordHeader.withDataCapacity(next, next.dataLength());
@@ -1556,7 +1556,7 @@ public class FileRecordStore implements AutoCloseable {
             () ->
                 String.format(
                     "DEBUG findFreeRecord: reduced capacity, updatedNext=%s", updatedNext));
-        
+
         freeMap.remove(next);
         headerState.update(key, next, updatedNext);
         updateFreeSpaceIndex(updatedNext);

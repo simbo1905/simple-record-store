@@ -145,8 +145,8 @@ private byte[] generateKey() {
 #### Put Operation Flow
 1. Generate new key (counter + timestamp)
 2. Buffer the item if batching enabled
-3. Update genesis record with new statistics
-4. Write both item and genesis record atomically
+3. Write item record to store
+4. Update genesis record with new statistics (commit point)
 5. Update in-memory statistics
 
 #### Take Operation Flow
@@ -257,13 +257,15 @@ public void flushPutBuffer() throws IOException {
         values.add(item.data);
     }
     
-    // Update genesis record
-    updateGenesisRecordBatch(keys.size());
-    
-    // Write all items atomically
+    // Write all items first
     for (int i = 0; i < keys.size(); i++) {
         store.insertRecord(keys.get(i), values.get(i));
     }
+    
+    // Update genesis record AFTER all items are written successfully
+    // This ensures atomicity: if crash occurs during item writes,
+    // genesis record still reflects the old state
+    updateGenesisRecordBatch(keys.size());
     
     // Clear buffer
     putBuffer.clear();
@@ -291,9 +293,14 @@ public void flushPutBuffer() throws IOException {
 ## Error Handling and Reliability
 
 ### Crash Safety
-- Genesis record updates are atomic
-- SRS provides crash-safe guarantees
-- Recovery rebuilds consistent state from disk
+- **Write Ordering**: Items are written to SRS BEFORE updating genesis record
+  - If crash occurs during item writes, genesis record remains consistent (unchanged)
+  - If crash occurs after all items written but before genesis update, items are orphaned but system is still consistent
+  - Genesis record acts as the commit point for batch operations
+- **Atomicity Guarantee**: Genesis record update is atomic (single SRS write operation)
+- **SRS Integration**: Leverages SRS crash-safe guarantees for individual record writes
+- **Recovery**: Rebuilds consistent state from disk using genesis record as source of truth
+- **Orphan Detection**: Recovery can optionally scan for and reclaim orphaned records (keys not referenced by genesis counter range)
 
 ### Error Recovery
 ```java

@@ -98,7 +98,7 @@ public class FileRecordStoreBuilder {
   private boolean allowZeroPreallocation = false;
   private boolean defensiveCopy = true;
   private int hintInitialKeyCount = 0; // 0 means use default calculation
-  private int hintPreferredBlockSize = 4 * 1024 * 1024; // 4 MiB default (SSD erasure block)
+  private int hintPreferredBlockSize = 4 * 1024 * 1024; // 4 MiB default (general alignment size; SSD erasure blocks typically range from 256 KiB to 4 MiB depending on the drive)
   private int hintPreferredExpandSize = 2 * 1024 * 1024; // 2 MiB default
 
   /// Extra capacity percent for expansion (0.0 to 1.0), default 0.2 for 20% growth.

@@ -1,7 +1,6 @@
 package com.github.simbo1905.nfp.srs;
 
 import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /// A guarded wrapper around ReentrantReadWriteLock that returns AutoCloseable guards,

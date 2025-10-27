@@ -7,11 +7,7 @@ import java.util.Objects;
 /// Immutable record header representing a record's metadata in the file store.
 /// Uses static factory methods for atomic updates instead of Lombok @With.
 record RecordHeader(
-    long dataPointer,
-    int dataLength,
-    int dataCapacity,
-    int indexPosition,
-    long crc32) {
+    long dataPointer, int dataLength, int dataCapacity, int indexPosition, long crc32) {
 
   /// The fixed-size metadata envelope that describes a record header.
   /// This envelope includes *all* fixed-width metadata fields for the record:
@@ -55,7 +51,8 @@ record RecordHeader(
 
   /// Computes CRC32 for header data (dataLength + dataCapacity + keyLength placeholder).
   /// Does NOT include file position (dataPointer) as that causes unnecessary churn when records
-  /// move. File position is transient metadata - including it would require recomputing CRCs on every
+  /// move. File position is transient metadata - including it would require recomputing CRCs on
+  // every
   /// move. Includes keyLength placeholder for consistent envelope structure with key CRC.
   private static long computeHeaderCrc(int dataLength, int dataCapacity) {
     // CRC covers the actual header data fields, not file position

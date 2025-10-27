@@ -98,7 +98,10 @@ public class FileRecordStoreBuilder {
   private boolean allowZeroPreallocation = false;
   private boolean defensiveCopy = true;
   private int hintInitialKeyCount = 0; // 0 means use default calculation
-  private int hintPreferredBlockSize = 4 * 1024 * 1024; // 4 MiB default (general alignment size; SSD erasure blocks typically range from 256 KiB to 4 MiB depending on the drive)
+  private int hintPreferredBlockSize =
+      4 * 1024
+          * 1024; // 4 MiB default (general alignment size; SSD erasure blocks typically range from
+  // 256 KiB to 4 MiB depending on the drive)
   private int hintPreferredExpandSize = 2 * 1024 * 1024; // 2 MiB default
 
   /// Extra capacity percent for expansion (0.0 to 1.0), default 0.2 for 20% growth.
@@ -457,10 +460,12 @@ public class FileRecordStoreBuilder {
           // Only delete if opening in READ_WRITE mode; otherwise fail fast
           if (accessMode == AccessMode.READ_ONLY) {
             throw new IllegalArgumentException(
-                "File exists at " + path + " but is not a valid FileRecordStore. "
+                "File exists at "
+                    + path
+                    + " but is not a valid FileRecordStore. "
                     + "Cannot open in READ_ONLY mode.");
           }
-          
+
           // Delete invalid file and create new store (overwrite behavior)
           logger.log(
               Level.WARNING,
@@ -505,11 +510,14 @@ public class FileRecordStoreBuilder {
           throw new IOException(
               "Failed to validate existing file at " + path + " in READ_ONLY mode", e);
         }
-        
+
         // Delete corrupted file and create new store
         logger.log(
             Level.WARNING,
-            "Failed to validate store file at " + path + ": " + e.getMessage() 
+            "Failed to validate store file at "
+                + path
+                + ": "
+                + e.getMessage()
                 + ". Deleting and creating new store");
         try {
           Files.deleteIfExists(path);

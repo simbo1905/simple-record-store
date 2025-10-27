@@ -29,6 +29,9 @@ public class FileRecordStore implements AutoCloseable {
   // this is an unsigned 32 int
   static final int CRC32_LENGTH = Integer.BYTES;
 
+  /// Standard 4 KiB block size for SSD alignment
+  private static final long FOUR_KIB = 4096L;
+
   /// The maximum key length this store was configured with. Immutable after creation.
   public final int maxKeyLength;
 
@@ -116,11 +119,12 @@ public class FileRecordStore implements AutoCloseable {
 
   /// Reference to parent FileRecordStore for state management during errors
   private final FileRecordStore parentStore = this;
-  
+
   // TreeMap of headers by file index - now managed by State class
   // private TreeMap<Long, RecordHeader> positionIndex; // Replaced by State class
-  
-  /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free space first
+
+  /// ConcurrentSkipListMap makes scanning by ascending values fast and is sorted by smallest free
+  // space first
   private ConcurrentNavigableMap<RecordHeader, Integer> freeMap =
       new ConcurrentSkipListMap<>(compareRecordHeaderByFreeSpace);
   // Current file pointer to the start of the record data.
@@ -1575,7 +1579,6 @@ public class FileRecordStore implements AutoCloseable {
       }
     }
 
-
     return null; // No free space found
   }
 
@@ -1628,12 +1631,14 @@ public class FileRecordStore implements AutoCloseable {
           long alignedPosition = alignToBlockSize(dataStartPtr);
           if (alignedPosition + payloadLength <= fileLength) {
             // Provide default values for indexPosition and crc32
-            RecordHeader allocatedRecord = new RecordHeader(alignedPosition, payloadLength, payloadLength, -1, 0);
+            RecordHeader allocatedRecord =
+                new RecordHeader(alignedPosition, payloadLength, payloadLength, -1, 0);
             logger.log(
                 Level.FINEST,
                 () ->
                     String.format(
-                        "allocateRecord: allocated at end-of-file after expansion, newRecord=%s", allocatedRecord));
+                        "allocateRecord: allocated at end-of-file after expansion, newRecord=%s",
+                        allocatedRecord));
             newRecord = allocatedRecord;
           }
         }
@@ -2204,7 +2209,6 @@ public class FileRecordStore implements AutoCloseable {
   /// Rounds a value up to the nearest 4 KiB boundary.
   /// Used for header region expansion alignment to SSD write blocks.
   private static long roundUpTo4KiB(long value) {
-    final long FOUR_KIB = 4096;
     return ((value + FOUR_KIB - 1) / FOUR_KIB) * FOUR_KIB;
   }
 
@@ -2242,7 +2246,7 @@ public class FileRecordStore implements AutoCloseable {
     if (isEmpty() && endIndexPtr > getFileLength()) {
       // Empty file needs space for BOTH index AND data regions
       // Allocate index space (endIndexPtr) plus initial data region space
-      long initialDataRegionSize = Math.max(preferredBlockSize, 4096L);
+      long initialDataRegionSize = Math.max(preferredBlockSize, FOUR_KIB);
       long newFileSize = roundUpTo4KiB(endIndexPtr) + initialDataRegionSize;
       setFileLength(newFileSize);
       dataStartPtr = roundUpTo4KiB(endIndexPtr);
@@ -2254,22 +2258,22 @@ public class FileRecordStore implements AutoCloseable {
     // Loop until we have sufficient space: endIndexPtr <= dataStartPtr
     while (endIndexPtr > dataStartPtr) {
       long oldDataStartPtr = dataStartPtr;
-      
+
       // Calculate new header boundary with exponential growth and 4 KiB alignment
       // Guard against invalid expansion multiplier
       if (expansionMultiplier <= 0) {
         throw new IllegalStateException(
             "expansionMultiplier must be > 0, got: " + expansionMultiplier);
       }
-      
+
       // Start with exponential growth using integer math to avoid precision loss
       long newDataStartPtr = (long) (dataStartPtr * expansionMultiplier);
-      
+
       // Ensure strict growth: newDataStartPtr > endIndexPtr
       // If exponential isn't enough, directly satisfy the requirement with safety margin
       if (newDataStartPtr <= endIndexPtr) {
         // Avoid overflow: check if endIndexPtr is too large for safety margin
-        long safetyMargin = Math.max(4096L, 2L * indexEntryLength);
+        long safetyMargin = Math.max(FOUR_KIB, 2L * indexEntryLength);
         if (endIndexPtr > Long.MAX_VALUE - safetyMargin) {
           throw new IllegalStateException(
               "endIndexPtr too large for safe expansion: " + endIndexPtr);
@@ -2277,10 +2281,10 @@ public class FileRecordStore implements AutoCloseable {
         // Allocate exactly what's needed plus safety margin (already calculated above)
         newDataStartPtr = endIndexPtr + safetyMargin;
       }
-      
+
       // Align to 4 KiB boundary
       newDataStartPtr = roundUpTo4KiB(newDataStartPtr);
-      
+
       // Postcondition: ensure we actually made progress
       if (newDataStartPtr <= dataStartPtr) {
         throw new IllegalStateException(
@@ -2299,16 +2303,15 @@ public class FileRecordStore implements AutoCloseable {
           recordsToMove.add(new java.util.AbstractMap.SimpleEntry<>(entry, header));
         }
       }
-      
+
       // Sort by dataPointer ascending for deterministic processing
-      recordsToMove.sort(
-          java.util.Comparator.comparingLong(e -> e.getValue().dataPointer()));
+      recordsToMove.sort(java.util.Comparator.comparingLong(e -> e.getValue().dataPointer()));
 
       if (recordsToMove.isEmpty()) {
         // No records to move, just update dataStartPtr and verify postcondition
         dataStartPtr = newDataStartPtr;
         writeDataStartPtrHeader(dataStartPtr);
-        
+
         // Verify the postcondition is satisfied
         if (endIndexPtr > dataStartPtr) {
           throw new IllegalStateException(
@@ -2317,7 +2320,7 @@ public class FileRecordStore implements AutoCloseable {
                       + "endIndexPtr=%d > dataStartPtr=%d",
                   endIndexPtr, dataStartPtr));
         }
-        
+
         // Success - postcondition satisfied
         return;
       }
@@ -2374,7 +2377,7 @@ public class FileRecordStore implements AutoCloseable {
               String.format(
                   "ensureIndexSpace: Batch move complete, moved=%d records, newDataStartPtr=%d, fileLength=%d",
                   recordsToMove.size(), dataStartPtr, finalFileLength));
-      
+
       // Loop continues until endIndexPtr <= dataStartPtr
     }
   }

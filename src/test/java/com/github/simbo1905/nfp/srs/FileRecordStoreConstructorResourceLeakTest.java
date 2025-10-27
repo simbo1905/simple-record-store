@@ -37,6 +37,7 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
               new FileRecordStoreBuilder()
                   .path(tempFile)
                   .maxKeyLength(64) // Expect 64, but file has 32
+                  .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
                   .open()) {
         Assert.fail("Should have thrown IllegalArgumentException");
       } catch (IllegalArgumentException e) {
@@ -85,7 +86,11 @@ public class FileRecordStoreConstructorResourceLeakTest extends JulLoggingConfig
       // This should fail with IOException due to file size validation
       try (@SuppressWarnings("unused")
           FileRecordStore store =
-              new FileRecordStoreBuilder().path(tempFile).maxKeyLength(64).open()) {
+              new FileRecordStoreBuilder()
+                  .path(tempFile)
+                  .maxKeyLength(64)
+                  .accessMode(FileRecordStoreBuilder.AccessMode.READ_ONLY)
+                  .open()) {
         Assert.fail("Should have thrown IOException");
       } catch (IOException e) {
         logger.log(Level.FINE, "✓ Got expected file size exception: " + e.getMessage());

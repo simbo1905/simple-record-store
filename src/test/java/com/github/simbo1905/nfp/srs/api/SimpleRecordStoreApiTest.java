@@ -874,7 +874,8 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
             true,
             tinyExpansionBytes,
             tinyBlockSize,
-            tinyHeaderBytes);
+            tinyHeaderBytes,
+            0.2);
 
     // Use a pattern that won't produce CRC ending in zeros - alternating bytes
     StringBuilder keyBuilder = new StringBuilder();
@@ -904,7 +905,8 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
             true,
             tinyExpansionBytes,
             tinyBlockSize,
-            tinyHeaderBytes);
+            tinyHeaderBytes,
+            0.2);
 
     String put0 = new String(recordsFile.readRecordData(longestKey.getBytes()));
 
@@ -932,7 +934,8 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
             true,
             tinyExpansionBytes,
             tinyBlockSize,
-            tinyHeaderBytes);
+            tinyHeaderBytes,
+            0.2);
 
     byte[] shortKey = "hello".getBytes(StandardCharsets.US_ASCII);
     byte[] value = "world".getBytes(StandardCharsets.US_ASCII);
@@ -951,7 +954,8 @@ public class SimpleRecordStoreApiTest extends JulLoggingConfig {
             true,
             tinyExpansionBytes,
             tinyBlockSize,
-            tinyHeaderBytes);
+            tinyHeaderBytes,
+            0.2);
 
     byte[] got = recordsFile.readRecordData(shortKey);
     Assert.assertArrayEquals(value, got);

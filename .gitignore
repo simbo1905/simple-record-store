@@ -7,3 +7,5 @@ target/
 .claude/
 CLAUDE.md
 .tmp/
+.jqwik-database
+.vscode/

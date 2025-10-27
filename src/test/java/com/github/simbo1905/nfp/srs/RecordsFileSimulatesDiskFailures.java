@@ -21,7 +21,8 @@ public class RecordsFileSimulatesDiskFailures extends FileRecordStore {
         true,
         1024 * 1024,
         4 * 1024,
-        64 * 1024);
+        64 * 1024,
+        0.2);
     this.fileOperations =
         new InterceptedRandomAccessFile(new RandomAccessFile(new File(dbPath), "rw"), wc);
   }

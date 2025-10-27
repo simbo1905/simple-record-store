@@ -29,9 +29,8 @@ public class UUIDGenerator {
   private static final AtomicLong sequence = new AtomicLong();
 
   /// This takes the Unix/Java epoch time in milliseconds, bit shifts it left by 20 bits, and then
-  // masks in the least
-  /// significant 20 bits of the local counter. That gives us a million unique values per
-  // millisecond.
+  /// masks in the least significant 20 bits of the local counter. That gives us a million unique
+  // values per millisecond.
   static long epochTimeThenCounterMsb() {
     long currentMillis = System.currentTimeMillis();
     // Take the least significant 20 bits from our atomic sequence
@@ -43,8 +42,8 @@ public class UUIDGenerator {
   ///
   /// There is no guarantee that the time+counter of the most significant long will be unique across
   // JVMs.
-  /// In the lower 64 bits we use a random long. This makes it improbably to get any collisions
-  // across JVMs.
+  /// In the lower 64 bits we use a random long. This makes it highly improbable to get any
+  // collisions across JVMs.
   /// Within a given JVM we will have good time based ordering.
   ///
   /// @return A new UUID with time-based ordering and global uniqueness.

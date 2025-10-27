@@ -26,7 +26,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
       // Corrupt the key length header to trigger validation failure
       try (RandomAccessFile raf = new RandomAccessFile(tempFile.toFile(), "rw")) {
-        raf.seek(4); // Key length position in new format (after magic number)
+        raf.seek(8); // Key length location = Long.BYTES (8 bytes after magic number)
         raf.writeByte(32); // Change key length from 64 to 32
       }
 
@@ -50,7 +50,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                     true, // defensiveCopy
                     1024 * 1024, // preferredExpansionSize
                     4 * 1024, // preferredBlockSize
-                    64 * 1024)) { // initialHeaderRegionSize
+                    64 * 1024, // initialHeaderRegionSize
+                    0.2)) { // expansionExtraPercent
 
           Assert.fail("Should have thrown IllegalArgumentException");
         }
@@ -115,7 +116,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                     true, // defensiveCopy
                     1024 * 1024, // preferredExpansionSize
                     4 * 1024, // preferredBlockSize
-                    64 * 1024)) { // initialHeaderRegionSize
+                    64 * 1024, // initialHeaderRegionSize
+                    0.2)) { // expansionExtraPercent
 
           Assert.fail("Should have thrown IOException for file size validation");
         }
@@ -140,7 +142,7 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
 
             // Corrupt it to cause validation failure
             try (RandomAccessFile raf = new RandomAccessFile(testFile.toFile(), "rw")) {
-              raf.seek(5); // numRecords position
+              raf.seek(16); // NUM_RECORDS_HEADER_LOCATION = Long.BYTES + Long.BYTES (8 + 8)
               raf.writeInt(999); // Invalid record count
             }
 
@@ -159,7 +161,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
                           true,
                           1024 * 1024,
                           4 * 1024,
-                          64 * 1024)) {
+                          64 * 1024,
+                          0.2)) {
                 // Constructor should fail
               }
             } catch (IOException expected) {
@@ -212,7 +215,8 @@ public class FileRecordStoreConstructorResourceLeakDemoTest extends JulLoggingCo
               true, // defensiveCopy
               1024 * 1024, // preferredExpansionSize
               4 * 1024, // preferredBlockSize
-              64 * 1024)) { // initialHeaderRegionSize
+              64 * 1024, // initialHeaderRegionSize
+              0.2)) { // expansionExtraPercent
 
         logger.log(Level.FINE, "✓ Store opened successfully - constructor flow completed");
 

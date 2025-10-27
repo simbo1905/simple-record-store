@@ -50,9 +50,10 @@ public class FileRecordStoreBuilder {
   private com.github.simbo1905.nfp.srs.KeyType keyType =
       com.github.simbo1905.nfp.srs.KeyType.BYTE_ARRAY;
 
-  /// Magic number identifying valid FileRecordStore files (0xBEEBBEEB).
+  /// Magic number identifying valid FileRecordStore files (0xBEEBBEEBBEEBBEEB).
   /// Placed at the start of every file to detect corruption and incompatible formats.
-  static final int MAGIC_NUMBER = 0xBEEBBEEB;
+  /// Written as long (8 bytes) for 64-byte aligned file header.
+  static final long MAGIC_NUMBER = 0xBEEBBEEBBEEBBEEBL;
   /// Default maximum key length in bytes. Optimized for SSD performance and modern hash sizes.
   public static final int DEFAULT_MAX_KEY_LENGTH = 128;
   /// Theoretical maximum key length based on file format constraints
@@ -66,14 +67,17 @@ public class FileRecordStoreBuilder {
   /// File index to the magic number header.
   static final long MAGIC_NUMBER_HEADER_LOCATION = 0;
   /// File index to the key length header (after magic number).
-  static final long KEY_LENGTH_HEADER_LOCATION = Integer.BYTES;
+  /// Key length is written as long but read back as short for alignment.
+  static final long KEY_LENGTH_HEADER_LOCATION = Long.BYTES;
   /// File index to the num records header.
-  static final long NUM_RECORDS_HEADER_LOCATION = Integer.BYTES + Short.BYTES;
+  /// Record count is written as long but read back as int for alignment.
+  static final long NUM_RECORDS_HEADER_LOCATION = Long.BYTES + Long.BYTES;
   /// File index to the start of the data region beyond the index region
-  static final long DATA_START_HEADER_LOCATION = Integer.BYTES + Short.BYTES + Integer.BYTES;
-  /// Total length in bytes of the global database headers.
-  static final int FILE_HEADERS_REGION_LENGTH =
-      Integer.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES;
+  static final long DATA_START_HEADER_LOCATION = Long.BYTES + Long.BYTES + Long.BYTES;
+  /// Total length in bytes of the global database headers (before padding).
+  /// Magic (8) + KeyLength (8) + RecordCount (8) + DataStartPtr (8) = 32 bytes.
+  /// Padded to 64 bytes minimum with 32 bytes reserved for future metadata.
+  static final int FILE_HEADERS_REGION_LENGTH = 64;
 
   // Default sizing constants
   // 1 MiB
@@ -94,8 +98,19 @@ public class FileRecordStoreBuilder {
   private boolean allowZeroPreallocation = false;
   private boolean defensiveCopy = true;
   private int hintInitialKeyCount = 0; // 0 means use default calculation
-  private int hintPreferredBlockSize = 4; // 4 KiB default
-  private int hintPreferredExpandSize = 1; // 1 MiB default
+  private int hintPreferredBlockSize =
+      4 * 1024
+          * 1024; // 4 MiB default (general alignment size; SSD erasure blocks typically range from
+  // 256 KiB to 4 MiB depending on the drive)
+  private int hintPreferredExpandSize = 2 * 1024 * 1024; // 2 MiB default
+
+  /// Extra capacity percent for expansion (0.0 to 1.0), default 0.2 for 20% growth.
+  /// This is converted to expansionMultiplier (1.0 + expansionExtraPercent) in the store.
+  private double expansionExtraPercent = 0.2;
+
+  /// Hint for average record size in bytes (default 2 KiB).
+  /// Used to estimate initial header region size based on preferredBlockSize.
+  private int averageRecordSizeHintBytes = 2048;
 
   /// Sets the path for the database file.
   ///
@@ -244,7 +259,7 @@ public class FileRecordStoreBuilder {
       throw new IllegalArgumentException(
           "hintPreferredBlockSize must be positive and power of 2, got " + blockSizeKiB);
     }
-    this.hintPreferredBlockSize = blockSizeKiB;
+    this.hintPreferredBlockSize = blockSizeKiB * 1024;
     return this;
   }
 
@@ -258,7 +273,36 @@ public class FileRecordStoreBuilder {
       throw new IllegalArgumentException(
           "hintPreferredExpandSize must be positive, got " + expandSizeMiB);
     }
-    this.hintPreferredExpandSize = expandSizeMiB;
+    this.hintPreferredExpandSize = expandSizeMiB * 1024 * 1024;
+    return this;
+  }
+
+  /// Sets the expansion extra percent for header and data region growth.
+  /// Must be between 0.0 (exclusive) and 1.0 (exclusive).
+  /// Default is 0.2 (20% growth, i.e., 1.2x multiplier).
+  ///
+  /// @param percent the expansion percentage (0.0 < percent < 1.0)
+  /// @return this builder for chaining
+  public FileRecordStoreBuilder withExpansionExtraPercent(double percent) {
+    if (percent <= 0.0 || percent >= 1.0) {
+      throw new IllegalArgumentException(
+          "expansionExtraPercent must be between 0.0 and 1.0 (exclusive), got " + percent);
+    }
+    this.expansionExtraPercent = percent;
+    return this;
+  }
+
+  /// Sets the average record size hint in bytes.
+  /// Used to estimate initial header region size.
+  /// Default is 2048 bytes (2 KiB).
+  ///
+  /// @param bytes the average record size in bytes
+  /// @return this builder for chaining
+  public FileRecordStoreBuilder withAverageRecordSizeHint(int bytes) {
+    if (bytes <= 0) {
+      throw new IllegalArgumentException("averageRecordSizeHint must be positive, got " + bytes);
+    }
+    this.averageRecordSizeHintBytes = bytes;
     return this;
   }
 
@@ -275,11 +319,11 @@ public class FileRecordStoreBuilder {
     alignedKeyLength = Math.min(alignedKeyLength, maxKeyLength + Short.BYTES + Integer.BYTES);
     final var finalAlignedKeyLength = alignedKeyLength;
 
-    // Convert user-friendly units to bytes
-    int expansionSize = hintPreferredExpandSize * 1024 * 1024; // MiB to bytes
-    int blockSize = hintPreferredBlockSize * 1024; // KiB to bytes
+    // Use already-converted values (now in bytes)
+    int expansionSize = hintPreferredExpandSize;
+    int blockSize = hintPreferredBlockSize;
 
-    // Calculate initial header region size based on key count hint
+    // Calculate initial header region size based on key count hint or average record size
     int initialHeaderSize;
     if (hintInitialKeyCount > 0) {
       // User provided hint: calculate based on key count
@@ -288,16 +332,23 @@ public class FileRecordStoreBuilder {
       initialHeaderSize =
           Math.max(hintInitialKeyCount * indexEntryLength, DEFAULT_INITIAL_HEADER_SIZE);
     } else {
-      // Use default
-      initialHeaderSize = DEFAULT_INITIAL_HEADER_SIZE;
+      // Estimate based on average record size and preferredBlockSize
+      int estimatedRecordCount = blockSize / averageRecordSizeHintBytes;
+      int indexEntryLength = alignedKeyLength + Short.BYTES + Integer.BYTES + 20;
+      int headerBytes = estimatedRecordCount * indexEntryLength + FILE_HEADERS_REGION_LENGTH;
+      // Round up to nearest 4 KiB block
+      initialHeaderSize = ((headerBytes + 4095) / 4096) * 4096;
+      initialHeaderSize = Math.max(initialHeaderSize, DEFAULT_INITIAL_HEADER_SIZE);
     }
+
+    final var finalInitialHeaderSize = initialHeaderSize;
 
     logger.log(
         Level.FINE,
         () ->
             String.format(
                 "Resolved sizing: alignedKeyLength=%d, expansionSize=%d, blockSize=%d, initialHeaderSize=%d",
-                finalAlignedKeyLength, expansionSize, blockSize, initialHeaderSize));
+                finalAlignedKeyLength, expansionSize, blockSize, finalInitialHeaderSize));
 
     return new Config(expansionSize, blockSize, initialHeaderSize);
   }
@@ -364,7 +415,8 @@ public class FileRecordStoreBuilder {
           defensiveCopy,
           config.expansionSize,
           config.blockSize,
-          config.initialHeaderSize);
+          config.initialHeaderSize,
+          expansionExtraPercent);
     }
 
     if (path == null) {
@@ -401,10 +453,29 @@ public class FileRecordStoreBuilder {
               defensiveCopy,
               config.expansionSize,
               config.blockSize,
-              config.initialHeaderSize);
+              config.initialHeaderSize,
+              expansionExtraPercent);
         } else {
-          // File exists but isn't a valid store - create new store (overwrite)
-          // This preserves backward compatibility with tests that expect overwrite behavior
+          // File exists but isn't a valid store
+          // Only delete if opening in READ_WRITE mode; otherwise fail fast
+          if (accessMode == AccessMode.READ_ONLY) {
+            throw new IllegalArgumentException(
+                "File exists at "
+                    + path
+                    + " but is not a valid FileRecordStore. "
+                    + "Cannot open in READ_ONLY mode.");
+          }
+
+          // Delete invalid file and create new store (overwrite behavior)
+          logger.log(
+              Level.WARNING,
+              "Deleting invalid store file at " + path + " before creating new store");
+          try {
+            Files.deleteIfExists(path);
+          } catch (SecurityException se) {
+            throw new IOException(
+                "Permission denied when attempting to delete invalid file: " + path, se);
+          }
 
           // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted
           // in
@@ -430,10 +501,30 @@ public class FileRecordStoreBuilder {
               defensiveCopy,
               config.expansionSize,
               config.blockSize,
-              config.initialHeaderSize);
+              config.initialHeaderSize,
+              expansionExtraPercent);
         }
       } catch (IOException e) {
-        // Can't read file - create new store (overwrite existing)
+        // Can't read file - only delete if opening in READ_WRITE mode
+        if (accessMode == AccessMode.READ_ONLY) {
+          throw new IOException(
+              "Failed to validate existing file at " + path + " in READ_ONLY mode", e);
+        }
+
+        // Delete corrupted file and create new store
+        logger.log(
+            Level.WARNING,
+            "Failed to validate store file at "
+                + path
+                + ": "
+                + e.getMessage()
+                + ". Deleting and creating new store");
+        try {
+          Files.deleteIfExists(path);
+        } catch (SecurityException se) {
+          throw new IOException(
+              "Permission denied when attempting to delete corrupted file: " + path, se);
+        }
 
         // Safety check: refuse read-write stores with zero pre-allocation unless explicitly opted
         // in
@@ -459,7 +550,8 @@ public class FileRecordStoreBuilder {
             defensiveCopy,
             config.expansionSize,
             config.blockSize,
-            config.initialHeaderSize);
+            config.initialHeaderSize,
+            expansionExtraPercent);
       }
     } else {
       // File doesn't exist - create new
@@ -496,7 +588,8 @@ public class FileRecordStoreBuilder {
           defensiveCopy,
           config.expansionSize,
           config.blockSize,
-          config.initialHeaderSize);
+          config.initialHeaderSize,
+          expansionExtraPercent);
     }
   }
 
@@ -510,13 +603,13 @@ public class FileRecordStoreBuilder {
   /// @throws IOException if the file cannot be read
   private boolean isValidFileRecordStore(Path path, int expectedMaxKeyLength) throws IOException {
     try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(path.toFile(), "r")) {
-      // Empty files are never valid stores
+      // Empty files are valid - they will be initialized as new stores
       if (raf.length() == 0) {
-        logger.log(Level.FINE, "Validation failed: file is empty");
-        return false;
+        logger.log(Level.FINE, "Empty file detected - will initialize as new store");
+        return true;
       }
 
-      // Check if file has minimum required size for headers
+      // Check if file has minimum required size for headers (64 bytes)
       if (raf.length() < FILE_HEADERS_REGION_LENGTH) {
         logger.log(
             Level.FINE,
@@ -528,11 +621,11 @@ public class FileRecordStoreBuilder {
         return false;
       }
 
-      // First check the magic number to determine file format
+      // Read magic number (long, 8 bytes)
       raf.seek(0);
-      int magicNumber;
+      long magicNumber;
       try {
-        magicNumber = raf.readInt();
+        magicNumber = raf.readLong();
       } catch (java.io.EOFException e) {
         logger.log(Level.FINE, "Validation failed: EOF reading magic number");
         return false;
@@ -542,19 +635,23 @@ public class FileRecordStoreBuilder {
       int numRecords;
 
       if (magicNumber == MAGIC_NUMBER) {
-        // New format with magic number
+        // Valid format with magic number
         try {
           raf.seek(KEY_LENGTH_HEADER_LOCATION);
-          keyLength = raf.readShort() & 0xFFFF;
+          long keyLengthLong = raf.readLong();
+          keyLength = (int) keyLengthLong;
           raf.seek(NUM_RECORDS_HEADER_LOCATION);
-          numRecords = raf.readInt();
+          long numRecordsLong = raf.readLong();
+          numRecords = (int) numRecordsLong;
         } catch (java.io.EOFException e) {
           logger.log(Level.FINE, "Validation failed: EOF reading new format headers");
           return false;
         }
       } else {
-        // Old format without magic number - reject it
-        logger.log(Level.FINE, "Validation failed: old format file without magic number");
+        // Invalid magic number - reject
+        logger.log(
+            Level.FINE,
+            "Validation failed: invalid magic number 0x" + Long.toHexString(magicNumber));
         return false;
       }
 

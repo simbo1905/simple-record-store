@@ -36,6 +36,7 @@
         <jdk.version>21</jdk.version>
         <junit.version>4.13.1</junit.version>
         <lombok.version>1.18.42</lombok.version>
+        <jqwik.version>1.9.2</jqwik.version>
     </properties>
 
     <dependencies>
@@ -63,6 +64,30 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- JUnit Vintage Engine for running JUnit 4 tests with JUnit Platform -->
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>5.10.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- JUnit Jupiter Engine for running JUnit 5 tests -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- jqwik for property-based testing -->
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
+            <version>${jqwik.version}</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <distributionManagement>
@@ -80,15 +105,62 @@
                 <configuration>
                     <encoding>UTF-8</encoding>
                     <release>21</release>
-                    <failOnWarning>true</failOnWarning> <!-- treat warnings as errors -->
+                    <failOnWarning>true</failOnWarning>
+                    <compilerArgs>
+                        <arg>-Xlint:all</arg>
+                        <arg>-Xlint:-serial</arg>
+                        <arg>-Xlint:-processing</arg>
+                        <arg>-Xlint:-try</arg>
+                        <arg>-Xdoclint:none</arg>
+                        <arg>-Werror</arg>
+                    </compilerArgs>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
                             <artifactId>lombok</artifactId>
                             <version>${lombok.version}</version>
                         </path>
+                        <path>
+                            <groupId>org.jetbrains</groupId>
+                            <artifactId>annotations</artifactId>
+                            <version>26.0.2</version>
+                        </path>
                     </annotationProcessorPaths>
+                    <proc>full</proc>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.java</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*ITCase.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <includes>
+                        <include>**/*ITCase.java</include>
+                    </includes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>

@@ -7,3 +7,4 @@ target/
 .claude/
 CLAUDE.md
 .tmp/
+/.worktrees/
